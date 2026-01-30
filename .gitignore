@@ -48,5 +48,8 @@ backend/out/
 # Source maps (should not be in production)
 *.js.map
 
+# Production config (server-only, not tracked)
+docker-compose.production.yml
+
 # Data volumes (local development)
 data/
