@@ -35,6 +35,7 @@ class AuthController(
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: RegisterRequest,
+        httpRequest: HttpServletRequest,
         response: HttpServletResponse
     ): ResponseEntity<AuthResponse> {
         if (userRepository.existsByEmail(request.email)) {
@@ -53,7 +54,7 @@ class AuthController(
         )
 
         val savedUser = userRepository.save(user)
-        setAuthCookies(response, savedUser)
+        setAuthCookies(httpRequest, response, savedUser)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             AuthResponse(user = savedUser.toDto())
@@ -63,6 +64,7 @@ class AuthController(
     @PostMapping("/login")
     fun login(
         @Valid @RequestBody request: LoginRequest,
+        httpRequest: HttpServletRequest,
         response: HttpServletResponse
     ): ResponseEntity<AuthResponse> {
         val user = userRepository.findByEmail(request.email)
@@ -74,7 +76,7 @@ class AuthController(
                 .body(AuthResponse(error = "Invalid credentials"))
         }
 
-        setAuthCookies(response, user)
+        setAuthCookies(httpRequest, response, user)
 
         return ResponseEntity.ok(
             AuthResponse(user = user.toDto())
@@ -101,12 +103,12 @@ class AuthController(
                 .body(AuthResponse(error = "User not found"))
 
         if (!jwtService.isTokenValid(refreshToken, email)) {
-            clearAuthCookies(response)
+            clearAuthCookies(request, response)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "Refresh token expired"))
         }
 
-        setAuthCookies(response, user)
+        setAuthCookies(request, response, user)
 
         return ResponseEntity.ok(
             AuthResponse(user = user.toDto())
@@ -114,8 +116,8 @@ class AuthController(
     }
 
     @PostMapping("/logout")
-    fun logout(response: HttpServletResponse): ResponseEntity<Unit> {
-        clearAuthCookies(response)
+    fun logout(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Unit> {
+        clearAuthCookies(request, response)
         return ResponseEntity.noContent().build()
     }
 
@@ -131,45 +133,54 @@ class AuthController(
         return ResponseEntity.ok(AuthResponse(user = user.toDto()))
     }
 
-    private fun setAuthCookies(response: HttpServletResponse, user: User) {
+    private fun isSecureRequest(request: HttpServletRequest): Boolean {
+        return request.isSecure ||
+            request.getHeader("X-Forwarded-Proto")?.equals("https", ignoreCase = true) == true
+    }
+
+    private fun setAuthCookies(request: HttpServletRequest, response: HttpServletResponse, user: User) {
         val token = jwtService.generateToken(user.email, mapOf("role" to user.role.name))
         val refreshToken = jwtService.generateRefreshToken(user.email)
         val cookiePath = if (contextPath.isBlank()) "/" else contextPath
+        val useSecure = isSecureRequest(request)
+        val sameSite = if (useSecure) "Strict" else "Lax"
 
         val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, token).apply {
             isHttpOnly = true
-            secure = true
+            secure = useSecure
             path = cookiePath
             maxAge = (accessTokenExpiration / 1000).toInt()
-            setAttribute("SameSite", "Strict")
+            setAttribute("SameSite", sameSite)
         }
 
         val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, refreshToken).apply {
             isHttpOnly = true
-            secure = true
+            secure = useSecure
             path = "${cookiePath}auth/refresh".replace("//", "/")
             maxAge = (refreshTokenExpiration / 1000).toInt()
-            setAttribute("SameSite", "Strict")
+            setAttribute("SameSite", sameSite)
         }
 
         response.addCookie(accessCookie)
         response.addCookie(refreshCookie)
     }
 
-    private fun clearAuthCookies(response: HttpServletResponse) {
+    private fun clearAuthCookies(request: HttpServletRequest, response: HttpServletResponse) {
         val cookiePath = if (contextPath.isBlank()) "/" else contextPath
+        val useSecure = isSecureRequest(request)
+        val sameSite = if (useSecure) "Strict" else "Lax"
 
         val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, "").apply {
             isHttpOnly = true
-            secure = true
+            secure = useSecure
             path = cookiePath
             maxAge = 0
-            setAttribute("SameSite", "Strict")
+            setAttribute("SameSite", sameSite)
         }
 
         val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, "").apply {
             isHttpOnly = true
-            secure = true
+            secure = useSecure
             path = "${cookiePath}auth/refresh".replace("//", "/")
             maxAge = 0
             setAttribute("SameSite", "Strict")
