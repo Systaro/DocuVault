@@ -1,15 +1,23 @@
 package com.docuvault.api.auth
 
+import com.docuvault.config.JwtAuthenticationFilter
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.JwtService
+import jakarta.servlet.http.Cookie
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.bind.annotation.*
 import java.util.*
@@ -19,13 +27,19 @@ import java.util.*
 class AuthController(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val jwtService: JwtService
+    private val jwtService: JwtService,
+    @Value("\${jwt.expiration}") private val accessTokenExpiration: Long,
+    @Value("\${jwt.refresh-expiration}") private val refreshTokenExpiration: Long,
+    @Value("\${server.servlet.context-path:}") private val contextPath: String
 ) {
     @PostMapping("/register")
-    fun register(@Valid @RequestBody request: RegisterRequest): ResponseEntity<AuthResponse> {
+    fun register(
+        @Valid @RequestBody request: RegisterRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<AuthResponse> {
         if (userRepository.existsByEmail(request.email)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(AuthResponse(error = "Email already registered"))
+                .body(AuthResponse(error = "Registration failed. Please try again or contact support."))
         }
 
         val isFirstUser = userRepository.count() == 0L
@@ -39,20 +53,18 @@ class AuthController(
         )
 
         val savedUser = userRepository.save(user)
-        val token = jwtService.generateToken(savedUser.email, mapOf("role" to savedUser.role.name))
-        val refreshToken = jwtService.generateRefreshToken(savedUser.email)
+        setAuthCookies(response, savedUser)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            AuthResponse(
-                token = token,
-                refreshToken = refreshToken,
-                user = savedUser.toDto()
-            )
+            AuthResponse(user = savedUser.toDto())
         )
     }
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<AuthResponse> {
+    fun login(
+        @Valid @RequestBody request: LoginRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<AuthResponse> {
         val user = userRepository.findByEmail(request.email)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "Invalid credentials"))
@@ -62,21 +74,25 @@ class AuthController(
                 .body(AuthResponse(error = "Invalid credentials"))
         }
 
-        val token = jwtService.generateToken(user.email, mapOf("role" to user.role.name))
-        val refreshToken = jwtService.generateRefreshToken(user.email)
+        setAuthCookies(response, user)
 
         return ResponseEntity.ok(
-            AuthResponse(
-                token = token,
-                refreshToken = refreshToken,
-                user = user.toDto()
-            )
+            AuthResponse(user = user.toDto())
         )
     }
 
     @PostMapping("/refresh")
-    fun refresh(@RequestBody request: RefreshRequest): ResponseEntity<AuthResponse> {
-        val email = jwtService.extractEmail(request.refreshToken)
+    fun refresh(
+        request: HttpServletRequest,
+        response: HttpServletResponse
+    ): ResponseEntity<AuthResponse> {
+        val refreshToken = request.cookies
+            ?.find { it.name == JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE }
+            ?.value
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(AuthResponse(error = "No refresh token"))
+
+        val email = jwtService.extractEmail(refreshToken)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "Invalid refresh token"))
 
@@ -84,21 +100,83 @@ class AuthController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "User not found"))
 
-        if (!jwtService.isTokenValid(request.refreshToken, email)) {
+        if (!jwtService.isTokenValid(refreshToken, email)) {
+            clearAuthCookies(response)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "Refresh token expired"))
         }
 
-        val newToken = jwtService.generateToken(user.email, mapOf("role" to user.role.name))
-        val newRefreshToken = jwtService.generateRefreshToken(user.email)
+        setAuthCookies(response, user)
 
         return ResponseEntity.ok(
-            AuthResponse(
-                token = newToken,
-                refreshToken = newRefreshToken,
-                user = user.toDto()
-            )
+            AuthResponse(user = user.toDto())
         )
+    }
+
+    @PostMapping("/logout")
+    fun logout(response: HttpServletResponse): ResponseEntity<Unit> {
+        clearAuthCookies(response)
+        return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/me")
+    fun me(@AuthenticationPrincipal userDetails: UserDetails?): ResponseEntity<AuthResponse> {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(AuthResponse(error = "Not authenticated"))
+        }
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(AuthResponse(error = "User not found"))
+        return ResponseEntity.ok(AuthResponse(user = user.toDto()))
+    }
+
+    private fun setAuthCookies(response: HttpServletResponse, user: User) {
+        val token = jwtService.generateToken(user.email, mapOf("role" to user.role.name))
+        val refreshToken = jwtService.generateRefreshToken(user.email)
+        val cookiePath = if (contextPath.isBlank()) "/" else contextPath
+
+        val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, token).apply {
+            isHttpOnly = true
+            secure = true
+            path = cookiePath
+            maxAge = (accessTokenExpiration / 1000).toInt()
+            setAttribute("SameSite", "Strict")
+        }
+
+        val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, refreshToken).apply {
+            isHttpOnly = true
+            secure = true
+            path = "${cookiePath}auth/refresh".replace("//", "/")
+            maxAge = (refreshTokenExpiration / 1000).toInt()
+            setAttribute("SameSite", "Strict")
+        }
+
+        response.addCookie(accessCookie)
+        response.addCookie(refreshCookie)
+    }
+
+    private fun clearAuthCookies(response: HttpServletResponse) {
+        val cookiePath = if (contextPath.isBlank()) "/" else contextPath
+
+        val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, "").apply {
+            isHttpOnly = true
+            secure = true
+            path = cookiePath
+            maxAge = 0
+            setAttribute("SameSite", "Strict")
+        }
+
+        val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, "").apply {
+            isHttpOnly = true
+            secure = true
+            path = "${cookiePath}auth/refresh".replace("//", "/")
+            maxAge = 0
+            setAttribute("SameSite", "Strict")
+        }
+
+        response.addCookie(accessCookie)
+        response.addCookie(refreshCookie)
     }
 }
 
@@ -111,7 +189,11 @@ data class RegisterRequest(
     val email: String,
 
     @field:NotBlank(message = "Password is required")
-    @field:Size(min = 8, message = "Password must be at least 8 characters")
+    @field:Size(min = 10, message = "Password must be at least 10 characters")
+    @field:Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{10,}$",
+        message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+    )
     val password: String
 )
 
@@ -124,13 +206,7 @@ data class LoginRequest(
     val password: String
 )
 
-data class RefreshRequest(
-    val refreshToken: String
-)
-
 data class AuthResponse(
-    val token: String? = null,
-    val refreshToken: String? = null,
     val user: UserDto? = null,
     val error: String? = null
 )

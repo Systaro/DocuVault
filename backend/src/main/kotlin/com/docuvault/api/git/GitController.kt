@@ -1,11 +1,16 @@
 package com.docuvault.api.git
 
+import com.docuvault.domain.space.PermissionLevel
+import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.git.*
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
 import java.util.*
 
@@ -14,7 +19,9 @@ import java.util.*
 class GitController(
     private val gitLabService: GitLabService,
     private val gitService: GitService,
-    private val spaceRepository: SpaceRepository
+    private val spaceRepository: SpaceRepository,
+    private val userRepository: UserRepository,
+    private val spacePermissionRepository: SpacePermissionRepository
 ) {
     private val logger = LoggerFactory.getLogger(GitController::class.java)
 
@@ -49,9 +56,22 @@ class GitController(
     }
 
     @PostMapping("/spaces/{spaceId}/pull")
-    fun pullChanges(@PathVariable spaceId: UUID): ResponseEntity<GitOperationResponse> {
+    fun pullChanges(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<GitOperationResponse> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
+
+        // Check space access
+        val hasAccess = user.role == com.docuvault.domain.user.UserRole.SUPER_ADMIN ||
+            spacePermissionRepository.findByUserIdAndSpaceId(user.id!!, spaceId) != null
+        if (!hasAccess) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
 
         return try {
             gitService.pullChanges(space)
@@ -100,17 +120,30 @@ class GitController(
     @PostMapping("/spaces/{spaceId}/push")
     fun pushChanges(
         @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
         @RequestBody request: PushRequest
     ): ResponseEntity<GitOperationResponse> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
+
+        // Check space edit permissions
+        val hasAccess = user.role == com.docuvault.domain.user.UserRole.SUPER_ADMIN ||
+            spacePermissionRepository.existsByUserIdAndSpaceIdAndPermissionLevelIn(
+                user.id!!, spaceId, listOf(PermissionLevel.EDIT, PermissionLevel.ADMIN)
+            )
+        if (!hasAccess) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
 
         return try {
             gitService.commitAndPush(
                 space = space,
                 message = request.message,
-                authorName = request.authorName,
-                authorEmail = request.authorEmail
+                authorName = user.name,
+                authorEmail = user.email
             )
 
             logger.info("Successfully pushed changes for space '${space.name}' (${space.id})")

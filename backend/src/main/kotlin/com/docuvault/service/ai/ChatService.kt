@@ -111,6 +111,11 @@ class ChatService(
         return chatHistoryRepository.findById(chatHistoryId).orElse(null)?.toDto()
     }
 
+    fun isOwnedBy(chatHistoryId: UUID, userEmail: String): Boolean {
+        val history = chatHistoryRepository.findById(chatHistoryId).orElse(null) ?: return false
+        return history.user?.email == userEmail
+    }
+
     fun deleteChatHistory(chatHistoryId: UUID) {
         chatHistoryRepository.deleteById(chatHistoryId)
     }

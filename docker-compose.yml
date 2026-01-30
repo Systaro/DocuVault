@@ -5,16 +5,16 @@ services:
     image: pgvector/pgvector:pg16
     container_name: docuvault-postgres
     environment:
-      POSTGRES_DB: docuvault
-      POSTGRES_USER: docuvault
-      POSTGRES_PASSWORD: docuvault_secret
+      POSTGRES_DB: ${DB_NAME:-docuvault}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docuvault"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,10 +26,16 @@ services:
     container_name: docuvault-backend
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/docuvault
-      SPRING_DATASOURCE_USERNAME: docuvault
-      SPRING_DATASOURCE_PASSWORD: docuvault_secret
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-docuvault}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GITLAB_URL: ${GITLAB_URL:-https://gitlab.com}
       GITLAB_TOKEN: ${GITLAB_TOKEN}

@@ -5,6 +5,11 @@ import com.docuvault.infrastructure.repository.AppSettingRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.Instant
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 
 @Service
 class SettingsService(
@@ -13,8 +18,37 @@ class SettingsService(
     @Value("\${gitlab.token}") private val defaultGitlabToken: String,
     @Value("\${openai.api-key}") private val defaultOpenaiApiKey: String,
     @Value("\${openai.chat-model}") private val defaultChatModel: String,
-    @Value("\${openai.embedding-model}") private val defaultEmbeddingModel: String
+    @Value("\${openai.embedding-model}") private val defaultEmbeddingModel: String,
+    @Value("\${jwt.secret}") private val encryptionKeySource: String
 ) {
+    private val encryptionKey: SecretKeySpec by lazy {
+        val keyBytes = encryptionKeySource.toByteArray().copyOf(32)
+        SecretKeySpec(keyBytes, "AES")
+    }
+
+    private fun encrypt(plaintext: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val iv = ByteArray(12)
+        SecureRandom().nextBytes(iv)
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, GCMParameterSpec(128, iv))
+        val ciphertext = cipher.doFinal(plaintext.toByteArray(Charsets.UTF_8))
+        val combined = iv + ciphertext
+        return Base64.getEncoder().encodeToString(combined)
+    }
+
+    private fun decrypt(encrypted: String): String {
+        return try {
+            val combined = Base64.getDecoder().decode(encrypted)
+            val iv = combined.copyOfRange(0, 12)
+            val ciphertext = combined.copyOfRange(12, combined.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, encryptionKey, GCMParameterSpec(128, iv))
+            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+        } catch (e: Exception) {
+            // Fallback: value may not be encrypted yet (migration)
+            encrypted
+        }
+    }
     companion object {
         const val GITLAB_URL = "gitlab.url"
         const val GITLAB_TOKEN = "gitlab.token"
@@ -24,13 +58,18 @@ class SettingsService(
     }
 
     fun get(key: String): String? {
-        return appSettingRepository.findById(key).orElse(null)?.value
+        val setting = appSettingRepository.findById(key).orElse(null) ?: return null
+        return if (setting.encrypted && setting.value != null) {
+            decrypt(setting.value!!)
+        } else {
+            setting.value
+        }
     }
 
     fun set(key: String, value: String?, encrypted: Boolean = false) {
         val setting = appSettingRepository.findById(key).orElse(null)
             ?: AppSetting(key = key, encrypted = encrypted)
-        setting.value = value
+        setting.value = if (encrypted && value != null) encrypt(value) else value
         setting.updatedAt = Instant.now()
         appSettingRepository.save(setting)
     }

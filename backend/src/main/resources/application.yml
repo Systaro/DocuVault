@@ -3,8 +3,8 @@ spring:
     name: docuvault
   datasource:
     url: jdbc:postgresql://localhost:5433/docuvault
-    username: docuvault
-    password: docuvault_secret
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -17,15 +17,15 @@ spring:
     open-in-view: false
 
   mail:
-    host: mail.example.com
-    port: 587
-    username: mailrelay@mail.example.com
-    password: ${MAIL_PASSWORD:}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
           auth: true
-          localhost: docuvault.systaro.de
+          localhost: ${MAIL_SMTP_LOCALHOST:localhost}
           starttls:
             enable: true
             required: true
@@ -37,7 +37,7 @@ server:
 
 # JWT Configuration
 jwt:
-  secret: ${JWT_SECRET:default-dev-secret-change-in-production}
+  secret: ${JWT_SECRET}
   expiration: 86400000 # 24 hours in milliseconds
   refresh-expiration: 604800000 # 7 days in milliseconds
 
@@ -52,6 +52,11 @@ gitlab:
   url: ${GITLAB_URL:https://gitlab.com}
   token: ${GITLAB_TOKEN:}
 
+# Admin Configuration
+admin:
+  email: ${ADMIN_EMAIL:}
+  password: ${ADMIN_PASSWORD:}
+
 # Git Repository Storage
 git:
   repos-path: ${GIT_REPOS_PATH:/data/repos}
@@ -59,7 +64,7 @@ git:
 # Logging
 logging:
   level:
-    com.docuvault: DEBUG
+    com.docuvault: INFO
     org.springframework.security: INFO
 
 ---

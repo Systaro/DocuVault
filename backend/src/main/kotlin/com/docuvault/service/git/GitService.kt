@@ -139,9 +139,21 @@ class GitService(
         }
     }
 
+    /**
+     * Validates that a resolved path stays within the repository directory.
+     * Prevents path traversal attacks (e.g., ../../etc/passwd).
+     */
+    private fun validatePath(repoDir: Path, userPath: String): Path {
+        val resolved = repoDir.resolve(userPath).normalize()
+        if (!resolved.startsWith(repoDir.normalize())) {
+            throw IllegalArgumentException("Path traversal detected: '$userPath' resolves outside repository")
+        }
+        return resolved
+    }
+
     fun readFile(space: Space, path: String): String? {
         val repoDir = getRepoPath(space.id!!)
-        val filePath = repoDir.resolve(path)
+        val filePath = validatePath(repoDir, path)
 
         return if (Files.exists(filePath) && Files.isRegularFile(filePath)) {
             Files.readString(filePath)
@@ -152,34 +164,34 @@ class GitService(
 
     fun writeFile(space: Space, path: String, content: String): Boolean {
         val repoDir = getRepoPath(space.id!!)
-        val filePath = repoDir.resolve(path)
+        val filePath = validatePath(repoDir, path)
 
         return try {
             Files.createDirectories(filePath.parent)
             Files.writeString(filePath, content)
             true
         } catch (e: Exception) {
-            logger.error("Failed to write file '$path' for space '${space.name}': ${e.message}", e)
+            logger.error("Failed to write file for space '${space.name}': ${e.message}", e)
             false
         }
     }
 
     fun deleteFile(space: Space, path: String): Boolean {
         val repoDir = getRepoPath(space.id!!)
-        val filePath = repoDir.resolve(path)
+        val filePath = validatePath(repoDir, path)
 
         return try {
             Files.deleteIfExists(filePath)
             true
         } catch (e: Exception) {
-            logger.error("Failed to delete file '$path' for space '${space.name}': ${e.message}", e)
+            logger.error("Failed to delete file for space '${space.name}': ${e.message}", e)
             false
         }
     }
 
     fun listFiles(space: Space, directory: String = ""): List<FileNode> {
         val repoDir = getRepoPath(space.id!!)
-        val targetDir = if (directory.isBlank()) repoDir else repoDir.resolve(directory)
+        val targetDir = if (directory.isBlank()) repoDir else validatePath(repoDir, directory)
 
         if (!Files.exists(targetDir) || !Files.isDirectory(targetDir)) {
             return emptyList()

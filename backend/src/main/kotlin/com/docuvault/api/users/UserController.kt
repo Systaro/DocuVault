@@ -277,6 +277,11 @@ data class AcceptInvitationRequest(
     val name: String,
 
     @field:NotBlank(message = "Password is required")
+    @field:jakarta.validation.constraints.Size(min = 10, message = "Password must be at least 10 characters")
+    @field:jakarta.validation.constraints.Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{10,}$",
+        message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+    )
     val password: String
 )
 
@@ -285,7 +290,6 @@ data class InvitationDto(
     val email: String,
     val spaceId: UUID?,
     val role: String,
-    val token: String,
     val expiresAt: Instant,
     val accepted: Boolean,
     val createdAt: Instant
@@ -296,7 +300,6 @@ fun Invitation.toDto() = InvitationDto(
     email = this.email,
     spaceId = this.space?.id,
     role = this.role.name,
-    token = this.token,
     expiresAt = this.expiresAt,
     accepted = this.acceptedAt != null,
     createdAt = this.createdAt

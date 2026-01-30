@@ -59,17 +59,25 @@ class AiController(
 
     @GetMapping("/chat/history/{id}")
     fun getChatHistoryById(
+        @AuthenticationPrincipal userDetails: UserDetails,
         @PathVariable id: UUID
     ): ResponseEntity<ChatHistoryDto> {
         val history = chatService.getChatHistoryById(id)
             ?: return ResponseEntity.notFound().build()
+        if (!chatService.isOwnedBy(id, userDetails.username)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build()
+        }
         return ResponseEntity.ok(history)
     }
 
     @DeleteMapping("/chat/history/{id}")
     fun deleteChatHistory(
+        @AuthenticationPrincipal userDetails: UserDetails,
         @PathVariable id: UUID
     ): ResponseEntity<Unit> {
+        if (!chatService.isOwnedBy(id, userDetails.username)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build()
+        }
         chatService.deleteChatHistory(id)
         return ResponseEntity.noContent().build()
     }

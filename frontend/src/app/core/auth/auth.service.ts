@@ -1,7 +1,7 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap, catchError, of } from 'rxjs';
+import { Observable, tap, catchError, of, map } from 'rxjs';
 
 export interface User {
   id: string;
@@ -11,8 +11,6 @@ export interface User {
 }
 
 export interface AuthResponse {
-  token?: string;
-  refreshToken?: string;
   user?: User;
   error?: string;
 }
@@ -30,8 +28,6 @@ export interface RegisterRequest {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly TOKEN_KEY = 'docuvault_token';
-  private readonly REFRESH_TOKEN_KEY = 'docuvault_refresh_token';
   private readonly USER_KEY = 'docuvault_user';
 
   private userSignal = signal<User | null>(this.getStoredUser());
@@ -49,34 +45,31 @@ export class AuthService {
   ) {}
 
   login(credentials: LoginRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>('/api/auth/login', credentials).pipe(
+    return this.http.post<AuthResponse>('/api/auth/login', credentials, { withCredentials: true }).pipe(
       tap(response => this.handleAuthResponse(response)),
       catchError(error => of({ error: error.error?.error || 'Login failed' }))
     );
   }
 
   register(data: RegisterRequest): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>('/api/auth/register', data).pipe(
+    return this.http.post<AuthResponse>('/api/auth/register', data, { withCredentials: true }).pipe(
       tap(response => this.handleAuthResponse(response)),
       catchError(error => of({ error: error.error?.error || 'Registration failed' }))
     );
   }
 
   logout(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+    this.http.post('/api/auth/logout', {}, { withCredentials: true }).subscribe({
+      complete: () => {},
+      error: () => {}
+    });
     localStorage.removeItem(this.USER_KEY);
     this.userSignal.set(null);
     this.router.navigate(['/login']);
   }
 
   refreshToken(): Observable<AuthResponse> {
-    const refreshToken = localStorage.getItem(this.REFRESH_TOKEN_KEY);
-    if (!refreshToken) {
-      return of({ error: 'No refresh token' });
-    }
-
-    return this.http.post<AuthResponse>('/api/auth/refresh', { refreshToken }).pipe(
+    return this.http.post<AuthResponse>('/api/auth/refresh', {}, { withCredentials: true }).pipe(
       tap(response => this.handleAuthResponse(response)),
       catchError(() => {
         this.logout();
@@ -85,16 +78,25 @@ export class AuthService {
     );
   }
 
-  getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+  /**
+   * Check if the user is authenticated by calling /auth/me.
+   * Used by auth guard since we can't read httpOnly cookies.
+   */
+  checkAuth(): Observable<boolean> {
+    return this.http.get<AuthResponse>('/api/auth/me', { withCredentials: true }).pipe(
+      map(response => {
+        if (response.user) {
+          this.handleAuthResponse(response);
+          return true;
+        }
+        return false;
+      }),
+      catchError(() => of(false))
+    );
   }
 
   private handleAuthResponse(response: AuthResponse): void {
-    if (response.token && response.user) {
-      localStorage.setItem(this.TOKEN_KEY, response.token);
-      if (response.refreshToken) {
-        localStorage.setItem(this.REFRESH_TOKEN_KEY, response.refreshToken);
-      }
+    if (response.user) {
       localStorage.setItem(this.USER_KEY, JSON.stringify(response.user));
       this.userSignal.set(response.user);
     }

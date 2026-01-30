@@ -22,6 +22,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.web.cors.CorsConfiguration
@@ -35,13 +37,23 @@ import com.docuvault.infrastructure.repository.UserRepository
 @EnableMethodSecurity
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthenticationFilter,
-    private val userDetailsService: UserDetailsService
+    private val userDetailsService: UserDetailsService,
+    private val rateLimitFilter: RateLimitFilter
 ) {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+        val csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
+        val csrfRequestHandler = CsrfTokenRequestAttributeHandler()
+        csrfRequestHandler.setCsrfRequestAttributeName(null)
+
         http
             .cors { it.configurationSource(corsConfigurationSource()) }
-            .csrf { it.disable() }
+            .csrf { csrf ->
+                csrf
+                    .csrfTokenRepository(csrfTokenRepository)
+                    .csrfTokenRequestHandler(csrfRequestHandler)
+                    .ignoringRequestMatchers("/auth/login", "/auth/register", "/auth/refresh", "/auth/accept-invitation")
+            }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth
@@ -49,6 +61,7 @@ class SecurityConfig(
                     .requestMatchers("/actuator/health").permitAll()
                     .anyRequest().authenticated()
             }
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
@@ -81,7 +94,7 @@ class CustomUserDetailsService(
 ) : UserDetailsService {
     override fun loadUserByUsername(email: String): UserDetails {
         val user = userRepository.findByEmail(email)
-            ?: throw UsernameNotFoundException("User not found: $email")
+            ?: throw UsernameNotFoundException("User not found")
 
         return org.springframework.security.core.userdetails.User(
             user.email,
@@ -97,19 +110,24 @@ class JwtAuthenticationFilter(
     private val userDetailsService: UserDetailsService
 ) : OncePerRequestFilter() {
 
+    companion object {
+        const val ACCESS_TOKEN_COOKIE = "docuvault_access_token"
+        const val REFRESH_TOKEN_COOKIE = "docuvault_refresh_token"
+    }
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
-        val authHeader = request.getHeader("Authorization")
+        // Try cookie first, then fallback to Authorization header for API compatibility
+        val jwt = extractTokenFromCookie(request) ?: extractTokenFromHeader(request)
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (jwt == null) {
             filterChain.doFilter(request, response)
             return
         }
 
-        val jwt = authHeader.substring(7)
         val email = jwtService.extractEmail(jwt)
 
         if (email != null && SecurityContextHolder.getContext().authentication == null) {
@@ -126,5 +144,14 @@ class JwtAuthenticationFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun extractTokenFromCookie(request: HttpServletRequest): String? {
+        return request.cookies?.find { it.name == ACCESS_TOKEN_COOKIE }?.value
+    }
+
+    private fun extractTokenFromHeader(request: HttpServletRequest): String? {
+        val authHeader = request.getHeader("Authorization") ?: return null
+        return if (authHeader.startsWith("Bearer ")) authHeader.substring(7) else null
     }
 }

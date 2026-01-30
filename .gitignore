@@ -1,5 +1,15 @@
 # Environment files
 .env
+.env.*
+!.env.example
+
+# Secrets and certificates
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.pfx
 
 # IDE
 .idea/
@@ -34,6 +44,9 @@ frontend/.angular/
 backend/build/
 backend/.gradle/
 backend/out/
+
+# Source maps (should not be in production)
+*.js.map
 
 # Data volumes (local development)
 data/

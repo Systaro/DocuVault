@@ -27,9 +27,9 @@ class EmailService(
             message.subject = subject
             message.text = body
             mailSender.send(message)
-            logger.info("Email sent to $to: $subject")
+            logger.info("Email sent successfully: $subject")
         } catch (e: Exception) {
-            logger.error("Failed to send email to $to: ${e.message}", e)
+            logger.error("Failed to send email: ${e.message}", e)
         }
     }
 
@@ -43,9 +43,9 @@ class EmailService(
             helper.setSubject(subject)
             helper.setText(htmlBody, true)
             mailSender.send(mimeMessage)
-            logger.info("HTML email sent to $to: $subject")
+            logger.info("HTML email sent successfully: $subject")
         } catch (e: Exception) {
-            logger.error("Failed to send HTML email to $to: ${e.message}", e)
+            logger.error("Failed to send HTML email: ${e.message}", e)
         }
     }
 }

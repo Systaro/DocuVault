@@ -5,15 +5,9 @@ import { AuthService } from '../auth/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-  const token = authService.getToken();
 
-  if (token && !req.url.includes('/auth/')) {
-    req = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
+  // Ensure cookies are sent with every request
+  req = req.clone({ withCredentials: true });
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
@@ -24,13 +18,9 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 401) {
         return authService.refreshToken().pipe(
           switchMap(response => {
-            if (response.token) {
-              const newReq = req.clone({
-                setHeaders: {
-                  Authorization: `Bearer ${response.token}`
-                }
-              });
-              return next(newReq);
+            if (response.user) {
+              // Cookie was refreshed by the server, retry the original request
+              return next(req.clone({ withCredentials: true }));
             }
             authService.logout();
             return throwError(() => error);
@@ -38,7 +28,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         );
       }
 
-      if (error.status === 403 && !token) {
+      if (error.status === 403 && !authService.isAuthenticated()) {
         authService.logout();
         return throwError(() => error);
       }
