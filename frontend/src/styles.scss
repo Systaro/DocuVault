@@ -54,6 +54,33 @@
   --transition: var(--transition-base);
 }
 
+// ============================================
+// DARK THEME
+// ============================================
+[data-theme="dark"] {
+  --primary-dark: #7cc5cb;
+  --primary: #5ba8ae;
+  --primary-light: #2a4a4d;
+  --accent: #2d5a3e;
+  --background: #1a1e24;
+  --background-darker: #12151a;
+
+  --surface: #242830;
+  --border: #343840;
+  --border-light: #2c3038;
+
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a8;
+  --text-muted: #6b7280;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
 // Reset
 * {
   box-sizing: border-box;

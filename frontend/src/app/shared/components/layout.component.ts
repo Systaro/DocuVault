@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { ThemeService } from '../../core/services/theme.service';
 
 @Component({
   selector: 'app-layout',
@@ -43,6 +44,9 @@ import { AuthService } from '../../core/auth/auth.service';
           </button>
           <button class="icon-btn" title="Notifications">
             <span class="material-icons">notifications</span>
+          </button>
+          <button class="icon-btn" (click)="themeService.toggle()" [title]="themeService.darkMode() ? 'Light mode' : 'Dark mode'">
+            <span class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
           </button>
           @if (authService.isAdmin()) {
             <a routerLink="/admin/settings" class="icon-btn" title="Settings">
@@ -170,7 +174,7 @@ import { AuthService } from '../../core/auth/auth.service';
   `]
 })
 export class LayoutComponent {
-  constructor(public authService: AuthService) {}
+  constructor(public authService: AuthService, public themeService: ThemeService) {}
 
   getInitials(name: string | undefined): string {
     if (!name) return '?';

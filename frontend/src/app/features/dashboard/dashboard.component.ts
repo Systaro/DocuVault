@@ -79,6 +79,10 @@ import { ToastService } from '../../shared/services/toast.service';
                     </div>
                   </div>
                   <div class="workspace-card-details">
+                    <div class="workspace-detail-row">
+                      <span class="material-icons">article</span>
+                      <span>{{ space.documentCount ?? 0 }} {{ (space.documentCount ?? 0) === 1 ? 'document' : 'documents' }}</span>
+                    </div>
                     @if (space.description) {
                       <div class="workspace-detail-row">
                         <span class="material-icons">description</span>

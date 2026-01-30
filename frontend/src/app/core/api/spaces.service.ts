@@ -16,6 +16,7 @@ export interface Space {
   createdAt: string;
   updatedAt: string;
   gitError?: string;
+  documentCount?: number;
 }
 
 export interface CreateSpaceRequest {

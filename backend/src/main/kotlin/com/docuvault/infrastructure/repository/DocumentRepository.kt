@@ -10,4 +10,5 @@ interface DocumentRepository : JpaRepository<Document, UUID> {
     fun findBySpaceId(spaceId: UUID): List<Document>
     fun findBySpaceIdAndPath(spaceId: UUID, path: String): Document?
     fun deleteBySpaceIdAndPathStartingWith(spaceId: UUID, pathPrefix: String)
+    fun countBySpaceId(spaceId: UUID): Long
 }

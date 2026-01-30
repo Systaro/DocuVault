@@ -4,6 +4,7 @@ import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
 import com.docuvault.domain.space.SpacePermission
 import com.docuvault.domain.user.UserRole
+import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
@@ -27,6 +28,7 @@ class SpaceController(
     private val spaceRepository: SpaceRepository,
     private val spacePermissionRepository: SpacePermissionRepository,
     private val userRepository: UserRepository,
+    private val documentRepository: DocumentRepository,
     private val gitLabService: GitLabService,
     private val gitService: GitService
 ) {
@@ -42,7 +44,7 @@ class SpaceController(
             spaceRepository.findAllByUserId(user.id!!)
         }
 
-        return ResponseEntity.ok(spaces.map { it.toDto() })
+        return ResponseEntity.ok(spaces.map { it.toDto(documentCount = documentRepository.countBySpaceId(it.id!!)) })
     }
 
     @GetMapping("/{id}")
@@ -60,7 +62,7 @@ class SpaceController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        return ResponseEntity.ok(space.toDto())
+        return ResponseEntity.ok(space.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
     }
 
     @GetMapping("/slug/{slug}")
@@ -78,7 +80,7 @@ class SpaceController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        return ResponseEntity.ok(space.toDto())
+        return ResponseEntity.ok(space.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
     }
 
     @PostMapping
@@ -318,7 +320,8 @@ data class SpaceDto(
     val lastSyncedAt: Instant?,
     val createdAt: Instant,
     val updatedAt: Instant,
-    val gitError: String? = null
+    val gitError: String? = null,
+    val documentCount: Long = 0
 )
 
 data class SpacePermissionDto(
@@ -329,7 +332,7 @@ data class SpacePermissionDto(
     val permissionLevel: String
 )
 
-fun Space.toDto(gitError: String? = null) = SpaceDto(
+fun Space.toDto(gitError: String? = null, documentCount: Long = 0) = SpaceDto(
     id = this.id!!,
     name = this.name,
     slug = this.slug,
@@ -342,7 +345,8 @@ fun Space.toDto(gitError: String? = null) = SpaceDto(
     lastSyncedAt = this.lastSyncedAt,
     createdAt = this.createdAt,
     updatedAt = this.updatedAt,
-    gitError = gitError ?: this.lastSyncError
+    gitError = gitError ?: this.lastSyncError,
+    documentCount = documentCount
 )
 
 fun SpacePermission.toDto() = SpacePermissionDto(
