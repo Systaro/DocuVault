@@ -3,8 +3,8 @@ spring:
     name: docuvault
   datasource:
     url: jdbc:postgresql://localhost:5433/docuvault
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    username: ${DB_USERNAME:docuvault}
+    password: ${DB_PASSWORD:docuvault}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -17,10 +17,10 @@ spring:
     open-in-view: false
 
   mail:
-    host: ${MAIL_HOST}
+    host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
