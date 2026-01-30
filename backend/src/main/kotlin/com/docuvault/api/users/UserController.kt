@@ -1,0 +1,303 @@
+package com.docuvault.api.users
+
+import com.docuvault.api.auth.UserDto
+import com.docuvault.api.auth.toDto
+import com.docuvault.domain.user.Invitation
+import com.docuvault.domain.user.User
+import com.docuvault.domain.user.UserRole
+import com.docuvault.infrastructure.repository.InvitationRepository
+import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.UserRepository
+import jakarta.validation.Valid
+import jakarta.validation.constraints.Email
+import jakarta.validation.constraints.NotBlank
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.core.userdetails.UserDetails
+import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.web.bind.annotation.*
+import com.docuvault.service.EmailService
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.*
+
+@RestController
+@RequestMapping("/users")
+class UserController(
+    private val userRepository: UserRepository,
+    private val invitationRepository: InvitationRepository,
+    private val spaceRepository: SpaceRepository,
+    private val passwordEncoder: PasswordEncoder,
+    private val emailService: EmailService
+) {
+    @GetMapping("/me")
+    fun getCurrentUser(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<UserDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(user.toDto())
+    }
+
+    @PutMapping("/me")
+    fun updateCurrentUser(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: UpdateUserRequest
+    ): ResponseEntity<UserDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+
+        request.name?.let { user.name = it }
+        request.password?.let { user.passwordHash = passwordEncoder.encode(it) }
+        user.updatedAt = Instant.now()
+
+        val updated = userRepository.save(user)
+        return ResponseEntity.ok(updated.toDto())
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun listUsers(): ResponseEntity<List<UserDto>> {
+        val users = userRepository.findAll().map { it.toDto() }
+        return ResponseEntity.ok(users)
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun getUser(@PathVariable id: UUID): ResponseEntity<UserDto> {
+        val user = userRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(user.toDto())
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun updateUser(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: AdminUpdateUserRequest
+    ): ResponseEntity<UserDto> {
+        val user = userRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        request.name?.let { user.name = it }
+        request.role?.let { user.role = UserRole.valueOf(it) }
+        user.updatedAt = Instant.now()
+
+        val updated = userRepository.save(user)
+        return ResponseEntity.ok(updated.toDto())
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun deleteUser(@PathVariable id: UUID): ResponseEntity<Unit> {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build()
+        }
+        userRepository.deleteById(id)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/invite")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun inviteUser(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: InviteUserRequest
+    ): ResponseEntity<InvitationDto> {
+        val inviter = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = request.spaceId?.let {
+            spaceRepository.findById(it).orElse(null)
+        }
+
+        val invitation = Invitation(
+            email = request.email,
+            space = space,
+            role = UserRole.valueOf(request.role ?: "VIEWER"),
+            token = UUID.randomUUID().toString(),
+            expiresAt = Instant.now().plus(7, ChronoUnit.DAYS),
+            createdBy = inviter
+        )
+
+        val saved = invitationRepository.save(invitation)
+        sendInvitationEmail(saved)
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved.toDto())
+    }
+
+    @PostMapping("/invitations/{id}/resend")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun resendInvitation(@PathVariable id: UUID): ResponseEntity<Map<String, String>> {
+        val invitation = invitationRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (invitation.acceptedAt != null) {
+            return ResponseEntity.badRequest().body(mapOf("error" to "Invitation already accepted"))
+        }
+
+        // Refresh expiry
+        invitation.expiresAt = Instant.now().plus(7, ChronoUnit.DAYS)
+        invitationRepository.save(invitation)
+
+        sendInvitationEmail(invitation)
+        return ResponseEntity.ok(mapOf("message" to "Invitation resent to ${invitation.email}"))
+    }
+
+    private fun sendInvitationEmail(invitation: Invitation) {
+        val acceptUrl = "https://docuvault.systaro.de/accept-invitation?token=${invitation.token}"
+        val roleName = invitation.role.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+        val expiryDate = invitation.expiresAt.toString().substring(0, 10)
+        emailService.sendHtml(
+            to = invitation.email,
+            subject = "You're invited to DocuVault",
+            htmlBody = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0f2f5; padding: 40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width: 560px; width: 100%;">
+        <!-- Header -->
+        <tr><td style="background: linear-gradient(135deg, #4a8a8f 0%, #6fb3b8 50%, #8fcdd2 100%); border-radius: 16px 16px 0 0; padding: 40px 40px 32px; text-align: center;">
+          <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+            <img src="https://docuvault.systaro.de/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
+          </div>
+          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">You're invited to DocuVault</h1>
+          <p style="color: rgba(255,255,255,0.85); font-size: 15px; margin: 0;">Collaborative documentation with Git-powered version control</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="background: #ffffff; padding: 40px;">
+          <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 8px;">Hi there,</p>
+          <p style="color: #555; font-size: 15px; line-height: 1.7; margin: 0 0 32px;">
+            You've been invited to join <strong style="color: #333;">DocuVault</strong> as
+            <span style="display: inline-block; background: #e8f5f6; color: #4a8a8f; padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 600;">$roleName</span>.
+            Click the button below to set up your account and get started.
+          </p>
+          <!-- Button -->
+          <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding: 0 0 32px;">
+            <a href="$acceptUrl" style="display: inline-block; background: linear-gradient(135deg, #4a8a8f, #6fb3b8); color: #ffffff; padding: 14px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; letter-spacing: 0.3px; box-shadow: 0 4px 14px rgba(111,179,184,0.4);">
+              Accept Invitation
+            </a>
+          </td></tr></table>
+          <!-- Details -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="background: #f8fafb; border-radius: 10px; border: 1px solid #e9eef2;">
+            <tr><td style="padding: 20px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="color: #888; font-size: 13px; padding-bottom: 8px;">Role</td>
+                  <td style="color: #333; font-size: 13px; font-weight: 600; text-align: right; padding-bottom: 8px;">$roleName</td>
+                </tr>
+                <tr>
+                  <td style="color: #888; font-size: 13px;">Expires</td>
+                  <td style="color: #333; font-size: 13px; font-weight: 600; text-align: right;">$expiryDate</td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background: #fafbfc; border-radius: 0 0 16px 16px; border-top: 1px solid #eef1f4; padding: 24px 40px; text-align: center;">
+          <p style="color: #aaa; font-size: 12px; line-height: 1.6; margin: 0;">
+            If you didn't expect this invitation, you can safely ignore this email.<br>
+            &copy; DocuVault &middot; <a href="https://docuvault.systaro.de" style="color: #6fb3b8; text-decoration: none;">docuvault.systaro.de</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+            """.trimIndent()
+        )
+    }
+
+    @GetMapping("/invitations")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun listInvitations(): ResponseEntity<List<InvitationDto>> {
+        val invitations = invitationRepository.findAll().map { it.toDto() }
+        return ResponseEntity.ok(invitations)
+    }
+
+    @PostMapping("/accept-invitation")
+    fun acceptInvitation(@Valid @RequestBody request: AcceptInvitationRequest): ResponseEntity<UserDto> {
+        val invitation = invitationRepository.findByToken(request.token)
+            ?: return ResponseEntity.notFound().build()
+
+        if (invitation.acceptedAt != null) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        if (invitation.expiresAt.isBefore(Instant.now())) {
+            return ResponseEntity.status(HttpStatus.GONE).build()
+        }
+
+        if (userRepository.existsByEmail(invitation.email)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build()
+        }
+
+        val user = User(
+            email = invitation.email,
+            passwordHash = passwordEncoder.encode(request.password),
+            name = request.name,
+            role = invitation.role
+        )
+
+        val savedUser = userRepository.save(user)
+
+        invitation.acceptedAt = Instant.now()
+        invitationRepository.save(invitation)
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedUser.toDto())
+    }
+}
+
+data class UpdateUserRequest(
+    val name: String? = null,
+    val password: String? = null
+)
+
+data class AdminUpdateUserRequest(
+    val name: String? = null,
+    val role: String? = null
+)
+
+data class InviteUserRequest(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String,
+    val spaceId: UUID? = null,
+    val role: String? = "VIEWER"
+)
+
+data class AcceptInvitationRequest(
+    @field:NotBlank(message = "Token is required")
+    val token: String,
+
+    @field:NotBlank(message = "Name is required")
+    val name: String,
+
+    @field:NotBlank(message = "Password is required")
+    val password: String
+)
+
+data class InvitationDto(
+    val id: UUID,
+    val email: String,
+    val spaceId: UUID?,
+    val role: String,
+    val token: String,
+    val expiresAt: Instant,
+    val accepted: Boolean,
+    val createdAt: Instant
+)
+
+fun Invitation.toDto() = InvitationDto(
+    id = this.id!!,
+    email = this.email,
+    spaceId = this.space?.id,
+    role = this.role.name,
+    token = this.token,
+    expiresAt = this.expiresAt,
+    accepted = this.acceptedAt != null,
+    createdAt = this.createdAt
+)

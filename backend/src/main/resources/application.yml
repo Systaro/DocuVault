@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: docuvault
+  datasource:
+    url: jdbc:postgresql://localhost:5433/docuvault
+    username: docuvault
+    password: docuvault_secret
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+    open-in-view: false
+
+  mail:
+    host: mail.example.com
+    port: 587
+    username: mailrelay@mail.example.com
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          localhost: docuvault.systaro.de
+          starttls:
+            enable: true
+            required: true
+
+server:
+  port: 7030
+  servlet:
+    context-path: /api
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:default-dev-secret-change-in-production}
+  expiration: 86400000 # 24 hours in milliseconds
+  refresh-expiration: 604800000 # 7 days in milliseconds
+
+# OpenAI Configuration
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  embedding-model: text-embedding-3-small
+  chat-model: gpt-4o
+
+# GitLab Configuration
+gitlab:
+  url: ${GITLAB_URL:https://gitlab.com}
+  token: ${GITLAB_TOKEN:}
+
+# Git Repository Storage
+git:
+  repos-path: ${GIT_REPOS_PATH:/data/repos}
+
+# Logging
+logging:
+  level:
+    com.docuvault: DEBUG
+    org.springframework.security: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/docuvault

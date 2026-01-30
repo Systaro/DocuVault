@@ -1,0 +1,70 @@
+import { Routes } from '@angular/router';
+import { authGuard } from './core/auth/auth.guard';
+
+export const routes: Routes = [
+  {
+    path: '',
+    redirectTo: 'dashboard',
+    pathMatch: 'full'
+  },
+  {
+    path: 'login',
+    loadComponent: () => import('./features/auth/login.component').then(m => m.LoginComponent)
+  },
+  {
+    path: 'register',
+    loadComponent: () => import('./features/auth/register.component').then(m => m.RegisterComponent)
+  },
+  {
+    path: 'accept-invitation',
+    loadComponent: () => import('./features/auth/accept-invitation.component').then(m => m.AcceptInvitationComponent)
+  },
+  {
+    path: 'dashboard',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
+  },
+  {
+    path: 'spaces/:slug',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/space/space.component').then(m => m.SpaceComponent),
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./features/space/space-overview.component').then(m => m.SpaceOverviewComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./features/space/space-settings.component').then(m => m.SpaceSettingsComponent)
+      },
+      {
+        path: 'doc',
+        loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+      }
+    ]
+  },
+  {
+    path: 'admin',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/admin/admin.component').then(m => m.AdminComponent),
+    children: [
+      {
+        path: '',
+        redirectTo: 'users',
+        pathMatch: 'full'
+      },
+      {
+        path: 'users',
+        loadComponent: () => import('./features/admin/users.component').then(m => m.UsersComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () => import('./features/admin/settings.component').then(m => m.SettingsComponent)
+      }
+    ]
+  },
+  {
+    path: '**',
+    redirectTo: 'dashboard'
+  }
+];

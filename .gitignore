@@ -1,0 +1,39 @@
+# Environment files
+.env
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build outputs
+build/
+dist/
+target/
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Backend
+backend/build/
+backend/.gradle/
+backend/out/
+
+# Data volumes (local development)
+data/

@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: docuvault-postgres
+    environment:
+      POSTGRES_DB: docuvault
+      POSTGRES_USER: docuvault
+      POSTGRES_PASSWORD: docuvault_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docuvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docuvault-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/docuvault
+      SPRING_DATASOURCE_USERNAME: docuvault
+      SPRING_DATASOURCE_PASSWORD: docuvault_secret
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GITLAB_URL: ${GITLAB_URL:-https://gitlab.com}
+      GITLAB_TOKEN: ${GITLAB_TOKEN}
+    ports:
+      - "7030:7030"
+    volumes:
+      - repos_data:/data/repos
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: docuvault-frontend
+    ports:
+      - "7031:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  repos_data:
