@@ -91,7 +91,11 @@ export class AuthService {
         }
         return false;
       }),
-      catchError(() => of(false))
+      catchError(() => {
+        localStorage.removeItem(this.USER_KEY);
+        this.userSignal.set(null);
+        return of(false);
+      })
     );
   }
 

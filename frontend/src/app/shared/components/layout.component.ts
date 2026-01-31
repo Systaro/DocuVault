@@ -13,7 +13,7 @@ import { ThemeService } from '../../core/services/theme.service';
       <!-- Header -->
       <header class="app-header">
         <a routerLink="/dashboard" class="app-logo">
-          <img src="assets/logo_horiz.png" alt="DocuVault" class="logo-img" />
+          <img src="assets/logo_horiz.png" alt="DocuVault" class="logo-img" [class.inverted]="themeService.darkMode()" />
         </a>
 
         <nav class="header-nav">
@@ -103,6 +103,7 @@ import { ThemeService } from '../../core/services/theme.service';
         width: auto;
         object-fit: contain;
       }
+
     }
 
     .header-nav {

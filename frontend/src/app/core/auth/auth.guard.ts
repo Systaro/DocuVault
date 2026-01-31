@@ -7,11 +7,7 @@ export const authGuard: CanActivateFn = () => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
-  if (authService.isAuthenticated()) {
-    return true;
-  }
-
-  // Try to verify with server (cookie may still be valid)
+  // Always verify with server since cookies may have been cleared
   return authService.checkAuth().pipe(
     map(authenticated => {
       if (authenticated) return true;
