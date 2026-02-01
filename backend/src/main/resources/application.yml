@@ -31,6 +31,7 @@ spring:
             required: true
 
 server:
+  address: 0.0.0.0
   port: 7030
   servlet:
     context-path: /api

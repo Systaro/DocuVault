@@ -43,6 +43,7 @@ class SecurityConfig(
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         val csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse()
+        csrfTokenRepository.setCookiePath("/")
         val csrfRequestHandler = CsrfTokenRequestAttributeHandler()
         csrfRequestHandler.setCsrfRequestAttributeName(null)
 
@@ -70,7 +71,7 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:7031", "http://localhost:80", "https://docuvault.systaro.de")
+        configuration.allowedOrigins = listOf("http://localhost:7031", "http://127.0.0.1:7031", "http://localhost:80", "https://docuvault.systaro.de")
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true
