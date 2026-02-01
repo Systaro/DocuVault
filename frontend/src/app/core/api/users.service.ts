@@ -54,6 +54,10 @@ export class UsersService {
     return this.http.post<{ message: string }>(`/api/users/invitations/${id}/resend`, {});
   }
 
+  deleteInvitation(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/users/invitations/${id}`);
+  }
+
   getInvitations(): Observable<Invitation[]> {
     return this.http.get<Invitation[]>('/api/users/invitations');
   }

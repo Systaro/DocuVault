@@ -216,6 +216,20 @@ class UserController(
         )
     }
 
+    @DeleteMapping("/invitations/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun deleteInvitation(@PathVariable id: UUID): ResponseEntity<Unit> {
+        val invitation = invitationRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (invitation.acceptedAt != null) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        invitationRepository.delete(invitation)
+        return ResponseEntity.noContent().build()
+    }
+
     @GetMapping("/invitations")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
     fun listInvitations(): ResponseEntity<List<InvitationDto>> {

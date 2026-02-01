@@ -150,6 +150,9 @@ import { User } from '../../core/auth/auth.service';
                           <span class="material-icons">forward_to_inbox</span>
                         }
                       </button>
+                      <button class="icon-btn" (click)="deleteInvitation(inv)" title="Delete invitation">
+                        <span class="material-icons">delete</span>
+                      </button>
                     }
                   </div>
                 </div>
@@ -751,6 +754,14 @@ export class UsersComponent implements OnInit {
         this.resendingId.set(null);
       }
     });
+  }
+
+  deleteInvitation(inv: Invitation): void {
+    if (confirm(`Remove invitation for "${inv.email}"?`)) {
+      this.usersService.deleteInvitation(inv.id).subscribe({
+        next: () => this.loadInvitations()
+      });
+    }
   }
 
   editUser(user: User): void {
