@@ -1,22 +1,20 @@
 package com.docuvault.api.auth
 
-import com.docuvault.config.JwtAuthenticationFilter
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.UserRepository
-import com.docuvault.service.JwtService
-import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
-import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.authentication.AuthenticationManager
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.bind.annotation.*
@@ -27,16 +25,12 @@ import java.util.*
 class AuthController(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val jwtService: JwtService,
-    @Value("\${jwt.expiration}") private val accessTokenExpiration: Long,
-    @Value("\${jwt.refresh-expiration}") private val refreshTokenExpiration: Long,
-    @Value("\${server.servlet.context-path:}") private val contextPath: String
+    private val authenticationManager: AuthenticationManager
 ) {
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: RegisterRequest,
-        httpRequest: HttpServletRequest,
-        response: HttpServletResponse
+        httpRequest: HttpServletRequest
     ): ResponseEntity<AuthResponse> {
         if (userRepository.existsByEmail(request.email)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -54,7 +48,7 @@ class AuthController(
         )
 
         val savedUser = userRepository.save(user)
-        setAuthCookies(httpRequest, response, savedUser)
+        authenticateSession(httpRequest, request.email, request.password)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             AuthResponse(user = savedUser.toDto())
@@ -64,8 +58,7 @@ class AuthController(
     @PostMapping("/login")
     fun login(
         @Valid @RequestBody request: LoginRequest,
-        httpRequest: HttpServletRequest,
-        response: HttpServletResponse
+        httpRequest: HttpServletRequest
     ): ResponseEntity<AuthResponse> {
         val user = userRepository.findByEmail(request.email)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -76,39 +69,7 @@ class AuthController(
                 .body(AuthResponse(error = "Invalid credentials"))
         }
 
-        setAuthCookies(httpRequest, response, user)
-
-        return ResponseEntity.ok(
-            AuthResponse(user = user.toDto())
-        )
-    }
-
-    @PostMapping("/refresh")
-    fun refresh(
-        request: HttpServletRequest,
-        response: HttpServletResponse
-    ): ResponseEntity<AuthResponse> {
-        val refreshToken = request.cookies
-            ?.find { it.name == JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE }
-            ?.value
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(AuthResponse(error = "No refresh token"))
-
-        val email = jwtService.extractEmail(refreshToken)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(AuthResponse(error = "Invalid refresh token"))
-
-        val user = userRepository.findByEmail(email)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(AuthResponse(error = "User not found"))
-
-        if (!jwtService.isTokenValid(refreshToken, email)) {
-            clearAuthCookies(request, response)
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(AuthResponse(error = "Refresh token expired"))
-        }
-
-        setAuthCookies(request, response, user)
+        authenticateSession(httpRequest, request.email, request.password)
 
         return ResponseEntity.ok(
             AuthResponse(user = user.toDto())
@@ -116,8 +77,9 @@ class AuthController(
     }
 
     @PostMapping("/logout")
-    fun logout(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Unit> {
-        clearAuthCookies(request, response)
+    fun logout(request: HttpServletRequest): ResponseEntity<Unit> {
+        request.getSession(false)?.invalidate()
+        SecurityContextHolder.clearContext()
         return ResponseEntity.noContent().build()
     }
 
@@ -133,61 +95,13 @@ class AuthController(
         return ResponseEntity.ok(AuthResponse(user = user.toDto()))
     }
 
-    private fun isSecureRequest(request: HttpServletRequest): Boolean {
-        return request.isSecure ||
-            request.getHeader("X-Forwarded-Proto")?.equals("https", ignoreCase = true) == true
-    }
-
-    private fun setAuthCookies(request: HttpServletRequest, response: HttpServletResponse, user: User) {
-        val token = jwtService.generateToken(user.email, mapOf("role" to user.role.name))
-        val refreshToken = jwtService.generateRefreshToken(user.email)
-        val cookiePath = if (contextPath.isBlank()) "/" else contextPath
-        val useSecure = isSecureRequest(request)
-        val sameSite = if (useSecure) "Strict" else "Lax"
-
-        val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, token).apply {
-            isHttpOnly = true
-            secure = useSecure
-            path = cookiePath
-            maxAge = (accessTokenExpiration / 1000).toInt()
-            setAttribute("SameSite", sameSite)
-        }
-
-        val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, refreshToken).apply {
-            isHttpOnly = true
-            secure = useSecure
-            path = "${cookiePath}auth/refresh".replace("//", "/")
-            maxAge = (refreshTokenExpiration / 1000).toInt()
-            setAttribute("SameSite", sameSite)
-        }
-
-        response.addCookie(accessCookie)
-        response.addCookie(refreshCookie)
-    }
-
-    private fun clearAuthCookies(request: HttpServletRequest, response: HttpServletResponse) {
-        val cookiePath = if (contextPath.isBlank()) "/" else contextPath
-        val useSecure = isSecureRequest(request)
-        val sameSite = if (useSecure) "Strict" else "Lax"
-
-        val accessCookie = Cookie(JwtAuthenticationFilter.ACCESS_TOKEN_COOKIE, "").apply {
-            isHttpOnly = true
-            secure = useSecure
-            path = cookiePath
-            maxAge = 0
-            setAttribute("SameSite", sameSite)
-        }
-
-        val refreshCookie = Cookie(JwtAuthenticationFilter.REFRESH_TOKEN_COOKIE, "").apply {
-            isHttpOnly = true
-            secure = useSecure
-            path = "${cookiePath}auth/refresh".replace("//", "/")
-            maxAge = 0
-            setAttribute("SameSite", "Strict")
-        }
-
-        response.addCookie(accessCookie)
-        response.addCookie(refreshCookie)
+    private fun authenticateSession(request: HttpServletRequest, email: String, password: String) {
+        val authToken = UsernamePasswordAuthenticationToken(email, password)
+        val authentication = authenticationManager.authenticate(authToken)
+        val context = SecurityContextHolder.createEmptyContext()
+        context.authentication = authentication
+        SecurityContextHolder.setContext(context)
+        request.getSession(true).setAttribute("SPRING_SECURITY_CONTEXT", context)
     }
 }
 

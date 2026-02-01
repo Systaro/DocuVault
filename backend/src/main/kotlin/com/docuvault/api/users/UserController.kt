@@ -8,13 +8,17 @@ import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.InvitationRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.authentication.AuthenticationManager
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.bind.annotation.*
@@ -30,7 +34,8 @@ class UserController(
     private val invitationRepository: InvitationRepository,
     private val spaceRepository: SpaceRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    private val authenticationManager: AuthenticationManager
 ) {
     @GetMapping("/me")
     fun getCurrentUser(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<UserDto> {
@@ -219,7 +224,10 @@ class UserController(
     }
 
     @PostMapping("/accept-invitation")
-    fun acceptInvitation(@Valid @RequestBody request: AcceptInvitationRequest): ResponseEntity<UserDto> {
+    fun acceptInvitation(
+        @Valid @RequestBody request: AcceptInvitationRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<UserDto> {
         val invitation = invitationRepository.findByToken(request.token)
             ?: return ResponseEntity.notFound().build()
 
@@ -246,6 +254,14 @@ class UserController(
 
         invitation.acceptedAt = Instant.now()
         invitationRepository.save(invitation)
+
+        // Establish session for the new user
+        val authToken = UsernamePasswordAuthenticationToken(invitation.email, request.password)
+        val authentication = authenticationManager.authenticate(authToken)
+        val context = SecurityContextHolder.createEmptyContext()
+        context.authentication = authentication
+        SecurityContextHolder.setContext(context)
+        httpRequest.getSession(true).setAttribute("SPRING_SECURITY_CONTEXT", context)
 
         return ResponseEntity.status(HttpStatus.CREATED).body(savedUser.toDto())
     }

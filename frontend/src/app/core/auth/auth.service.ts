@@ -68,16 +68,6 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
-  refreshToken(): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>('/api/auth/refresh', {}, { withCredentials: true }).pipe(
-      tap(response => this.handleAuthResponse(response)),
-      catchError(() => {
-        this.logout();
-        return of({ error: 'Token refresh failed' });
-      })
-    );
-  }
-
   /**
    * Check if the user is authenticated by calling /auth/me.
    * Used by auth guard since we can't read httpOnly cookies.

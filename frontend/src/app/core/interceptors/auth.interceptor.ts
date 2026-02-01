@@ -1,6 +1,6 @@
 import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { catchError, switchMap, throwError } from 'rxjs';
+import { catchError, throwError } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
@@ -16,16 +16,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       }
 
       if (error.status === 401) {
-        return authService.refreshToken().pipe(
-          switchMap(response => {
-            if (response.user) {
-              // Cookie was refreshed by the server, retry the original request
-              return next(req.clone({ withCredentials: true }));
-            }
-            authService.logout();
-            return throwError(() => error);
-          })
-        );
+        authService.logout();
+        return throwError(() => error);
       }
 
       if (error.status === 403 && !authService.isAuthenticated()) {

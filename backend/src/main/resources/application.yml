@@ -35,12 +35,17 @@ server:
   port: 7030
   servlet:
     context-path: /api
+    session:
+      cookie:
+        name: DOCUVAULT_SESSION
+        path: /api
+        http-only: true
+        same-site: strict
+      timeout: 24h
 
-# JWT Configuration
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: 86400000 # 24 hours in milliseconds
-  refresh-expiration: 604800000 # 7 days in milliseconds
+# Encryption key for sensitive settings stored in database
+encryption:
+  key: ${ENCRYPTION_KEY:${JWT_SECRET:change-me-in-production}}
 
 # OpenAI Configuration
 openai:

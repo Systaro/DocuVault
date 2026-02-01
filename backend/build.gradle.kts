@@ -38,11 +38,6 @@ dependencies {
     // pgvector support
     implementation("com.pgvector:pgvector:0.1.4")
 
-    // JWT
-    implementation("io.jsonwebtoken:jjwt-api:0.12.5")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.5")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.5")
-
     // Git operations
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.9.0.202403050737-r")
 

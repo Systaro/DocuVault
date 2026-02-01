@@ -19,7 +19,7 @@ class SettingsService(
     @Value("\${openai.api-key}") private val defaultOpenaiApiKey: String,
     @Value("\${openai.chat-model}") private val defaultChatModel: String,
     @Value("\${openai.embedding-model}") private val defaultEmbeddingModel: String,
-    @Value("\${jwt.secret}") private val encryptionKeySource: String
+    @Value("\${encryption.key}") private val encryptionKeySource: String
 ) {
     private val encryptionKey: SecretKeySpec by lazy {
         val keyBytes = encryptionKeySource.toByteArray().copyOf(32)
