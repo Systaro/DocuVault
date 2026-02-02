@@ -41,6 +41,9 @@ data class Space(
     @Column(name = "last_sync_error", length = 1000)
     var lastSyncError: String? = null,
 
+    @Column(name = "logo_url", length = 500)
+    var logoUrl: String? = null,
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     val createdBy: User,

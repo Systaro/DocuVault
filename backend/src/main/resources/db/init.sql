@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS spaces (
     sync_interval_minutes INTEGER DEFAULT 15,
     last_synced_at TIMESTAMP WITH TIME ZONE,
     last_sync_error VARCHAR(1000),
+    logo_url VARCHAR(500),
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

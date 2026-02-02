@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { LayoutComponent } from '../../shared/components/layout.component';
+import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
+import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { SpacesService, Space, CreateSpaceRequest } from '../../core/api/spaces.service';
 import { GitService, GitLabProject } from '../../core/api/git.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -11,7 +13,7 @@ import { ToastService } from '../../shared/services/toast.service';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, LayoutComponent],
+  imports: [CommonModule, RouterLink, FormsModule, LayoutComponent, ChatSidebarComponent, LogoUploadComponent],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -67,9 +69,15 @@ import { ToastService } from '../../shared/services/toast.service';
                     </button>
                   </div>
                   <div class="workspace-card-header">
-                    <div class="workspace-icon" [class.git]="space.gitlabUrl" [class.local]="!space.gitlabUrl">
-                      <span class="material-icons">{{ space.gitlabUrl ? 'cloud_sync' : 'folder' }}</span>
-                    </div>
+                    @if (space.logoUrl) {
+                      <div class="workspace-logo">
+                        <img [src]="space.logoUrl" [alt]="space.name" />
+                      </div>
+                    } @else {
+                      <div class="workspace-icon letter-avatar">
+                        <span>{{ space.name.charAt(0).toUpperCase() }}</span>
+                      </div>
+                    }
                     <div class="workspace-card-info">
                       <div class="workspace-card-name">{{ space.name }}</div>
                       <span class="workspace-card-type">
@@ -136,9 +144,41 @@ import { ToastService } from '../../shared/services/toast.service';
         </div>
 
         <!-- Floating AI Button -->
-        <button class="ai-fab" title="AI Assistant">
+        <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
           <span class="material-icons">auto_awesome</span>
         </button>
+
+        @if (showSpacePicker()) {
+          <div class="space-picker-overlay" (click)="showSpacePicker.set(false)">
+            <div class="space-picker" (click)="$event.stopPropagation()">
+              <div class="space-picker-header">
+                <h3>Select a space to chat about</h3>
+                <button class="icon-btn" (click)="showSpacePicker.set(false)">
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+              <div class="space-picker-list">
+                @for (space of spaces(); track space.id) {
+                  <button class="space-picker-item" (click)="selectSpaceForChat(space.id)">
+                    @if (space.logoUrl) {
+                      <img [src]="space.logoUrl" [alt]="space.name" class="space-picker-logo" />
+                    } @else {
+                      <div class="space-picker-icon">{{ space.name.charAt(0).toUpperCase() }}</div>
+                    }
+                    <div class="space-picker-info">
+                      <div class="space-picker-name">{{ space.name }}</div>
+                      <div class="space-picker-desc">{{ space.documentCount ?? 0 }} documents</div>
+                    </div>
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
+        @if (showChat()) {
+          <app-chat-sidebar [spaceId]="selectedSpaceId()!" (close)="showChat.set(false)"></app-chat-sidebar>
+        }
       </div>
 
       <!-- Create Space Modal -->
@@ -153,6 +193,14 @@ import { ToastService } from '../../shared/services/toast.service';
             </div>
 
             <form (ngSubmit)="createSpace()" class="modal-body">
+              <div class="form-group">
+                <label class="form-label">Logo</label>
+                <app-logo-upload
+                  (fileSelected)="pendingLogoFile = $event"
+                  (logoRemoved)="pendingLogoFile = null"
+                ></app-logo-upload>
+              </div>
+
               <div class="form-group">
                 <label class="form-label">Name</label>
                 <div class="input-icon">
@@ -371,6 +419,20 @@ import { ToastService } from '../../shared/services/toast.service';
       margin-bottom: var(--spacing-md);
     }
 
+    .workspace-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      flex-shrink: 0;
+      overflow: hidden;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
     .workspace-icon {
       width: 48px;
       height: 48px;
@@ -382,6 +444,13 @@ import { ToastService } from '../../shared/services/toast.service';
 
       .material-icons {
         font-size: 24px;
+        color: white;
+      }
+
+      &.letter-avatar {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        font-size: 20px;
+        font-weight: 700;
         color: white;
       }
 
@@ -592,6 +661,106 @@ import { ToastService } from '../../shared/services/toast.service';
       }
     }
 
+    .space-picker-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      z-index: 999;
+      padding: var(--spacing-xl);
+      padding-bottom: 100px;
+      padding-right: var(--spacing-xl);
+    }
+
+    .space-picker {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      width: 320px;
+      max-height: 400px;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+    }
+
+    .space-picker-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--spacing-md) var(--spacing-lg);
+      border-bottom: 1px solid var(--border);
+
+      h3 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+    }
+
+    .space-picker-list {
+      overflow-y: auto;
+      max-height: 320px;
+      padding: var(--spacing-sm);
+    }
+
+    .space-picker-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: none;
+      background: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      text-align: left;
+      transition: background var(--transition);
+
+      &:hover {
+        background: var(--bg-hover, rgba(0,0,0,0.05));
+      }
+    }
+
+    .space-picker-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+
+    .space-picker-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .space-picker-info {
+      min-width: 0;
+    }
+
+    .space-picker-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .space-picker-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -674,11 +843,16 @@ import { ToastService } from '../../shared/services/toast.service';
 export class DashboardComponent implements OnInit {
   spaces = signal<Space[]>([]);
   loading = signal(true);
+  showChat = signal(false);
+  showSpacePicker = signal(false);
+  selectedSpaceId = signal<string | null>(null);
   showCreateModal = signal(false);
   creating = signal(false);
   createError = signal<string | null>(null);
   gitConnected = signal(false);
   gitlabProjects = signal<GitLabProject[]>([]);
+
+  pendingLogoFile: File | null = null;
 
   newSpace: CreateSpaceRequest = {
     name: '',
@@ -738,9 +912,20 @@ export class DashboardComponent implements OnInit {
 
     this.spacesService.createSpace(this.newSpace).subscribe({
       next: (space) => {
-        this.creating.set(false);
-        this.closeModal();
-        this.loadSpaces();
+        const finalize = () => {
+          this.creating.set(false);
+          this.closeModal();
+          this.loadSpaces();
+        };
+
+        if (this.pendingLogoFile) {
+          this.spacesService.uploadLogo(space.id, this.pendingLogoFile).subscribe({
+            next: () => finalize(),
+            error: () => finalize()
+          });
+        } else {
+          finalize();
+        }
 
         // Check if there was a Git clone error
         if (space.gitError) {
@@ -776,9 +961,30 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  onAiFabClick(): void {
+    if (this.showChat()) {
+      this.showChat.set(false);
+      return;
+    }
+    const allSpaces = this.spaces();
+    if (allSpaces.length === 0) return;
+    if (allSpaces.length === 1) {
+      this.selectSpaceForChat(allSpaces[0].id);
+      return;
+    }
+    this.showSpacePicker.set(true);
+  }
+
+  selectSpaceForChat(spaceId: string): void {
+    this.selectedSpaceId.set(spaceId);
+    this.showSpacePicker.set(false);
+    this.showChat.set(true);
+  }
+
   closeModal(): void {
     this.showCreateModal.set(false);
     this.newSpace = { name: '', slug: '', description: '', syncEnabled: true };
+    this.pendingLogoFile = null;
     this.createError.set(null);
   }
 

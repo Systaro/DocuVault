@@ -13,12 +13,19 @@ import com.docuvault.service.git.GitOperationException
 import com.docuvault.service.git.GitService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import java.time.Instant
 import java.util.*
 
@@ -30,7 +37,9 @@ class SpaceController(
     private val userRepository: UserRepository,
     private val documentRepository: DocumentRepository,
     private val gitLabService: GitLabService,
-    private val gitService: GitService
+    private val gitService: GitService,
+    private val s3Client: S3Client,
+    @Value("\${minio.bucket}") private val logoBucket: String
 ) {
     private val logger = org.slf4j.LoggerFactory.getLogger(SpaceController::class.java)
     @GetMapping
@@ -265,6 +274,118 @@ class SpaceController(
         return ResponseEntity.noContent().build()
     }
 
+    @PostMapping("/{id}/logo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun uploadLogo(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam("file") file: MultipartFile
+    ): ResponseEntity<SpaceDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val allowedTypes = setOf("image/png", "image/jpeg", "image/svg+xml", "image/webp")
+        if (file.contentType !in allowedTypes) {
+            return ResponseEntity.badRequest().build()
+        }
+        if (file.size > 2 * 1024 * 1024) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build()
+        }
+
+        val ext = when (file.contentType) {
+            "image/png" -> "png"
+            "image/jpeg" -> "jpg"
+            "image/svg+xml" -> "svg"
+            "image/webp" -> "webp"
+            else -> "png"
+        }
+        val key = "${space.id}.$ext"
+
+        // Delete old logo if it exists with different extension
+        space.logoUrl?.let { oldUrl ->
+            val oldKey = oldUrl.substringAfterLast("/")
+            if (oldKey != key) {
+                try { s3Client.deleteObject(DeleteObjectRequest.builder().bucket(logoBucket).key(oldKey).build()) } catch (_: Exception) {}
+            }
+        }
+
+        s3Client.putObject(
+            PutObjectRequest.builder()
+                .bucket(logoBucket)
+                .key(key)
+                .contentType(file.contentType)
+                .build(),
+            software.amazon.awssdk.core.sync.RequestBody.fromBytes(file.bytes)
+        )
+
+        space.logoUrl = "/api/spaces/${space.id}/logo"
+        space.updatedAt = Instant.now()
+        val updated = spaceRepository.save(space)
+        return ResponseEntity.ok(updated.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
+    }
+
+    @GetMapping("/{id}/logo")
+    fun getLogo(@PathVariable id: UUID): ResponseEntity<ByteArray> {
+        val space = spaceRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (space.logoUrl == null) {
+            return ResponseEntity.notFound().build()
+        }
+
+        // Find the logo object by trying known extensions
+        for (ext in listOf("png", "jpg", "svg", "webp")) {
+            val key = "${space.id}.$ext"
+            try {
+                val response = s3Client.getObject(GetObjectRequest.builder().bucket(logoBucket).key(key).build())
+                val bytes = response.readAllBytes()
+                val contentType = when (ext) {
+                    "png" -> MediaType.IMAGE_PNG
+                    "jpg" -> MediaType.IMAGE_JPEG
+                    "svg" -> MediaType.valueOf("image/svg+xml")
+                    "webp" -> MediaType.valueOf("image/webp")
+                    else -> MediaType.APPLICATION_OCTET_STREAM
+                }
+                return ResponseEntity.ok().contentType(contentType).body(bytes)
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return ResponseEntity.notFound().build()
+    }
+
+    @DeleteMapping("/{id}/logo")
+    fun deleteLogo(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<SpaceDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Delete all possible logo files
+        for (ext in listOf("png", "jpg", "svg", "webp")) {
+            try { s3Client.deleteObject(DeleteObjectRequest.builder().bucket(logoBucket).key("${space.id}.$ext").build()) } catch (_: Exception) {}
+        }
+
+        space.logoUrl = null
+        space.updatedAt = Instant.now()
+        val updated = spaceRepository.save(space)
+        return ResponseEntity.ok(updated.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
+    }
+
     private fun hasAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
         if (userRole == UserRole.SUPER_ADMIN) return true
         return spacePermissionRepository.findByUserIdAndSpaceId(userId, spaceId) != null
@@ -321,7 +442,8 @@ data class SpaceDto(
     val createdAt: Instant,
     val updatedAt: Instant,
     val gitError: String? = null,
-    val documentCount: Long = 0
+    val documentCount: Long = 0,
+    val logoUrl: String? = null
 )
 
 data class SpacePermissionDto(
@@ -346,7 +468,8 @@ fun Space.toDto(gitError: String? = null, documentCount: Long = 0) = SpaceDto(
     createdAt = this.createdAt,
     updatedAt = this.updatedAt,
     gitError = gitError ?: this.lastSyncError,
-    documentCount = documentCount
+    documentCount = documentCount,
+    logoUrl = this.logoUrl
 )
 
 fun SpacePermission.toDto() = SpacePermissionDto(

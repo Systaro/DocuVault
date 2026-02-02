@@ -55,6 +55,10 @@ dependencies {
     // Markdown processing
     implementation("org.commonmark:commonmark:0.21.0")
 
+    // AWS S3 SDK (for MinIO)
+    implementation(platform("software.amazon.awssdk:bom:2.25.16"))
+    implementation("software.amazon.awssdk:s3")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

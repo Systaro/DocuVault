@@ -5,17 +5,28 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { SpacesService, Space, SpacePermission } from '../../core/api/spaces.service';
 import { UsersService } from '../../core/api/users.service';
 import { User } from '../../core/auth/auth.service';
+import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 
 @Component({
   selector: 'app-space-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LogoUploadComponent],
   template: `
     <div class="p-8">
       <div class="max-w-2xl mx-auto">
         <h1 class="text-2xl font-bold text-gray-900 mb-8">Space Settings</h1>
 
         @if (space()) {
+          <!-- Logo -->
+          <div class="card p-6 mb-6">
+            <h2 class="font-semibold text-gray-900 mb-4">Logo</h2>
+            <app-logo-upload
+              [currentLogoUrl]="space()?.logoUrl || null"
+              (fileSelected)="onLogoSelected($event)"
+              (logoRemoved)="onLogoRemoved()"
+            ></app-logo-upload>
+          </div>
+
           <!-- General Settings -->
           <div class="card p-6 mb-6">
             <h2 class="font-semibold text-gray-900 mb-4">General</h2>
@@ -288,6 +299,24 @@ export class SpaceSettingsComponent implements OnInit {
         next: () => this.loadPermissions(space.id)
       });
     }
+  }
+
+  onLogoSelected(file: File): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.spacesService.uploadLogo(space.id, file).subscribe({
+      next: (updated) => this.space.set(updated)
+    });
+  }
+
+  onLogoRemoved(): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.spacesService.deleteLogo(space.id).subscribe({
+      next: (updated) => this.space.set(updated)
+    });
   }
 
   deleteSpace(): void {

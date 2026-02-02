@@ -17,6 +17,7 @@ export interface Space {
   updatedAt: string;
   gitError?: string;
   documentCount?: number;
+  logoUrl?: string;
 }
 
 export interface CreateSpaceRequest {
@@ -78,5 +79,15 @@ export class SpacesService {
 
   removePermission(spaceId: string, userId: string): Observable<void> {
     return this.http.delete<void>(`/api/spaces/${spaceId}/permissions/${userId}`);
+  }
+
+  uploadLogo(spaceId: string, file: File): Observable<Space> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<Space>(`/api/spaces/${spaceId}/logo`, formData);
+  }
+
+  deleteLogo(spaceId: string): Observable<Space> {
+    return this.http.delete<Space>(`/api/spaces/${spaceId}/logo`);
   }
 }
