@@ -111,6 +111,14 @@ class UserController(
         val inviter = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
+        if (userRepository.existsByEmail(request.email)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build()
+        }
+
+        if (invitationRepository.findByEmailAndAcceptedAtIsNull(request.email).isNotEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build()
+        }
+
         val space = request.spaceId?.let {
             spaceRepository.findById(it).orElse(null)
         }

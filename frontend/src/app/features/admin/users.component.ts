@@ -737,8 +737,11 @@ export class UsersComponent implements OnInit {
         this.inviteRole = 'VIEWER';
         this.loadInvitations();
       },
-      error: () => {
+      error: (err) => {
         this.sending.set(false);
+        if (err.status === 409) {
+          alert('A user or pending invitation with this email already exists.');
+        }
       }
     });
   }
