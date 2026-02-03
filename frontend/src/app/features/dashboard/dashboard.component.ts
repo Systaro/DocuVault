@@ -144,9 +144,11 @@ import { ToastService } from '../../shared/services/toast.service';
         </div>
 
         <!-- Floating AI Button -->
-        <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
-          <span class="material-icons">auto_awesome</span>
-        </button>
+        @if (!showChat()) {
+          <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
+            <span class="material-icons">auto_awesome</span>
+          </button>
+        }
 
         @if (showSpacePicker()) {
           <div class="space-picker-overlay" (click)="showSpacePicker.set(false)">
