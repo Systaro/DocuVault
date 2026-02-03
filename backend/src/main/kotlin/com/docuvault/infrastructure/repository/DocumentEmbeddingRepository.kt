@@ -13,7 +13,8 @@ interface DocumentEmbeddingRepository : JpaRepository<DocumentEmbedding, UUID> {
 
     @Query(
         value = """
-            SELECT de.* FROM document_embeddings de
+            SELECT de.id, de.document_id, de.chunk_index, de.content, d.path, d.title
+            FROM document_embeddings de
             JOIN documents d ON de.document_id = d.id
             WHERE d.space_id = :spaceId
             ORDER BY de.embedding <=> cast(:queryEmbedding as vector)
@@ -25,5 +26,5 @@ interface DocumentEmbeddingRepository : JpaRepository<DocumentEmbedding, UUID> {
         spaceId: UUID,
         queryEmbedding: String,
         limit: Int = 5
-    ): List<DocumentEmbedding>
+    ): List<Array<Any>>
 }
