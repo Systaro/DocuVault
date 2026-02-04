@@ -1,4 +1,4 @@
-import { Component, signal, isDevMode } from '@angular/core';
+import { Component, OnInit, signal, isDevMode } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -347,7 +347,7 @@ import { AuthService } from '../../core/auth/auth.service';
     }
   `]
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   email = '';
   password = '';
   rememberMe = false;
@@ -360,6 +360,13 @@ export class LoginComponent {
     private authService: AuthService,
     private router: Router
   ) {}
+
+  ngOnInit(): void {
+    // Redirect to dashboard if already logged in
+    if (this.authService.isAuthenticated()) {
+      this.router.navigate(['/dashboard']);
+    }
+  }
 
   login(): void {
     if (!this.email || !this.password) return;
