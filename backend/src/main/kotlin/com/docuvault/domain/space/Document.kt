@@ -30,8 +30,5 @@ data class Document(
     val createdAt: Instant = Instant.now(),
 
     @Column(name = "updated_at")
-    var updatedAt: Instant = Instant.now(),
-
-    @OneToMany(mappedBy = "document", cascade = [CascadeType.ALL], orphanRemoval = true)
-    val embeddings: MutableSet<DocumentEmbedding> = mutableSetOf()
+    var updatedAt: Instant = Instant.now()
 )

@@ -17,20 +17,19 @@ import { LogoUploadComponent } from '../../shared/components/logo-upload.compone
         <h1 class="text-2xl font-bold text-gray-900 mb-8">Space Settings</h1>
 
         @if (space()) {
-          <!-- Logo -->
-          <div class="card p-6 mb-6">
-            <h2 class="font-semibold text-gray-900 mb-4">Logo</h2>
-            <app-logo-upload
-              [currentLogoUrl]="space()?.logoUrl || null"
-              (fileSelected)="onLogoSelected($event)"
-              (logoRemoved)="onLogoRemoved()"
-            ></app-logo-upload>
-          </div>
-
           <!-- General Settings -->
           <div class="card p-6 mb-6">
             <h2 class="font-semibold text-gray-900 mb-4">General</h2>
             <form (ngSubmit)="saveSettings()" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Logo</label>
+                <app-logo-upload
+                  [currentLogoUrl]="space()?.logoUrl || null"
+                  (fileSelected)="onLogoSelected($event)"
+                  (logoRemoved)="onLogoRemoved()"
+                ></app-logo-upload>
+              </div>
+
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
                 <input
@@ -205,6 +204,9 @@ export class SpaceSettingsComponent implements OnInit {
     level: 'VIEW'
   };
 
+  pendingLogoFile: File | null = null;
+  pendingLogoRemoval = false;
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -255,10 +257,34 @@ export class SpaceSettingsComponent implements OnInit {
     if (!space) return;
 
     this.saving.set(true);
+
+    // First save settings
     this.spacesService.updateSpace(space.id, this.settings).subscribe({
       next: (updated) => {
         this.space.set(updated);
-        this.saving.set(false);
+
+        // Then handle logo changes
+        if (this.pendingLogoRemoval) {
+          this.spacesService.deleteLogo(space.id).subscribe({
+            next: (result) => {
+              this.space.set(result);
+              this.pendingLogoRemoval = false;
+              this.saving.set(false);
+            },
+            error: () => this.saving.set(false)
+          });
+        } else if (this.pendingLogoFile) {
+          this.spacesService.uploadLogo(space.id, this.pendingLogoFile).subscribe({
+            next: (result) => {
+              this.space.set(result);
+              this.pendingLogoFile = null;
+              this.saving.set(false);
+            },
+            error: () => this.saving.set(false)
+          });
+        } else {
+          this.saving.set(false);
+        }
       },
       error: () => {
         this.saving.set(false);
@@ -302,21 +328,13 @@ export class SpaceSettingsComponent implements OnInit {
   }
 
   onLogoSelected(file: File): void {
-    const space = this.space();
-    if (!space) return;
-
-    this.spacesService.uploadLogo(space.id, file).subscribe({
-      next: (updated) => this.space.set(updated)
-    });
+    this.pendingLogoFile = file;
+    this.pendingLogoRemoval = false;
   }
 
   onLogoRemoved(): void {
-    const space = this.space();
-    if (!space) return;
-
-    this.spacesService.deleteLogo(space.id).subscribe({
-      next: (updated) => this.space.set(updated)
-    });
+    this.pendingLogoFile = null;
+    this.pendingLogoRemoval = true;
   }
 
   deleteSpace(): void {
