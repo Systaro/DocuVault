@@ -6,6 +6,7 @@ import { SpacesService, Space, SpacePermission } from '../../core/api/spaces.ser
 import { UsersService } from '../../core/api/users.service';
 import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
+import { ToastService } from '../../shared/services/toast.service';
 
 @Component({
   selector: 'app-space-settings',
@@ -14,7 +15,9 @@ import { LogoUploadComponent } from '../../shared/components/logo-upload.compone
   template: `
     <div class="p-8">
       <div class="max-w-2xl mx-auto">
-        <h1 class="text-2xl font-bold text-gray-900 mb-8">Space Settings</h1>
+        <h1 class="text-2xl font-bold text-gray-900 mb-8">
+          {{ space()?.type === 'GROUP' ? 'Group' : 'Space' }} Settings
+        </h1>
 
         @if (space()) {
           <!-- General Settings -->
@@ -50,45 +53,48 @@ import { LogoUploadComponent } from '../../shared/components/logo-upload.compone
                 ></textarea>
               </div>
 
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
-                <input
-                  type="text"
-                  [(ngModel)]="settings.branch"
-                  name="branch"
-                  class="input"
-                />
-              </div>
-
-              <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                  <input
-                    type="checkbox"
-                    [(ngModel)]="settings.syncEnabled"
-                    name="syncEnabled"
-                    id="syncEnabled"
-                    class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <label for="syncEnabled" class="ml-2 text-sm text-gray-700">
-                    Enable automatic sync
-                  </label>
-                </div>
-              </div>
-
-              @if (settings.syncEnabled) {
+              <!-- Git settings only for repositories -->
+              @if (space()?.type === 'REPOSITORY') {
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Sync interval (minutes)
-                  </label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                   <input
-                    type="number"
-                    [(ngModel)]="settings.syncIntervalMinutes"
-                    name="syncIntervalMinutes"
-                    class="input w-32"
-                    min="5"
-                    max="1440"
+                    type="text"
+                    [(ngModel)]="settings.branch"
+                    name="branch"
+                    class="input"
                   />
                 </div>
+
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center">
+                    <input
+                      type="checkbox"
+                      [(ngModel)]="settings.syncEnabled"
+                      name="syncEnabled"
+                      id="syncEnabled"
+                      class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <label for="syncEnabled" class="ml-2 text-sm text-gray-700">
+                      Enable automatic sync
+                    </label>
+                  </div>
+                </div>
+
+                @if (settings.syncEnabled) {
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                      Sync interval (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      [(ngModel)]="settings.syncIntervalMinutes"
+                      name="syncIntervalMinutes"
+                      class="input w-32"
+                      min="5"
+                      max="1440"
+                    />
+                  </div>
+                }
               }
 
               <div class="flex justify-end pt-4">
@@ -103,12 +109,66 @@ import { LogoUploadComponent } from '../../shared/components/logo-upload.compone
             </form>
           </div>
 
+          <!-- Location / Move to Group (only for spaces that can be moved) -->
+          @if (space()?.type === 'REPOSITORY' || (space()?.type === 'GROUP' && !space()?.parentId)) {
+            <div class="card p-6 mb-6">
+              <h2 class="font-semibold text-gray-900 mb-4">Location</h2>
+              <p class="text-sm text-gray-600 mb-4">
+                Move this {{ space()?.type === 'GROUP' ? 'group' : 'repository' }} to a different parent group.
+              </p>
+
+              <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Parent Group</label>
+                  <select [(ngModel)]="selectedParentId" class="input">
+                    @if (space()?.type === 'GROUP') {
+                      <option value="">Top Level (no parent)</option>
+                    }
+                    @for (group of availableGroups(); track group.id) {
+                      <option [value]="group.id" [disabled]="group.id === space()?.id">
+                        {{ group.fullPath }}
+                      </option>
+                    }
+                  </select>
+                </div>
+                <button
+                  (click)="moveToGroup()"
+                  [disabled]="moving() || selectedParentId === (space()?.parentId || '')"
+                  class="btn btn-secondary"
+                >
+                  @if (moving()) {
+                    Moving...
+                  } @else {
+                    Move
+                  }
+                </button>
+              </div>
+
+              @if (space()?.parentId) {
+                <p class="text-sm text-gray-500 mt-2">
+                  Currently in: <strong>{{ space()?.parentSlug }}</strong>
+                </p>
+              } @else {
+                <p class="text-sm text-gray-500 mt-2">
+                  Currently at: <strong>Top Level</strong>
+                </p>
+              }
+            </div>
+          }
+
           <!-- Permissions -->
           <div class="card p-6 mb-6">
             <h2 class="font-semibold text-gray-900 mb-4">Permissions</h2>
 
+            @if (space()?.parentId) {
+              <p class="text-sm text-gray-500 mb-4">
+                <span class="material-icons text-sm align-middle">info</span>
+                Permissions are inherited from the parent group. Add permissions here to override.
+              </p>
+            }
+
             @if (permissions().length === 0) {
-              <p class="text-gray-600 text-sm">No permissions configured.</p>
+              <p class="text-gray-600 text-sm">No direct permissions configured.</p>
             } @else {
               <div class="divide-y divide-gray-200">
                 @for (perm of permissions(); track perm.id) {
@@ -170,14 +230,18 @@ import { LogoUploadComponent } from '../../shared/components/logo-upload.compone
           <div class="card p-6 border-red-200">
             <h2 class="font-semibold text-red-600 mb-4">Danger Zone</h2>
             <p class="text-sm text-gray-600 mb-4">
-              Deleting a space will permanently remove all documents and settings.
+              @if (space()?.type === 'GROUP') {
+                Deleting this group will permanently remove all nested groups and repositories.
+              } @else {
+                Deleting this space will permanently remove all documents and settings.
+              }
               This action cannot be undone.
             </p>
             <button
               (click)="deleteSpace()"
               class="btn btn-danger"
             >
-              Delete Space
+              Delete {{ space()?.type === 'GROUP' ? 'Group' : 'Space' }}
             </button>
           </div>
         }
@@ -189,7 +253,10 @@ export class SpaceSettingsComponent implements OnInit {
   space = signal<Space | null>(null);
   permissions = signal<SpacePermission[]>([]);
   availableUsers = signal<User[]>([]);
+  availableGroups = signal<Space[]>([]);
   saving = signal(false);
+  moving = signal(false);
+  selectedParentId = '';
 
   settings = {
     name: '',
@@ -211,23 +278,31 @@ export class SpaceSettingsComponent implements OnInit {
     private route: ActivatedRoute,
     private router: Router,
     private spacesService: SpacesService,
-    private usersService: UsersService
+    private usersService: UsersService,
+    private toastService: ToastService
   ) {}
 
   ngOnInit(): void {
+    // Get the full path from parent route params
     this.route.parent?.paramMap.subscribe(params => {
-      const slug = params.get('slug');
-      if (slug) {
-        this.loadSpace(slug);
+      const path1 = params.get('path1');
+      const path2 = params.get('path2');
+      const path3 = params.get('path3');
+
+      const fullPath = [path1, path2, path3].filter(Boolean).join('/');
+      if (fullPath) {
+        this.loadSpaceByPath(fullPath);
       }
     });
     this.loadUsers();
+    this.loadGroups();
   }
 
-  loadSpace(slug: string): void {
-    this.spacesService.getSpaceBySlug(slug).subscribe({
+  loadSpaceByPath(fullPath: string): void {
+    this.spacesService.getSpaceByPath(fullPath).subscribe({
       next: (space) => {
         this.space.set(space);
+        this.selectedParentId = space.parentId || '';
         this.settings = {
           name: space.name,
           description: space.description || '',
@@ -236,6 +311,49 @@ export class SpaceSettingsComponent implements OnInit {
           syncIntervalMinutes: space.syncIntervalMinutes
         };
         this.loadPermissions(space.id);
+      }
+    });
+  }
+
+  loadGroups(): void {
+    // Load all groups to populate the "move to" dropdown
+    this.spacesService.getSpaces().subscribe({
+      next: (spaces) => {
+        // Filter to only groups that can be parents (top-level groups and subgroups)
+        const groups = spaces.filter(s => s.type === 'GROUP');
+        this.availableGroups.set(groups);
+      }
+    });
+  }
+
+  moveToGroup(): void {
+    const space = this.space();
+    if (!space) return;
+
+    const newParentId = this.selectedParentId || null;
+    if (newParentId === (space.parentId || '')) return;
+
+    this.moving.set(true);
+
+    // Build the update payload
+    const payload: any = {};
+    if (newParentId) {
+      payload.parentId = newParentId;
+    } else {
+      payload.clearParent = true;
+    }
+
+    this.spacesService.updateSpace(space.id, payload).subscribe({
+      next: (updated) => {
+        this.space.set(updated);
+        this.moving.set(false);
+        this.toastService.success('Moved', `${space.name} has been moved successfully.`);
+        // Navigate to new location
+        this.router.navigate(['/spaces', updated.fullPath, 'settings']);
+      },
+      error: (err) => {
+        this.moving.set(false);
+        this.toastService.error('Move Failed', err.error?.message || 'Failed to move space');
       }
     });
   }

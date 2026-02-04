@@ -46,6 +46,16 @@ interface SpaceRepository : JpaRepository<Space, UUID> {
     @Query("UPDATE Space s SET s.lastSyncedAt = :syncedAt, s.lastSyncError = :error WHERE s.id = :id")
     fun updateSyncStatus(id: UUID, syncedAt: Instant?, error: String?)
 
+    @Modifying
+    @Query(value = "UPDATE spaces SET parent_id = :parentId, updated_at = NOW() WHERE id = :id", nativeQuery = true)
+    fun updateParent(id: UUID, parentId: UUID?)
+
+    @Query("SELECT s FROM Space s WHERE s.slug = :slug AND s.parent.id = :parentId AND s.id != :excludeId")
+    fun findBySlugAndParentIdExcluding(slug: String, parentId: UUID?, excludeId: UUID): Space?
+
+    @Query("SELECT s FROM Space s WHERE s.slug = :slug AND s.parent IS NULL AND s.id != :excludeId")
+    fun findBySlugAndParentIsNullExcluding(slug: String, excludeId: UUID): Space?
+
     // Type-based queries
     fun findByType(type: SpaceType): List<Space>
 

@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
@@ -281,19 +282,74 @@ class SpaceController(
     }
 
     @PutMapping("/{id}")
+    @Transactional
     fun updateSpace(
         @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: UserDetails,
         @Valid @RequestBody request: UpdateSpaceRequest
-    ): ResponseEntity<SpaceDto> {
+    ): ResponseEntity<Any> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val space = spaceRepository.findById(id).orElse(null)
+        var space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
         if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Handle parent change (move operation)
+        val wantsParentChange = request.parentId != null || request.clearParent == true
+        if (wantsParentChange) {
+            val newParentId = if (request.clearParent == true) null else request.parentId
+
+            // Validate the move
+            if (newParentId != null) {
+                val newParent = spaceRepository.findById(newParentId).orElse(null)
+                    ?: return ResponseEntity.badRequest().body(mapOf("message" to "Parent group not found"))
+
+                // Cannot move into itself
+                if (newParentId == space.id) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "Cannot move a space into itself"))
+                }
+
+                // Parent must be a group
+                if (newParent.type != SpaceType.GROUP) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "Parent must be a group"))
+                }
+
+                // Check depth constraints
+                val parentDepth = newParent.getDepth()
+                if (space.type == SpaceType.GROUP && parentDepth >= 1) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "Groups can only be nested 2 levels deep"))
+                }
+                if (parentDepth >= 2) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "Maximum nesting depth exceeded"))
+                }
+
+                // Check slug uniqueness in new location
+                val existing = spaceRepository.findBySlugAndParentIdExcluding(space.slug, newParentId, space.id!!)
+                if (existing != null) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "A space with this slug already exists in the target group"))
+                }
+            } else {
+                // Moving to top level - only groups allowed at top level
+                if (space.type == SpaceType.REPOSITORY) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "Repositories cannot be at top level"))
+                }
+
+                // Check slug uniqueness at top level
+                val existing = spaceRepository.findBySlugAndParentIsNullExcluding(space.slug, space.id!!)
+                if (existing != null) {
+                    return ResponseEntity.badRequest().body(mapOf("message" to "A space with this slug already exists at top level"))
+                }
+            }
+
+            // Perform the move
+            spaceRepository.updateParent(space.id!!, newParentId)
+
+            // Reload the space to get updated data
+            space = spaceRepository.findById(id).orElse(null)!!
         }
 
         request.name?.let { space.name = it }
@@ -556,6 +612,8 @@ data class CreateSpaceRequest(
 data class UpdateSpaceRequest(
     val name: String? = null,
     val description: String? = null,
+    val parentId: UUID? = null,
+    val clearParent: Boolean? = null,  // Set to true to move to top level
     val branch: String? = null,
     val syncEnabled: Boolean? = null,
     val syncIntervalMinutes: Int? = null
