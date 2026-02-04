@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, HostListener, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -63,11 +63,25 @@ import { ToastService } from '../../shared/services/toast.service';
             <div class="workspace-grid">
               @for (space of spaces(); track space.id) {
                 <a [routerLink]="['/spaces', space.slug]" class="workspace-card">
-                  <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
-                    <button class="icon-btn">
-                      <span class="material-icons">more_vert</span>
-                    </button>
-                  </div>
+                  @if (authService.isAdmin()) {
+                    <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
+                      <button class="icon-btn" (click)="toggleMenu(space.id)">
+                        <span class="material-icons">more_vert</span>
+                      </button>
+                      @if (openMenuId() === space.id) {
+                        <div class="dropdown-menu">
+                          <button class="dropdown-item" (click)="goToSettings(space.slug)">
+                            <span class="material-icons">settings</span>
+                            Settings
+                          </button>
+                          <button class="dropdown-item danger" (click)="confirmDelete(space)">
+                            <span class="material-icons">delete</span>
+                            Delete
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
                   <div class="workspace-card-header">
                     @if (space.logoUrl) {
                       <div class="workspace-logo">
@@ -319,6 +333,40 @@ import { ToastService } from '../../shared/services/toast.service';
           </div>
         </div>
       }
+
+      <!-- Delete Confirmation Modal -->
+      @if (showDeleteConfirm()) {
+        <div class="modal-overlay" (click)="cancelDelete()">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>Delete Space</h2>
+              <button class="icon-btn" (click)="cancelDelete()">
+                <span class="material-icons">close</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              <p class="delete-warning">
+                Are you sure you want to delete <strong>{{ spaceToDelete()?.name }}</strong>?
+              </p>
+              <p class="delete-hint">This will permanently delete all documents in this space. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" (click)="cancelDelete()" class="btn btn-secondary">
+                Cancel
+              </button>
+              <button type="button" (click)="deleteSpace()" [disabled]="deleting()" class="btn btn-danger">
+                @if (deleting()) {
+                  <span class="material-icons animate-spin">sync</span>
+                  Deleting...
+                } @else {
+                  <span class="material-icons">delete</span>
+                  Delete Space
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </app-layout>
   `,
   styles: [`
@@ -412,6 +460,56 @@ import { ToastService } from '../../shared/services/toast.service';
       position: absolute;
       top: var(--spacing-md);
       right: var(--spacing-md);
+    }
+
+    .dropdown-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      min-width: 160px;
+      padding: var(--spacing-xs);
+      z-index: 100;
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: none;
+      background: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-primary);
+      text-align: left;
+      transition: background var(--transition);
+
+      .material-icons {
+        font-size: 18px;
+        color: var(--text-muted);
+      }
+
+      &:hover {
+        background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+      }
+
+      &.danger {
+        color: var(--danger, #dc3545);
+
+        .material-icons {
+          color: var(--danger, #dc3545);
+        }
+
+        &:hover {
+          background: rgba(220, 53, 69, 0.1);
+        }
+      }
     }
 
     .workspace-card-header {
@@ -817,6 +915,36 @@ import { ToastService } from '../../shared/services/toast.service';
       margin-top: var(--spacing-xs);
     }
 
+    .modal-sm {
+      max-width: 400px;
+    }
+
+    .delete-warning {
+      font-size: 15px;
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .delete-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .btn-danger {
+      background: var(--danger, #dc3545);
+      color: white;
+      border: none;
+
+      &:hover:not(:disabled) {
+        background: #c82333;
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+
     @media (max-width: 768px) {
       .workspace-content {
         padding: var(--spacing-md);
@@ -845,6 +973,10 @@ import { ToastService } from '../../shared/services/toast.service';
 export class DashboardComponent implements OnInit {
   spaces = signal<Space[]>([]);
   loading = signal(true);
+  openMenuId = signal<string | null>(null);
+  showDeleteConfirm = signal(false);
+  spaceToDelete = signal<Space | null>(null);
+  deleting = signal(false);
   showChat = signal(false);
   showSpacePicker = signal(false);
   selectedSpaceId = signal<string | null>(null);
@@ -870,6 +1002,11 @@ export class DashboardComponent implements OnInit {
     private router: Router,
     public authService: AuthService
   ) {}
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.openMenuId.set(null);
+  }
 
   ngOnInit(): void {
     this.loadSpaces();
@@ -988,6 +1125,50 @@ export class DashboardComponent implements OnInit {
     this.newSpace = { name: '', slug: '', description: '', syncEnabled: true };
     this.pendingLogoFile = null;
     this.createError.set(null);
+  }
+
+  toggleMenu(spaceId: string): void {
+    if (this.openMenuId() === spaceId) {
+      this.openMenuId.set(null);
+    } else {
+      this.openMenuId.set(spaceId);
+    }
+  }
+
+  goToSettings(slug: string): void {
+    this.openMenuId.set(null);
+    this.router.navigate(['/spaces', slug, 'settings']);
+  }
+
+  confirmDelete(space: Space): void {
+    this.openMenuId.set(null);
+    this.spaceToDelete.set(space);
+    this.showDeleteConfirm.set(true);
+  }
+
+  cancelDelete(): void {
+    this.showDeleteConfirm.set(false);
+    this.spaceToDelete.set(null);
+  }
+
+  deleteSpace(): void {
+    const space = this.spaceToDelete();
+    if (!space) return;
+
+    this.deleting.set(true);
+    this.spacesService.deleteSpace(space.id).subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.showDeleteConfirm.set(false);
+        this.spaceToDelete.set(null);
+        this.loadSpaces();
+        this.toastService.success('Space Deleted', `"${space.name}" has been deleted.`);
+      },
+      error: (error) => {
+        this.deleting.set(false);
+        this.toastService.error('Delete Failed', error.error?.message || 'Failed to delete space');
+      }
+    });
   }
 
   formatDate(dateString: string): string {
