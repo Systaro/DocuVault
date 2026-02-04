@@ -5,10 +5,16 @@ import { FormsModule } from '@angular/forms';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
-import { SpacesService, Space, CreateSpaceRequest } from '../../core/api/spaces.service';
+import { SpacesService, Space, CreateSpaceRequest, SpaceType } from '../../core/api/spaces.service';
 import { GitService, GitLabProject } from '../../core/api/git.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
+
+interface BreadcrumbItem {
+  id: string;
+  name: string;
+  slug: string;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -20,25 +26,57 @@ import { ToastService } from '../../shared/services/toast.service';
         <!-- Breadcrumb -->
         <div class="breadcrumb-bar">
           <div class="breadcrumb">
-            <span class="breadcrumb-item">
+            <button class="breadcrumb-item" [class.active]="breadcrumbs().length === 0" (click)="navigateToRoot()">
               <span class="material-icons">home</span>
-            </span>
+            </button>
             <span class="material-icons breadcrumb-sep">chevron_right</span>
-            <span class="breadcrumb-item active">Workspaces</span>
+            @if (breadcrumbs().length === 0) {
+              <span class="breadcrumb-item active">Workspaces</span>
+            } @else {
+              <button class="breadcrumb-item" (click)="navigateToRoot()">Workspaces</button>
+              @for (crumb of breadcrumbs(); track crumb.id; let last = $last) {
+                <span class="material-icons breadcrumb-sep">chevron_right</span>
+                @if (last) {
+                  <span class="breadcrumb-item active">{{ crumb.name }}</span>
+                } @else {
+                  <button class="breadcrumb-item" (click)="navigateToBreadcrumb(crumb)">{{ crumb.name }}</button>
+                }
+              }
+            }
           </div>
         </div>
 
         <div class="workspace-content">
           <div class="workspace-header">
             <div>
-              <h1>Documentation Spaces</h1>
-              <p class="subtitle">Manage your documentation workspaces connected to Git repositories</p>
+              @if (currentParent()) {
+                <h1>{{ currentParent()!.name }}</h1>
+                <p class="subtitle">{{ currentParent()!.description || 'Browse groups and repositories' }}</p>
+              } @else {
+                <h1>Documentation Spaces</h1>
+                <p class="subtitle">Manage your documentation workspaces connected to Git repositories</p>
+              }
             </div>
             @if (authService.isAdmin()) {
-              <button (click)="showCreateModal.set(true)" class="btn btn-primary">
-                <span class="material-icons">add</span>
-                New Space
-              </button>
+              <div class="header-actions">
+                @if (currentParent()) {
+                  <button (click)="openCreateModal('REPOSITORY')" class="btn btn-primary">
+                    <span class="material-icons">source</span>
+                    New Repository
+                  </button>
+                  @if (currentParent()!.type === 'GROUP' && !currentParent()!.parentId) {
+                    <button (click)="openCreateModal('GROUP')" class="btn btn-secondary">
+                      <span class="material-icons">folder</span>
+                      New Subgroup
+                    </button>
+                  }
+                } @else {
+                  <button (click)="openCreateModal('GROUP')" class="btn btn-primary">
+                    <span class="material-icons">create_new_folder</span>
+                    New Group
+                  </button>
+                }
+              </div>
             }
           </div>
 
@@ -62,96 +100,166 @@ import { ToastService } from '../../shared/services/toast.service';
           } @else {
             <div class="workspace-grid">
               @for (space of spaces(); track space.id) {
-                <a [routerLink]="['/spaces', space.slug]" class="workspace-card">
-                  @if (authService.isAdmin()) {
-                    <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
-                      <button class="icon-btn" (click)="toggleMenu(space.id)">
-                        <span class="material-icons">more_vert</span>
-                      </button>
-                      @if (openMenuId() === space.id) {
-                        <div class="dropdown-menu">
-                          <button class="dropdown-item" (click)="goToSettings(space.slug)">
-                            <span class="material-icons">settings</span>
-                            Settings
-                          </button>
-                          <button class="dropdown-item danger" (click)="confirmDelete(space)">
-                            <span class="material-icons">delete</span>
-                            Delete
-                          </button>
+                @if (space.type === 'GROUP') {
+                  <!-- Group Card -->
+                  <div class="workspace-card group-card" (click)="navigateToGroup(space)">
+                    @if (authService.isAdmin()) {
+                      <div class="workspace-card-menu" (click)="$event.stopPropagation()">
+                        <button class="icon-btn" (click)="toggleMenu(space.id)">
+                          <span class="material-icons">more_vert</span>
+                        </button>
+                        @if (openMenuId() === space.id) {
+                          <div class="dropdown-menu">
+                            <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
+                              <span class="material-icons">settings</span>
+                              Settings
+                            </button>
+                            <button class="dropdown-item danger" (click)="confirmDelete(space)">
+                              <span class="material-icons">delete</span>
+                              Delete
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    }
+                    <div class="workspace-card-header">
+                      @if (space.logoUrl) {
+                        <div class="workspace-logo">
+                          <img [src]="space.logoUrl" [alt]="space.name" />
+                        </div>
+                      } @else {
+                        <div class="workspace-icon group-icon">
+                          <span class="material-icons">folder</span>
+                        </div>
+                      }
+                      <div class="workspace-card-info">
+                        <div class="workspace-card-name">{{ space.name }}</div>
+                        <span class="workspace-card-type">
+                          <span class="material-icons">folder_open</span>
+                          Group
+                        </span>
+                      </div>
+                    </div>
+                    <div class="workspace-card-details">
+                      <div class="workspace-detail-row">
+                        <span class="material-icons">inventory_2</span>
+                        <span>{{ space.childCount ?? 0 }} {{ (space.childCount ?? 0) === 1 ? 'item' : 'items' }}</span>
+                      </div>
+                      @if (space.description) {
+                        <div class="workspace-detail-row">
+                          <span class="material-icons">description</span>
+                          <span>{{ space.description }}</span>
                         </div>
                       }
                     </div>
-                  }
-                  <div class="workspace-card-header">
-                    @if (space.logoUrl) {
-                      <div class="workspace-logo">
-                        <img [src]="space.logoUrl" [alt]="space.name" />
+                    <div class="workspace-card-footer">
+                      <div class="workspace-type-badge group">
+                        <span class="material-icons">folder</span>
+                        Group
                       </div>
-                    } @else {
-                      <div class="workspace-icon letter-avatar">
-                        <span>{{ space.name.charAt(0).toUpperCase() }}</span>
-                      </div>
-                    }
-                    <div class="workspace-card-info">
-                      <div class="workspace-card-name">{{ space.name }}</div>
-                      <span class="workspace-card-type">
-                        <span class="material-icons">{{ space.gitlabUrl ? 'cloud_sync' : 'folder' }}</span>
-                        {{ space.gitlabUrl ? 'Git Repository' : 'Local' }}
-                      </span>
                     </div>
                   </div>
-                  <div class="workspace-card-details">
-                    <div class="workspace-detail-row">
-                      <span class="material-icons">article</span>
-                      <span>{{ space.documentCount ?? 0 }} {{ (space.documentCount ?? 0) === 1 ? 'document' : 'documents' }}</span>
-                    </div>
-                    @if (space.description) {
-                      <div class="workspace-detail-row">
-                        <span class="material-icons">description</span>
-                        <span>{{ space.description }}</span>
+                } @else {
+                  <!-- Repository Card -->
+                  <a [routerLink]="['/spaces', space.fullPath]" class="workspace-card repo-card">
+                    @if (authService.isAdmin()) {
+                      <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
+                        <button class="icon-btn" (click)="toggleMenu(space.id)">
+                          <span class="material-icons">more_vert</span>
+                        </button>
+                        @if (openMenuId() === space.id) {
+                          <div class="dropdown-menu">
+                            <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
+                              <span class="material-icons">settings</span>
+                              Settings
+                            </button>
+                            <button class="dropdown-item danger" (click)="confirmDelete(space)">
+                              <span class="material-icons">delete</span>
+                              Delete
+                            </button>
+                          </div>
+                        }
                       </div>
                     }
-                    @if (space.gitlabUrl) {
-                      <div class="workspace-detail-row">
-                        <span class="material-icons">link</span>
-                        <span class="path">{{ extractRepoPath(space.gitlabUrl) }}</span>
-                      </div>
-                      <div class="workspace-detail-row">
-                        <span class="material-icons">account_tree</span>
-                        <span>{{ space.branch || 'main' }} branch</span>
-                      </div>
-                    }
-                  </div>
-                  @if (space.gitError) {
-                    <div class="workspace-card-error">
-                      <span class="material-icons">error_outline</span>
-                      <span>{{ space.gitError }}</span>
-                    </div>
-                  }
-                  <div class="workspace-card-footer">
-                    <div class="workspace-sync-status" [class.synced]="space.syncEnabled && !space.gitError" [class.error]="space.gitError" [class.pending]="!space.syncEnabled && !space.gitError">
-                      @if (space.gitError) {
-                        <span class="material-icons">error</span>
-                        Sync error
-                      } @else if (space.syncEnabled) {
-                        <span class="material-icons">check_circle</span>
-                        {{ space.lastSyncedAt ? 'Synced ' + formatDate(space.lastSyncedAt) : 'Sync enabled' }}
+                    <div class="workspace-card-header">
+                      @if (space.logoUrl) {
+                        <div class="workspace-logo">
+                          <img [src]="space.logoUrl" [alt]="space.name" />
+                        </div>
                       } @else {
-                        <span class="material-icons">sync_disabled</span>
-                        Sync disabled
+                        <div class="workspace-icon letter-avatar">
+                          <span>{{ space.name.charAt(0).toUpperCase() }}</span>
+                        </div>
+                      }
+                      <div class="workspace-card-info">
+                        <div class="workspace-card-name">{{ space.name }}</div>
+                        <span class="workspace-card-type">
+                          <span class="material-icons">{{ space.gitlabUrl ? 'cloud_sync' : 'source' }}</span>
+                          {{ space.gitlabUrl ? 'Git Repository' : 'Repository' }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="workspace-card-details">
+                      <div class="workspace-detail-row">
+                        <span class="material-icons">article</span>
+                        <span>{{ space.documentCount ?? 0 }} {{ (space.documentCount ?? 0) === 1 ? 'document' : 'documents' }}</span>
+                      </div>
+                      @if (space.description) {
+                        <div class="workspace-detail-row">
+                          <span class="material-icons">description</span>
+                          <span>{{ space.description }}</span>
+                        </div>
+                      }
+                      @if (space.gitlabUrl) {
+                        <div class="workspace-detail-row">
+                          <span class="material-icons">link</span>
+                          <span class="path">{{ extractRepoPath(space.gitlabUrl) }}</span>
+                        </div>
+                        <div class="workspace-detail-row">
+                          <span class="material-icons">account_tree</span>
+                          <span>{{ space.branch || 'main' }} branch</span>
+                        </div>
                       }
                     </div>
-                  </div>
-                </a>
+                    @if (space.gitError) {
+                      <div class="workspace-card-error">
+                        <span class="material-icons">error_outline</span>
+                        <span>{{ space.gitError }}</span>
+                      </div>
+                    }
+                    <div class="workspace-card-footer">
+                      <div class="workspace-sync-status" [class.synced]="space.syncEnabled && !space.gitError" [class.error]="space.gitError" [class.pending]="!space.syncEnabled && !space.gitError">
+                        @if (space.gitError) {
+                          <span class="material-icons">error</span>
+                          Sync error
+                        } @else if (space.syncEnabled) {
+                          <span class="material-icons">check_circle</span>
+                          {{ space.lastSyncedAt ? 'Synced ' + formatDate(space.lastSyncedAt) : 'Sync enabled' }}
+                        } @else {
+                          <span class="material-icons">sync_disabled</span>
+                          Sync disabled
+                        }
+                      </div>
+                    </div>
+                  </a>
+                }
               }
 
-              <!-- Add New Workspace Card -->
+              <!-- Add New Card (context-aware) -->
               @if (authService.isAdmin()) {
-                <div class="add-workspace-card" (click)="showCreateModal.set(true)">
-                  <span class="material-icons">add_circle_outline</span>
-                  <h3>Add Workspace</h3>
-                  <p>Connect a Git repository</p>
-                </div>
+                @if (currentParent()) {
+                  <div class="add-workspace-card" (click)="openCreateModal('REPOSITORY')">
+                    <span class="material-icons">source</span>
+                    <h3>Add Repository</h3>
+                    <p>Connect a Git repository</p>
+                  </div>
+                } @else {
+                  <div class="add-workspace-card" (click)="openCreateModal('GROUP')">
+                    <span class="material-icons">create_new_folder</span>
+                    <h3>Add Group</h3>
+                    <p>Organize your workspaces</p>
+                  </div>
+                }
               }
             </div>
           }
@@ -202,7 +310,7 @@ import { ToastService } from '../../shared/services/toast.service';
         <div class="modal-overlay" (click)="closeModal()">
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>Create New Space</h2>
+              <h2>Create New {{ createType() === 'GROUP' ? 'Group' : 'Repository' }}</h2>
               <button class="icon-btn" (click)="closeModal()">
                 <span class="material-icons">close</span>
               </button>
@@ -226,7 +334,7 @@ import { ToastService } from '../../shared/services/toast.service';
                     [(ngModel)]="newSpace.name"
                     name="name"
                     class="input"
-                    placeholder="My Documentation"
+                    [placeholder]="createType() === 'GROUP' ? 'My Group' : 'My Documentation'"
                     required
                   />
                 </div>
@@ -241,7 +349,7 @@ import { ToastService } from '../../shared/services/toast.service';
                     [(ngModel)]="newSpace.slug"
                     name="slug"
                     class="input"
-                    placeholder="my-docs"
+                    [placeholder]="createType() === 'GROUP' ? 'my-group' : 'my-docs'"
                     required
                   />
                 </div>
@@ -262,51 +370,54 @@ import { ToastService } from '../../shared/services/toast.service';
                 </div>
               </div>
 
-              @if (gitConnected()) {
-                <div class="form-group">
-                  <label class="form-label">GitLab Project</label>
-                  <div class="input-icon">
-                    <span class="material-icons">cloud_sync</span>
-                    <select
-                      [(ngModel)]="newSpace.gitlabProjectId"
-                      name="gitlabProjectId"
-                      class="input"
-                    >
-                      <option [ngValue]="undefined">-- Select a project --</option>
-                      @for (project of gitlabProjects(); track project.id) {
-                        <option [ngValue]="project.id">{{ project.path }}</option>
-                      }
-                    </select>
+              <!-- Git settings only for repositories -->
+              @if (createType() === 'REPOSITORY') {
+                @if (gitConnected()) {
+                  <div class="form-group">
+                    <label class="form-label">GitLab Project</label>
+                    <div class="input-icon">
+                      <span class="material-icons">cloud_sync</span>
+                      <select
+                        [(ngModel)]="newSpace.gitlabProjectId"
+                        name="gitlabProjectId"
+                        class="input"
+                      >
+                        <option [ngValue]="undefined">-- Select a project --</option>
+                        @for (project of gitlabProjects(); track project.id) {
+                          <option [ngValue]="project.id">{{ project.path }}</option>
+                        }
+                      </select>
+                    </div>
                   </div>
-                </div>
-              } @else {
-                <div class="form-group">
-                  <label class="form-label">Git Repository URL</label>
-                  <div class="input-icon">
-                    <span class="material-icons">link</span>
-                    <input
-                      type="url"
-                      [(ngModel)]="newSpace.gitlabUrl"
-                      name="gitlabUrl"
-                      class="input"
-                      placeholder="https://gitlab.com/org/repo.git"
-                    />
+                } @else {
+                  <div class="form-group">
+                    <label class="form-label">Git Repository URL</label>
+                    <div class="input-icon">
+                      <span class="material-icons">link</span>
+                      <input
+                        type="url"
+                        [(ngModel)]="newSpace.gitlabUrl"
+                        name="gitlabUrl"
+                        class="input"
+                        placeholder="https://gitlab.com/org/repo.git"
+                      />
+                    </div>
                   </div>
-                </div>
-              }
+                }
 
-              <label class="checkbox-label">
-                <input
-                  type="checkbox"
-                  [(ngModel)]="newSpace.syncEnabled"
-                  name="syncEnabled"
-                  class="checkbox-input"
-                />
-                <span class="checkbox-custom">
-                  <span class="material-icons">{{ newSpace.syncEnabled ? 'check_box' : 'check_box_outline_blank' }}</span>
-                </span>
-                <span class="checkbox-text">Enable automatic sync</span>
-              </label>
+                <label class="checkbox-label">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="newSpace.syncEnabled"
+                    name="syncEnabled"
+                    class="checkbox-input"
+                  />
+                  <span class="checkbox-custom">
+                    <span class="material-icons">{{ newSpace.syncEnabled ? 'check_box' : 'check_box_outline_blank' }}</span>
+                  </span>
+                  <span class="checkbox-text">Enable automatic sync</span>
+                </label>
+              }
 
               @if (createError()) {
                 <div class="error-message">
@@ -324,8 +435,8 @@ import { ToastService } from '../../shared/services/toast.service';
                     <span class="material-icons animate-spin">sync</span>
                     Creating...
                   } @else {
-                    <span class="material-icons">add</span>
-                    Create Space
+                    <span class="material-icons">{{ createType() === 'GROUP' ? 'create_new_folder' : 'add' }}</span>
+                    Create {{ createType() === 'GROUP' ? 'Group' : 'Repository' }}
                   }
                 </button>
               </div>
@@ -408,6 +519,24 @@ import { ToastService } from '../../shared/services/toast.service';
       color: var(--text-muted);
     }
 
+    .breadcrumb-item {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 13px;
+
+      &:hover:not(.active) {
+        color: var(--primary);
+      }
+    }
+
+    .header-actions {
+      display: flex;
+      gap: var(--spacing-sm);
+    }
+
     .workspace-content {
       padding: var(--spacing-xl);
       max-width: 1400px;
@@ -453,6 +582,42 @@ import { ToastService } from '../../shared/services/toast.service';
         border-color: var(--primary-light);
         box-shadow: var(--shadow);
         transform: translateY(-2px);
+      }
+
+      &.group-card {
+        cursor: pointer;
+        border-left: 3px solid var(--accent-400, #f0ad4e);
+      }
+
+      &.repo-card {
+        border-left: 3px solid var(--primary);
+      }
+    }
+
+    .workspace-icon.group-icon {
+      background: linear-gradient(135deg, var(--accent-400, #f0ad4e) 0%, var(--accent-500, #ec971f) 100%);
+
+      .material-icons {
+        font-size: 24px;
+        color: white;
+      }
+    }
+
+    .workspace-type-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+
+      .material-icons {
+        font-size: 14px;
+      }
+
+      &.group {
+        background: rgba(240, 173, 78, 0.1);
+        color: var(--accent-500, #ec971f);
       }
     }
 
@@ -986,6 +1151,11 @@ export class DashboardComponent implements OnInit {
   gitConnected = signal(false);
   gitlabProjects = signal<GitLabProject[]>([]);
 
+  // Hierarchy state
+  currentParent = signal<Space | null>(null);
+  breadcrumbs = signal<BreadcrumbItem[]>([]);
+  createType = signal<SpaceType>('GROUP');
+
   pendingLogoFile: File | null = null;
 
   newSpace: CreateSpaceRequest = {
@@ -1015,7 +1185,13 @@ export class DashboardComponent implements OnInit {
 
   loadSpaces(): void {
     this.loading.set(true);
-    this.spacesService.getSpaces().subscribe({
+    const parent = this.currentParent();
+
+    const request$ = parent
+      ? this.spacesService.getChildren(parent.id)
+      : this.spacesService.getTopLevelSpaces();
+
+    request$.subscribe({
       next: (spaces) => {
         this.spaces.set(spaces);
         this.loading.set(false);
@@ -1024,6 +1200,51 @@ export class DashboardComponent implements OnInit {
         this.loading.set(false);
       }
     });
+  }
+
+  navigateToGroup(group: Space): void {
+    const newBreadcrumbs = [...this.breadcrumbs(), {
+      id: group.id,
+      name: group.name,
+      slug: group.slug
+    }];
+    this.breadcrumbs.set(newBreadcrumbs);
+    this.currentParent.set(group);
+    this.loadSpaces();
+  }
+
+  navigateToRoot(): void {
+    this.breadcrumbs.set([]);
+    this.currentParent.set(null);
+    this.loadSpaces();
+  }
+
+  navigateToBreadcrumb(crumb: BreadcrumbItem): void {
+    const crumbs = this.breadcrumbs();
+    const index = crumbs.findIndex(c => c.id === crumb.id);
+    if (index >= 0) {
+      this.breadcrumbs.set(crumbs.slice(0, index + 1));
+      // Need to fetch the space to set as currentParent
+      this.spacesService.getSpace(crumb.id).subscribe({
+        next: (space) => {
+          this.currentParent.set(space);
+          this.loadSpaces();
+        }
+      });
+    }
+  }
+
+  openCreateModal(type: SpaceType): void {
+    this.createType.set(type);
+    this.newSpace = {
+      name: '',
+      slug: '',
+      description: '',
+      type,
+      parentId: this.currentParent()?.id,
+      syncEnabled: type === 'REPOSITORY'
+    };
+    this.showCreateModal.set(true);
   }
 
   checkGitConnection(): void {
@@ -1125,6 +1346,7 @@ export class DashboardComponent implements OnInit {
     this.newSpace = { name: '', slug: '', description: '', syncEnabled: true };
     this.pendingLogoFile = null;
     this.createError.set(null);
+    this.createType.set('GROUP');
   }
 
   toggleMenu(spaceId: string): void {

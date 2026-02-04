@@ -24,22 +24,64 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
   },
+  // Nested path routing for spaces - supports paths like /spaces/group/subgroup/repo
   {
-    path: 'spaces/:slug',
+    path: 'spaces',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/space/space.component').then(m => m.SpaceComponent),
     children: [
       {
-        path: '',
-        loadComponent: () => import('./features/space/space-overview.component').then(m => m.SpaceOverviewComponent)
+        path: ':path1',
+        loadComponent: () => import('./features/space/space-router.component').then(m => m.SpaceRouterComponent),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./features/space/space-overview.component').then(m => m.SpaceOverviewComponent)
+          },
+          {
+            path: 'settings',
+            loadComponent: () => import('./features/space/space-settings.component').then(m => m.SpaceSettingsComponent)
+          },
+          {
+            path: 'doc',
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          }
+        ]
       },
       {
-        path: 'settings',
-        loadComponent: () => import('./features/space/space-settings.component').then(m => m.SpaceSettingsComponent)
+        path: ':path1/:path2',
+        loadComponent: () => import('./features/space/space-router.component').then(m => m.SpaceRouterComponent),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./features/space/space-overview.component').then(m => m.SpaceOverviewComponent)
+          },
+          {
+            path: 'settings',
+            loadComponent: () => import('./features/space/space-settings.component').then(m => m.SpaceSettingsComponent)
+          },
+          {
+            path: 'doc',
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          }
+        ]
       },
       {
-        path: 'doc',
-        loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+        path: ':path1/:path2/:path3',
+        loadComponent: () => import('./features/space/space-router.component').then(m => m.SpaceRouterComponent),
+        children: [
+          {
+            path: '',
+            loadComponent: () => import('./features/space/space-overview.component').then(m => m.SpaceOverviewComponent)
+          },
+          {
+            path: 'settings',
+            loadComponent: () => import('./features/space/space-settings.component').then(m => m.SpaceSettingsComponent)
+          },
+          {
+            path: 'doc',
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          }
+        ]
       }
     ]
   },

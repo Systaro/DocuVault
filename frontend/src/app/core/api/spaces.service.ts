@@ -1,12 +1,18 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+
+export type SpaceType = 'GROUP' | 'REPOSITORY';
 
 export interface Space {
   id: string;
   name: string;
   slug: string;
   description?: string;
+  type: SpaceType;
+  parentId?: string;
+  parentSlug?: string;
+  fullPath: string;
   gitlabProjectId?: number;
   gitlabUrl?: string;
   branch: string;
@@ -17,6 +23,7 @@ export interface Space {
   updatedAt: string;
   gitError?: string;
   documentCount?: number;
+  childCount?: number;
   logoUrl?: string;
 }
 
@@ -24,6 +31,8 @@ export interface CreateSpaceRequest {
   name: string;
   slug: string;
   description?: string;
+  type?: SpaceType;
+  parentId?: string;
   gitlabProjectId?: number;
   gitlabUrl?: string;
   branch?: string;
@@ -46,12 +55,26 @@ export class SpacesService {
     return this.http.get<Space[]>('/api/spaces');
   }
 
+  getTopLevelSpaces(): Observable<Space[]> {
+    return this.http.get<Space[]>('/api/spaces', {
+      params: new HttpParams().set('topLevel', 'true')
+    });
+  }
+
+  getChildren(parentId: string): Observable<Space[]> {
+    return this.http.get<Space[]>(`/api/spaces/children/${parentId}`);
+  }
+
   getSpace(id: string): Observable<Space> {
     return this.http.get<Space>(`/api/spaces/${id}`);
   }
 
   getSpaceBySlug(slug: string): Observable<Space> {
     return this.http.get<Space>(`/api/spaces/slug/${slug}`);
+  }
+
+  getSpaceByPath(fullPath: string): Observable<Space> {
+    return this.http.get<Space>(`/api/spaces/path/${fullPath}`);
   }
 
   createSpace(data: CreateSpaceRequest): Observable<Space> {

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
@@ -11,12 +11,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
   imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent],
   template: `
     <app-layout>
-      @if (loading()) {
-        <div class="loading-container">
-          <span class="material-icons animate-spin">sync</span>
-          <p>Loading workspace...</p>
-        </div>
-      } @else if (space()) {
+      @if (spaceSignal()) {
         <div class="space-container">
           <!-- Breadcrumb -->
           <div class="breadcrumb-bar">
@@ -24,9 +19,13 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
               <a routerLink="/dashboard" class="breadcrumb-item">
                 <span class="material-icons">home</span>
               </a>
+              @for (crumb of pathBreadcrumbs(); track crumb.path) {
+                <span class="material-icons breadcrumb-sep">chevron_right</span>
+                <a [routerLink]="['/spaces', crumb.path]" class="breadcrumb-item">{{ crumb.name }}</a>
+              }
               <span class="material-icons breadcrumb-sep">chevron_right</span>
-              <a [routerLink]="['/spaces', space()?.slug]" class="breadcrumb-item" [class.active]="!currentDocPath()">
-                {{ space()?.name }}
+              <a [routerLink]="['/spaces', spaceSignal()?.fullPath]" class="breadcrumb-item" [class.active]="!currentDocPath()">
+                {{ spaceSignal()?.name }}
               </a>
               @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
                 <span class="material-icons breadcrumb-sep">chevron_right</span>
@@ -66,7 +65,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
               <!-- Navigation -->
               <nav class="sidebar-nav">
                 <a
-                  [routerLink]="['/spaces', space()?.slug]"
+                  [routerLink]="['/spaces', spaceSignal()?.fullPath]"
                   [routerLinkActiveOptions]="{ exact: true }"
                   routerLinkActive="active"
                   class="nav-item"
@@ -75,7 +74,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
                   Overview
                 </a>
                 <a
-                  [routerLink]="['/spaces', space()?.slug, 'settings']"
+                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'settings']"
                   routerLinkActive="active"
                   class="nav-item"
                 >
@@ -137,7 +136,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
               }
             } @else {
               <a
-                [routerLink]="['/spaces', space()?.slug, 'doc']"
+                [routerLink]="['/spaces', spaceSignal()?.fullPath, 'doc']"
                 [queryParams]="{ path: node.path }"
                 class="tree-item file"
                 [style.padding-left.px]="32 + level * 16"
@@ -432,13 +431,17 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
     }
   `]
 })
-export class SpaceComponent implements OnInit {
-  space = signal<Space | null>(null);
+export class SpaceComponent implements OnInit, OnChanges {
+  @Input() space!: Space;
+  @Input() fullPath!: string;
+
+  spaceSignal = signal<Space | null>(null);
   fileTree = signal<FileNode[]>([]);
-  loading = signal(true);
+  loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
   currentDocPath = signal<string | null>(null);
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
+  pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
 
   constructor(
     private route: ActivatedRoute,
@@ -448,13 +451,6 @@ export class SpaceComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.route.paramMap.subscribe(params => {
-      const slug = params.get('slug');
-      if (slug) {
-        this.loadSpace(slug);
-      }
-    });
-
     // Track current document path from child route query params
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) {
@@ -463,6 +459,36 @@ export class SpaceComponent implements OnInit {
     });
     // Initial check
     this.updateBreadcrumb();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['space'] && this.space) {
+      this.spaceSignal.set(this.space);
+      this.loadFileTree(this.space.id);
+      this.buildPathBreadcrumbs();
+    }
+  }
+
+  private buildPathBreadcrumbs(): void {
+    if (!this.space.parentId) {
+      this.pathBreadcrumbs.set([]);
+      return;
+    }
+
+    const parts = this.space.fullPath.split('/');
+    const crumbs: { name: string; path: string }[] = [];
+    let currentPath = '';
+
+    // Add all parts except the last one (which is the current space)
+    for (let i = 0; i < parts.length - 1; i++) {
+      currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+      crumbs.push({
+        name: parts[i],
+        path: currentPath
+      });
+    }
+
+    this.pathBreadcrumbs.set(crumbs);
   }
 
   private updateBreadcrumb(): void {
@@ -482,20 +508,6 @@ export class SpaceComponent implements OnInit {
     } else {
       this.breadcrumbSegments.set([]);
     }
-  }
-
-  loadSpace(slug: string): void {
-    this.loading.set(true);
-    this.spacesService.getSpaceBySlug(slug).subscribe({
-      next: (space) => {
-        this.space.set(space);
-        this.loadFileTree(space.id);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-      }
-    });
   }
 
   loadFileTree(spaceId: string): void {

@@ -84,6 +84,22 @@ logging:
 spring:
   config:
     activate:
+      on-profile: prod-tunnel
+  datasource:
+    url: jdbc:postgresql://localhost:5434/docuvault?sslmode=disable
+    username: docuvault
+    password: ${PROD_DB_PASSWORD}
+
+encryption:
+  key: ${ENCRYPTION_KEY}
+
+git:
+  repos-path: ${GIT_REPOS_PATH:/tmp/docuvault-repos}
+
+---
+spring:
+  config:
+    activate:
       on-profile: docker
   datasource:
     url: jdbc:postgresql://postgres:5432/docuvault

@@ -12,12 +12,14 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Spaces table (represents a connected GitLab repository)
+-- Spaces table (represents a group or repository)
 CREATE TABLE IF NOT EXISTS spaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
-    slug VARCHAR(255) UNIQUE NOT NULL,
+    slug VARCHAR(255) NOT NULL,
     description TEXT,
+    type VARCHAR(20) NOT NULL DEFAULT 'REPOSITORY',
+    parent_id UUID REFERENCES spaces(id) ON DELETE CASCADE,
     gitlab_project_id INTEGER,
     gitlab_url VARCHAR(500),
     branch VARCHAR(255) DEFAULT 'main',
@@ -28,7 +30,8 @@ CREATE TABLE IF NOT EXISTS spaces (
     logo_url VARCHAR(500),
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT spaces_slug_parent_unique UNIQUE (slug, parent_id)
 );
 
 -- Space permissions (many-to-many between users and spaces)
@@ -103,6 +106,8 @@ CREATE TABLE IF NOT EXISTS invitations (
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_spaces_slug ON spaces(slug);
+CREATE INDEX IF NOT EXISTS idx_spaces_parent_id ON spaces(parent_id);
+CREATE INDEX IF NOT EXISTS idx_spaces_type ON spaces(type);
 CREATE INDEX IF NOT EXISTS idx_documents_space_id ON documents(space_id);
 CREATE INDEX IF NOT EXISTS idx_document_embeddings_document_id ON document_embeddings(document_id);
 CREATE INDEX IF NOT EXISTS idx_space_permissions_user_id ON space_permissions(user_id);

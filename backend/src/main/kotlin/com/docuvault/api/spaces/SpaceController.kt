@@ -3,11 +3,13 @@ package com.docuvault.api.spaces
 import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
 import com.docuvault.domain.space.SpacePermission
+import com.docuvault.domain.space.SpaceType
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.PermissionService
 import com.docuvault.service.git.GitLabService
 import com.docuvault.service.git.GitOperationException
 import com.docuvault.service.git.GitService
@@ -38,22 +40,66 @@ class SpaceController(
     private val documentRepository: DocumentRepository,
     private val gitLabService: GitLabService,
     private val gitService: GitService,
+    private val permissionService: PermissionService,
     private val s3Client: S3Client,
     @Value("\${minio.bucket}") private val logoBucket: String
 ) {
     private val logger = org.slf4j.LoggerFactory.getLogger(SpaceController::class.java)
     @GetMapping
-    fun listSpaces(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<List<SpaceDto>> {
+    fun listSpaces(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam(required = false) parentId: UUID?,
+        @RequestParam(required = false) topLevel: Boolean?
+    ): ResponseEntity<List<SpaceDto>> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val spaces = if (user.role == UserRole.SUPER_ADMIN) {
-            spaceRepository.findAll()
-        } else {
-            spaceRepository.findAllByUserId(user.id!!)
+        val spaces = when {
+            topLevel == true -> {
+                if (user.role == UserRole.SUPER_ADMIN) {
+                    spaceRepository.findByParentIdIsNull()
+                } else {
+                    spaceRepository.findTopLevelByUserId(user.id!!)
+                }
+            }
+            parentId != null -> {
+                if (!permissionService.hasAccess(user.id!!, parentId, user.role)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+                }
+                spaceRepository.findByParentId(parentId)
+            }
+            else -> {
+                if (user.role == UserRole.SUPER_ADMIN) {
+                    spaceRepository.findAll()
+                } else {
+                    permissionService.getAccessibleSpaces(user.id!!, user.role)
+                }
+            }
         }
 
-        return ResponseEntity.ok(spaces.map { it.toDto(documentCount = documentRepository.countBySpaceId(it.id!!)) })
+        return ResponseEntity.ok(spaces.map { it.toDto(
+            documentCount = if (it.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(it.id!!) else 0,
+            childCount = spaceRepository.countChildren(it.id!!)
+        ) })
+    }
+
+    @GetMapping("/children/{parentId}")
+    fun getChildren(
+        @PathVariable parentId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<SpaceDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, parentId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val children = spaceRepository.findByParentId(parentId)
+        return ResponseEntity.ok(children.map { it.toDto(
+            documentCount = if (it.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(it.id!!) else 0,
+            childCount = spaceRepository.countChildren(it.id!!)
+        ) })
     }
 
     @GetMapping("/{id}")
@@ -67,11 +113,14 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        return ResponseEntity.ok(space.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
+        return ResponseEntity.ok(space.toDto(
+            documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
+            childCount = spaceRepository.countChildren(space.id!!)
+        ))
     }
 
     @GetMapping("/slug/{slug}")
@@ -85,11 +134,47 @@ class SpaceController(
         val space = spaceRepository.findBySlug(slug)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        return ResponseEntity.ok(space.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
+        return ResponseEntity.ok(space.toDto(
+            documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
+            childCount = spaceRepository.countChildren(space.id!!)
+        ))
+    }
+
+    @GetMapping("/path/{*fullPath}")
+    fun getSpaceByPath(
+        @PathVariable fullPath: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<SpaceDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val slugs = fullPath.split("/").filter { it.isNotBlank() }
+        if (slugs.isEmpty()) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        var currentSpace: Space? = spaceRepository.findBySlugAndParentIsNull(slugs[0])
+        for (i in 1 until slugs.size) {
+            if (currentSpace == null) break
+            currentSpace = spaceRepository.findBySlugAndParentId(slugs[i], currentSpace.id)
+        }
+
+        if (currentSpace == null) {
+            return ResponseEntity.notFound().build()
+        }
+
+        if (!permissionService.hasAccess(user.id!!, currentSpace.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        return ResponseEntity.ok(currentSpace.toDto(
+            documentCount = if (currentSpace.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(currentSpace.id!!) else 0,
+            childCount = spaceRepository.countChildren(currentSpace.id!!)
+        ))
     }
 
     @PostMapping
@@ -97,12 +182,56 @@ class SpaceController(
     fun createSpace(
         @AuthenticationPrincipal userDetails: UserDetails,
         @Valid @RequestBody request: CreateSpaceRequest
-    ): ResponseEntity<SpaceDto> {
+    ): ResponseEntity<Any> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        if (spaceRepository.existsBySlug(request.slug)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build()
+        val spaceType = try {
+            SpaceType.valueOf(request.type.uppercase())
+        } catch (e: IllegalArgumentException) {
+            return ResponseEntity.badRequest().body(mapOf("message" to "Invalid space type: ${request.type}"))
+        }
+
+        // Validate parent
+        val parent = if (request.parentId != null) {
+            val p = spaceRepository.findById(request.parentId).orElse(null)
+                ?: return ResponseEntity.badRequest().body(mapOf("message" to "Parent space not found"))
+
+            // Check parent depth - max 2 levels (Group → Subgroup → Repo)
+            if (p.getDepth() >= 1 && spaceType == SpaceType.GROUP) {
+                return ResponseEntity.badRequest().body(mapOf("message" to "Groups can only be nested 2 levels deep"))
+            }
+            if (p.getDepth() >= 2) {
+                return ResponseEntity.badRequest().body(mapOf("message" to "Maximum nesting depth exceeded (2 levels)"))
+            }
+
+            // Check user has permission on parent
+            if (!permissionService.hasEditAccess(user.id!!, p.id!!, user.role)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+            }
+
+            p
+        } else {
+            // Top-level must be a group
+            if (spaceType == SpaceType.REPOSITORY) {
+                return ResponseEntity.badRequest().body(mapOf("message" to "Repositories must be inside a group"))
+            }
+            null
+        }
+
+        // Check slug uniqueness within parent scope
+        val existingSpace = if (parent != null) {
+            spaceRepository.findBySlugAndParentId(request.slug, parent.id)
+        } else {
+            spaceRepository.findBySlugAndParentIsNull(request.slug)
+        }
+        if (existingSpace != null) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(mapOf("message" to "A space with this slug already exists at this level"))
+        }
+
+        // Groups cannot have git sync settings
+        if (spaceType == SpaceType.GROUP && (request.gitlabProjectId != null || request.gitlabUrl != null)) {
+            return ResponseEntity.badRequest().body(mapOf("message" to "Groups cannot have Git repository settings"))
         }
 
         val gitlabProject = request.gitlabProjectId?.let { gitLabService.getProject(it) }
@@ -111,25 +240,29 @@ class SpaceController(
             name = request.name,
             slug = request.slug,
             description = request.description,
-            gitlabProjectId = request.gitlabProjectId,
-            gitlabUrl = gitlabProject?.httpUrlToRepo ?: request.gitlabUrl,
+            type = spaceType,
+            parent = parent,
+            gitlabProjectId = if (spaceType == SpaceType.REPOSITORY) request.gitlabProjectId else null,
+            gitlabUrl = if (spaceType == SpaceType.REPOSITORY) (gitlabProject?.httpUrlToRepo ?: request.gitlabUrl) else null,
             branch = request.branch ?: gitlabProject?.defaultBranch ?: "main",
-            syncEnabled = request.syncEnabled ?: true,
+            syncEnabled = if (spaceType == SpaceType.REPOSITORY) (request.syncEnabled ?: true) else false,
             createdBy = user
         )
 
         val savedSpace = spaceRepository.save(space)
 
-        // Grant admin permission to creator
-        val permission = SpacePermission(
-            user = user,
-            space = savedSpace,
-            permissionLevel = PermissionLevel.ADMIN
-        )
-        spacePermissionRepository.save(permission)
+        // Grant admin permission to creator (only if no parent, otherwise inherit)
+        if (parent == null) {
+            val permission = SpacePermission(
+                user = user,
+                space = savedSpace,
+                permissionLevel = PermissionLevel.ADMIN
+            )
+            spacePermissionRepository.save(permission)
+        }
 
-        // Clone the repository if GitLab URL is provided
-        if (savedSpace.gitlabUrl != null) {
+        // Clone the repository if GitLab URL is provided (only for repos)
+        if (savedSpace.type == SpaceType.REPOSITORY && savedSpace.gitlabUrl != null) {
             try {
                 gitService.cloneRepository(savedSpace)
                 logger.info("Successfully cloned repository for new space '${savedSpace.name}'")
@@ -144,7 +277,7 @@ class SpaceController(
             }
         }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedSpace.toDto())
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedSpace.toDto(childCount = 0))
     }
 
     @PutMapping("/{id}")
@@ -159,19 +292,27 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         request.name?.let { space.name = it }
         request.description?.let { space.description = it }
-        request.branch?.let { space.branch = it }
-        request.syncEnabled?.let { space.syncEnabled = it }
-        request.syncIntervalMinutes?.let { space.syncIntervalMinutes = it }
+
+        // Only allow sync settings for repositories
+        if (space.type == SpaceType.REPOSITORY) {
+            request.branch?.let { space.branch = it }
+            request.syncEnabled?.let { space.syncEnabled = it }
+            request.syncIntervalMinutes?.let { space.syncIntervalMinutes = it }
+        }
+
         space.updatedAt = Instant.now()
 
         val updated = spaceRepository.save(space)
-        return ResponseEntity.ok(updated.toDto())
+        return ResponseEntity.ok(updated.toDto(
+            documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
+            childCount = spaceRepository.countChildren(space.id!!)
+        ))
     }
 
     @DeleteMapping("/{id}")
@@ -186,13 +327,16 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        // Delete local repository
-        gitService.deleteRepository(space.id!!)
+        // Delete local repository (only for repos)
+        if (space.type == SpaceType.REPOSITORY) {
+            gitService.deleteRepository(space.id!!)
+        }
 
+        // Note: children are deleted via CASCADE in database
         spaceRepository.delete(space)
         return ResponseEntity.noContent().build()
     }
@@ -209,7 +353,7 @@ class SpaceController(
             return ResponseEntity.notFound().build()
         }
 
-        if (!hasEditAccess(user.id!!, id, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, id, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -229,7 +373,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -266,7 +410,7 @@ class SpaceController(
             return ResponseEntity.notFound().build()
         }
 
-        if (!hasEditAccess(user.id!!, id, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, id, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -286,7 +430,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -327,7 +471,10 @@ class SpaceController(
         space.logoUrl = "/api/spaces/${space.id}/logo"
         space.updatedAt = Instant.now()
         val updated = spaceRepository.save(space)
-        return ResponseEntity.ok(updated.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
+        return ResponseEntity.ok(updated.toDto(
+            documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
+            childCount = spaceRepository.countChildren(space.id!!)
+        ))
     }
 
     @GetMapping("/{id}/logo")
@@ -371,7 +518,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -383,21 +530,10 @@ class SpaceController(
         space.logoUrl = null
         space.updatedAt = Instant.now()
         val updated = spaceRepository.save(space)
-        return ResponseEntity.ok(updated.toDto(documentCount = documentRepository.countBySpaceId(space.id!!)))
-    }
-
-    private fun hasAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
-        if (userRole == UserRole.SUPER_ADMIN) return true
-        return spacePermissionRepository.findByUserIdAndSpaceId(userId, spaceId) != null
-    }
-
-    private fun hasEditAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
-        if (userRole == UserRole.SUPER_ADMIN) return true
-        return spacePermissionRepository.existsByUserIdAndSpaceIdAndPermissionLevelIn(
-            userId,
-            spaceId,
-            listOf(PermissionLevel.EDIT, PermissionLevel.ADMIN)
-        )
+        return ResponseEntity.ok(updated.toDto(
+            documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
+            childCount = spaceRepository.countChildren(space.id!!)
+        ))
     }
 }
 
@@ -409,6 +545,8 @@ data class CreateSpaceRequest(
     val slug: String,
 
     val description: String? = null,
+    val type: String = "REPOSITORY",
+    val parentId: UUID? = null,
     val gitlabProjectId: Int? = null,
     val gitlabUrl: String? = null,
     val branch: String? = null,
@@ -433,6 +571,10 @@ data class SpaceDto(
     val name: String,
     val slug: String,
     val description: String?,
+    val type: String,
+    val parentId: UUID?,
+    val parentSlug: String?,
+    val fullPath: String,
     val gitlabProjectId: Int?,
     val gitlabUrl: String?,
     val branch: String,
@@ -443,6 +585,7 @@ data class SpaceDto(
     val updatedAt: Instant,
     val gitError: String? = null,
     val documentCount: Long = 0,
+    val childCount: Long = 0,
     val logoUrl: String? = null
 )
 
@@ -454,11 +597,15 @@ data class SpacePermissionDto(
     val permissionLevel: String
 )
 
-fun Space.toDto(gitError: String? = null, documentCount: Long = 0) = SpaceDto(
+fun Space.toDto(gitError: String? = null, documentCount: Long = 0, childCount: Long = 0) = SpaceDto(
     id = this.id!!,
     name = this.name,
     slug = this.slug,
     description = this.description,
+    type = this.type.name,
+    parentId = this.parent?.id,
+    parentSlug = this.parent?.slug,
+    fullPath = this.getFullPath(),
     gitlabProjectId = this.gitlabProjectId,
     gitlabUrl = this.gitlabUrl,
     branch = this.branch,
@@ -469,6 +616,7 @@ fun Space.toDto(gitError: String? = null, documentCount: Long = 0) = SpaceDto(
     updatedAt = this.updatedAt,
     gitError = gitError ?: this.lastSyncError,
     documentCount = documentCount,
+    childCount = childCount,
     logoUrl = this.logoUrl
 )
 
