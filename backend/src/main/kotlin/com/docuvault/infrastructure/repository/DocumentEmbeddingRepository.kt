@@ -27,4 +27,21 @@ interface DocumentEmbeddingRepository : JpaRepository<DocumentEmbedding, UUID> {
         queryEmbedding: String,
         limit: Int = 5
     ): List<Array<Any>>
+
+    @Query(
+        value = """
+            SELECT de.id, de.document_id, de.chunk_index, de.content, d.path, d.title
+            FROM document_embeddings de
+            JOIN documents d ON de.document_id = d.id
+            WHERE d.space_id IN (:spaceIds)
+            ORDER BY de.embedding <=> cast(:queryEmbedding as vector)
+            LIMIT :limit
+        """,
+        nativeQuery = true
+    )
+    fun findSimilarBySpaceIds(
+        spaceIds: List<UUID>,
+        queryEmbedding: String,
+        limit: Int = 5
+    ): List<Array<Any>>
 }

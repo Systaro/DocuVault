@@ -3,8 +3,10 @@ package com.docuvault.service.embedding
 import com.aallam.openai.api.embedding.EmbeddingRequest
 import com.aallam.openai.api.model.ModelId
 import com.docuvault.config.OpenAIProvider
+import com.docuvault.domain.space.SpaceType
 import com.docuvault.infrastructure.repository.DocumentEmbeddingRepository
 import com.docuvault.infrastructure.repository.DocumentRepository
+import com.docuvault.infrastructure.repository.SpaceRepository
 import jakarta.persistence.EntityManager
 import org.slf4j.LoggerFactory
 import kotlinx.coroutines.runBlocking
@@ -18,6 +20,7 @@ class EmbeddingService(
     private val openAIProvider: OpenAIProvider,
     private val documentRepository: DocumentRepository,
     private val documentEmbeddingRepository: DocumentEmbeddingRepository,
+    private val spaceRepository: SpaceRepository,
     private val entityManager: EntityManager
 ) {
     companion object {
@@ -77,9 +80,15 @@ class EmbeddingService(
 
     fun findSimilar(spaceId: UUID, query: String, limit: Int = 5): List<SimilarChunk> {
         val queryEmbedding = generateEmbedding(query) ?: return emptyList()
-
         val embeddingString = "[${queryEmbedding.joinToString(",")}]"
-        val results = documentEmbeddingRepository.findSimilarBySpaceId(spaceId, embeddingString, limit)
+
+        // Resolve space IDs: if it's a group, search across all child repos
+        val spaceIds = resolveSpaceIds(spaceId)
+        val results = if (spaceIds.size == 1) {
+            documentEmbeddingRepository.findSimilarBySpaceId(spaceIds.first(), embeddingString, limit)
+        } else {
+            documentEmbeddingRepository.findSimilarBySpaceIds(spaceIds, embeddingString, limit)
+        }
 
         // Results: [id, document_id, chunk_index, content, path, title]
         return results.map { row ->
@@ -91,6 +100,26 @@ class EmbeddingService(
                 content = row[3] as String
             )
         }
+    }
+
+    private fun resolveSpaceIds(spaceId: UUID): List<UUID> {
+        val space = spaceRepository.findById(spaceId).orElse(null) ?: return listOf(spaceId)
+        if (space.type != SpaceType.GROUP) return listOf(spaceId)
+
+        // Collect all descendant repository IDs (supports nested groups)
+        val repoIds = mutableListOf<UUID>()
+        fun collectChildren(parentId: UUID) {
+            val children = spaceRepository.findByParentId(parentId)
+            for (child in children) {
+                if (child.type == SpaceType.REPOSITORY) {
+                    repoIds.add(child.id!!)
+                } else if (child.type == SpaceType.GROUP) {
+                    collectChildren(child.id!!)
+                }
+            }
+        }
+        collectChildren(spaceId)
+        return repoIds.ifEmpty { listOf(spaceId) }
     }
 
     private fun chunkText(text: String): List<String> {

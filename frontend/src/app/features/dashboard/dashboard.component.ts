@@ -286,12 +286,22 @@ interface BreadcrumbItem {
                   <button class="space-picker-item" (click)="selectSpaceForChat(space.id)">
                     @if (space.logoUrl) {
                       <img [src]="space.logoUrl" [alt]="space.name" class="space-picker-logo" />
+                    } @else if (space.type === 'GROUP') {
+                      <div class="space-picker-icon group">
+                        <span class="material-icons">folder</span>
+                      </div>
                     } @else {
                       <div class="space-picker-icon">{{ space.name.charAt(0).toUpperCase() }}</div>
                     }
                     <div class="space-picker-info">
                       <div class="space-picker-name">{{ space.name }}</div>
-                      <div class="space-picker-desc">{{ space.documentCount ?? 0 }} documents</div>
+                      <div class="space-picker-desc">
+                        @if (space.type === 'GROUP') {
+                          {{ space.childCount ?? 0 }} {{ (space.childCount ?? 0) === 1 ? 'space' : 'spaces' }}
+                        } @else {
+                          {{ space.documentCount ?? 0 }} documents
+                        }
+                      </div>
                     </div>
                   </button>
                 }
@@ -1008,6 +1018,14 @@ interface BreadcrumbItem {
       font-weight: 700;
       font-size: 16px;
       flex-shrink: 0;
+
+      &.group {
+        background: linear-gradient(135deg, var(--accent-400, #f0ad4e) 0%, var(--accent-500, #ec971f) 100%);
+
+        .material-icons {
+          font-size: 20px;
+        }
+      }
     }
 
     .space-picker-info {
