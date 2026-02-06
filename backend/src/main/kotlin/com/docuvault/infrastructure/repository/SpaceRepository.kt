@@ -46,7 +46,7 @@ interface SpaceRepository : JpaRepository<Space, UUID> {
     @Query("UPDATE Space s SET s.lastSyncedAt = :syncedAt, s.lastSyncError = :error WHERE s.id = :id")
     fun updateSyncStatus(id: UUID, syncedAt: Instant?, error: String?)
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query(value = "UPDATE spaces SET parent_id = :parentId, updated_at = NOW() WHERE id = :id", nativeQuery = true)
     fun updateParent(id: UUID, parentId: UUID?)
 
