@@ -926,7 +926,7 @@ body {
   }
 
   p {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: 16px;
   }
 
@@ -1002,8 +1002,9 @@ body {
 
     th, td {
       border: 1px solid var(--border);
-      padding: 12px 16px;
+      padding: 6px 12px;
       text-align: left;
+      color: var(--text-primary);
     }
 
     th {
