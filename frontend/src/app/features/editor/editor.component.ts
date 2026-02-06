@@ -271,7 +271,7 @@ import { marked } from 'marked';
     }
 
     .editor-bg {
-      background: var(--background, #f0f2f5);
+      background: var(--background-darker);
     }
 
     .paper {

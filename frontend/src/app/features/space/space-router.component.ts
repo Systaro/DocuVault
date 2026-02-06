@@ -20,12 +20,14 @@ import { GroupComponent } from './group.component';
         </div>
       </app-layout>
     } @else if (space()) {
-      @if (childRoute()) {
-        <app-layout>
-          <router-outlet></router-outlet>
-        </app-layout>
-      } @else if (space()!.type === 'GROUP') {
-        <app-group [space]="space()!" [fullPath]="fullPath()"></app-group>
+      @if (space()!.type === 'GROUP') {
+        @if (childRoute()) {
+          <app-layout>
+            <router-outlet></router-outlet>
+          </app-layout>
+        } @else {
+          <app-group [space]="space()!" [fullPath]="fullPath()"></app-group>
+        }
       } @else {
         <app-space [space]="space()!" [fullPath]="fullPath()"></app-space>
       }
