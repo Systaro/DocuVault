@@ -310,11 +310,15 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Load space from parent route
+    // Load space from parent route params (path1/path2/path3)
     this.route.parent?.paramMap.subscribe(params => {
-      const slug = params.get('slug');
-      if (slug) {
-        this.loadSpace(slug);
+      const parts: string[] = [];
+      if (params.get('path1')) parts.push(params.get('path1')!);
+      if (params.get('path2')) parts.push(params.get('path2')!);
+      if (params.get('path3')) parts.push(params.get('path3')!);
+      const fullPath = parts.join('/');
+      if (fullPath) {
+        this.loadSpace(fullPath);
       }
     });
 
@@ -338,8 +342,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.editor?.destroy();
   }
 
-  loadSpace(slug: string): void {
-    this.spacesService.getSpaceBySlug(slug).subscribe({
+  loadSpace(fullPath: string): void {
+    this.spacesService.getSpaceByPath(fullPath).subscribe({
       next: (space) => {
         this.space.set(space);
         if (this.documentPath) {
