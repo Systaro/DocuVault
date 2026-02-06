@@ -1,6 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterOutlet } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { SpaceComponent } from './space.component';
@@ -19,7 +20,11 @@ import { GroupComponent } from './group.component';
         </div>
       </app-layout>
     } @else if (space()) {
-      @if (space()!.type === 'GROUP') {
+      @if (childRoute()) {
+        <app-layout>
+          <router-outlet></router-outlet>
+        </app-layout>
+      } @else if (space()!.type === 'GROUP') {
         <app-group [space]="space()!" [fullPath]="fullPath()"></app-group>
       } @else {
         <app-space [space]="space()!" [fullPath]="fullPath()"></app-space>
@@ -75,6 +80,7 @@ export class SpaceRouterComponent implements OnInit {
   space = signal<Space | null>(null);
   loading = signal(true);
   fullPath = signal<string>('');
+  childRoute = signal<string | null>(null);
 
   constructor(
     private route: ActivatedRoute,
@@ -86,6 +92,16 @@ export class SpaceRouterComponent implements OnInit {
     this.route.params.subscribe(() => {
       this.loadSpace();
     });
+
+    this.updateChildRoute();
+    this.router.events
+      .pipe(filter(e => e instanceof NavigationEnd))
+      .subscribe(() => this.updateChildRoute());
+  }
+
+  private updateChildRoute(): void {
+    const childPath = this.route.firstChild?.snapshot.url[0]?.path || null;
+    this.childRoute.set(childPath);
   }
 
   private loadSpace(): void {

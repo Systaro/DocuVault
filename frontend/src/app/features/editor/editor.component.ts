@@ -225,8 +225,8 @@ import { marked } from 'marked';
       }
 
       <!-- Editor Area -->
-      <div class="flex-1 overflow-y-auto">
-        <div class="max-w-4xl mx-auto px-8 py-6">
+      <div class="flex-1 overflow-y-auto editor-bg">
+        <div class="max-w-4xl mx-auto px-8 py-6 paper">
           @if (loading()) {
             <div class="flex items-center justify-center py-12">
               <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
@@ -268,6 +268,19 @@ import { marked } from 'marked';
       display: block;
       height: 100%;
       position: relative;
+    }
+
+    .editor-bg {
+      background: var(--background, #f0f2f5);
+    }
+
+    .paper {
+      background: white;
+      min-height: calc(100vh - 120px);
+      margin-top: 24px;
+      margin-bottom: 24px;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
     }
   `]
 })
