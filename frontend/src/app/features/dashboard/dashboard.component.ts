@@ -332,6 +332,7 @@ interface BreadcrumbItem {
                   <input
                     type="text"
                     [(ngModel)]="newSpace.name"
+                    (ngModelChange)="onNameChange($event)"
                     name="name"
                     class="input"
                     [placeholder]="createType() === 'GROUP' ? 'My Group' : 'My Documentation'"
@@ -347,6 +348,7 @@ interface BreadcrumbItem {
                   <input
                     type="text"
                     [(ngModel)]="newSpace.slug"
+                    (ngModelChange)="slugManuallyEdited = true"
                     name="slug"
                     class="input"
                     [placeholder]="createType() === 'GROUP' ? 'my-group' : 'my-docs'"
@@ -1157,6 +1159,7 @@ export class DashboardComponent implements OnInit {
   createType = signal<SpaceType>('GROUP');
 
   pendingLogoFile: File | null = null;
+  slugManuallyEdited = false;
 
   newSpace: CreateSpaceRequest = {
     name: '',
@@ -1236,6 +1239,7 @@ export class DashboardComponent implements OnInit {
 
   openCreateModal(type: SpaceType): void {
     this.createType.set(type);
+    this.slugManuallyEdited = false;
     this.newSpace = {
       name: '',
       slug: '',
@@ -1245,6 +1249,26 @@ export class DashboardComponent implements OnInit {
       syncEnabled: type === 'REPOSITORY'
     };
     this.showCreateModal.set(true);
+  }
+
+  onNameChange(name: string): void {
+    if (!this.slugManuallyEdited) {
+      this.newSpace.slug = this.generateSlug(name);
+    }
+  }
+
+  private generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[äÄ]/g, 'ae')
+      .replace(/[öÖ]/g, 'oe')
+      .replace(/[üÜ]/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
   }
 
   checkGitConnection(): void {
@@ -1345,6 +1369,7 @@ export class DashboardComponent implements OnInit {
     this.showCreateModal.set(false);
     this.newSpace = { name: '', slug: '', description: '', syncEnabled: true };
     this.pendingLogoFile = null;
+    this.slugManuallyEdited = false;
     this.createError.set(null);
     this.createType.set('GROUP');
   }
