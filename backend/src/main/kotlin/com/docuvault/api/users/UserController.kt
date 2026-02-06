@@ -328,6 +328,7 @@ data class InvitationDto(
     val email: String,
     val spaceId: UUID?,
     val role: String,
+    val token: String,
     val expiresAt: Instant,
     val accepted: Boolean,
     val createdAt: Instant
@@ -338,6 +339,7 @@ fun Invitation.toDto() = InvitationDto(
     email = this.email,
     spaceId = this.space?.id,
     role = this.role.name,
+    token = this.token,
     expiresAt = this.expiresAt,
     accepted = this.acceptedAt != null,
     createdAt = this.createdAt

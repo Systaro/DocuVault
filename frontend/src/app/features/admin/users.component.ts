@@ -143,6 +143,13 @@ import { User } from '../../core/auth/auth.service';
                   </div>
                   <div class="table-cell actions-col">
                     @if (!inv.accepted) {
+                      <button class="icon-btn" (click)="copyInviteLink(inv)" [title]="copiedId() === inv.id ? 'Copied!' : 'Copy invite link'">
+                        @if (copiedId() === inv.id) {
+                          <span class="material-icons" style="color: #388e3c">check</span>
+                        } @else {
+                          <span class="material-icons">content_copy</span>
+                        }
+                      </button>
                       <button class="icon-btn" (click)="resendInvitation(inv)" title="Resend invitation email" [disabled]="resendingId() === inv.id">
                         @if (resendingId() === inv.id) {
                           <span class="material-icons animate-spin">sync</span>
@@ -164,61 +171,95 @@ import { User } from '../../core/auth/auth.service';
 
       <!-- Invite Modal -->
       @if (showInviteModal()) {
-        <div class="modal-overlay" (click)="showInviteModal.set(false)">
+        <div class="modal-overlay" (click)="closeInviteModal()">
           <div class="modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>
-                <span class="material-icons">person_add</span>
-                Invite User
-              </h2>
-              <button class="icon-btn" (click)="showInviteModal.set(false)">
-                <span class="material-icons">close</span>
-              </button>
-            </div>
-
-            <form (ngSubmit)="inviteUser()" class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Email address</label>
-                <div class="input-icon">
-                  <span class="material-icons">mail</span>
-                  <input
-                    type="email"
-                    [(ngModel)]="inviteEmail"
-                    name="email"
-                    class="input"
-                    placeholder="user@example.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Role</label>
-                <div class="input-icon">
-                  <span class="material-icons">badge</span>
-                  <select [(ngModel)]="inviteRole" name="role" class="input">
-                    <option value="VIEWER">Viewer - Can view documents</option>
-                    <option value="EDITOR">Editor - Can edit documents</option>
-                    <option value="ORG_ADMIN">Org Admin - Can manage spaces</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="modal-footer">
-                <button type="button" (click)="showInviteModal.set(false)" class="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" [disabled]="sending()" class="btn btn-primary">
-                  @if (sending()) {
-                    <span class="material-icons animate-spin">sync</span>
-                    Sending...
-                  } @else {
-                    <span class="material-icons">send</span>
-                    Send Invitation
-                  }
+            @if (createdInvitation()) {
+              <!-- Success state: show invite link -->
+              <div class="modal-header">
+                <h2>
+                  <span class="material-icons" style="color: #388e3c">check_circle</span>
+                  Invitation Created
+                </h2>
+                <button class="icon-btn" (click)="closeInviteModal()">
+                  <span class="material-icons">close</span>
                 </button>
               </div>
-            </form>
+              <div class="modal-body">
+                <p class="invite-success-msg">Invitation sent to <strong>{{ createdInvitation()!.email }}</strong>. Share the link below so they can join:</p>
+                <div class="invite-link-box">
+                  <code class="invite-link-text">{{ getInviteUrl(createdInvitation()!.token) }}</code>
+                  <button class="btn btn-sm btn-primary" (click)="copyInviteLink(createdInvitation()!)">
+                    @if (copiedId() === createdInvitation()!.id) {
+                      <span class="material-icons">check</span>
+                      Copied!
+                    } @else {
+                      <span class="material-icons">content_copy</span>
+                      Copy Link
+                    }
+                  </button>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" (click)="closeInviteModal()" class="btn btn-primary">
+                    Done
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <!-- Form state -->
+              <div class="modal-header">
+                <h2>
+                  <span class="material-icons">person_add</span>
+                  Invite User
+                </h2>
+                <button class="icon-btn" (click)="closeInviteModal()">
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+
+              <form (ngSubmit)="inviteUser()" class="modal-body">
+                <div class="form-group">
+                  <label class="form-label">Email address</label>
+                  <div class="input-icon">
+                    <span class="material-icons">mail</span>
+                    <input
+                      type="email"
+                      [(ngModel)]="inviteEmail"
+                      name="email"
+                      class="input"
+                      placeholder="user@example.com"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Role</label>
+                  <div class="input-icon">
+                    <span class="material-icons">badge</span>
+                    <select [(ngModel)]="inviteRole" name="role" class="input">
+                      <option value="VIEWER">Viewer - Can view documents</option>
+                      <option value="EDITOR">Editor - Can edit documents</option>
+                      <option value="ORG_ADMIN">Org Admin - Can manage spaces</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="modal-footer">
+                  <button type="button" (click)="closeInviteModal()" class="btn btn-secondary">
+                    Cancel
+                  </button>
+                  <button type="submit" [disabled]="sending()" class="btn btn-primary">
+                    @if (sending()) {
+                      <span class="material-icons animate-spin">sync</span>
+                      Sending...
+                    } @else {
+                      <span class="material-icons">send</span>
+                      Send Invitation
+                    }
+                  </button>
+                </div>
+              </form>
+            }
           </div>
         </div>
       }
@@ -476,7 +517,7 @@ import { User } from '../../core/auth/auth.service';
     }
 
     .actions-col {
-      flex: 0 0 100px;
+      flex: 0 0 130px;
       display: flex;
       justify-content: flex-end;
       gap: var(--spacing-xs);
@@ -656,6 +697,45 @@ import { User } from '../../core/auth/auth.service';
       }
     }
 
+    .invite-success-msg {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: var(--spacing-lg);
+
+      strong {
+        color: var(--text-primary);
+      }
+    }
+
+    .invite-link-box {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    .invite-link-text {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text-secondary);
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+      white-space: nowrap;
+
+      .material-icons {
+        font-size: 16px;
+      }
+    }
+
     .animate-spin {
       animation: spin 1s linear infinite;
     }
@@ -673,6 +753,8 @@ export class UsersComponent implements OnInit {
   editingUser = signal<User | null>(null);
   sending = signal(false);
   resendingId = signal<string | null>(null);
+  copiedId = signal<string | null>(null);
+  createdInvitation = signal<Invitation | null>(null);
   searchTerm = '';
 
   inviteEmail = '';
@@ -730,9 +812,9 @@ export class UsersComponent implements OnInit {
 
     this.sending.set(true);
     this.usersService.inviteUser(this.inviteEmail, undefined, this.inviteRole).subscribe({
-      next: () => {
+      next: (invitation) => {
         this.sending.set(false);
-        this.showInviteModal.set(false);
+        this.createdInvitation.set(invitation);
         this.inviteEmail = '';
         this.inviteRole = 'VIEWER';
         this.loadInvitations();
@@ -743,6 +825,23 @@ export class UsersComponent implements OnInit {
           alert('A user or pending invitation with this email already exists.');
         }
       }
+    });
+  }
+
+  closeInviteModal(): void {
+    this.showInviteModal.set(false);
+    this.createdInvitation.set(null);
+  }
+
+  getInviteUrl(token: string): string {
+    return `${window.location.origin}/accept-invitation?token=${token}`;
+  }
+
+  copyInviteLink(inv: Invitation): void {
+    const url = this.getInviteUrl(inv.token);
+    navigator.clipboard.writeText(url).then(() => {
+      this.copiedId.set(inv.id);
+      setTimeout(() => this.copiedId.set(null), 2000);
     });
   }
 
