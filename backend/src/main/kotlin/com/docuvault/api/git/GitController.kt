@@ -1,9 +1,8 @@
 package com.docuvault.api.git
 
-import com.docuvault.domain.space.PermissionLevel
-import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.PermissionService
 import com.docuvault.service.git.*
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -21,7 +20,7 @@ class GitController(
     private val gitService: GitService,
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
-    private val spacePermissionRepository: SpacePermissionRepository
+    private val permissionService: PermissionService
 ) {
     private val logger = LoggerFactory.getLogger(GitController::class.java)
 
@@ -66,10 +65,8 @@ class GitController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        // Check space access
-        val hasAccess = user.role == com.docuvault.domain.user.UserRole.SUPER_ADMIN ||
-            spacePermissionRepository.findByUserIdAndSpaceId(user.id!!, spaceId) != null
-        if (!hasAccess) {
+        // Check space access (with hierarchy inheritance)
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -129,12 +126,8 @@ class GitController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        // Check space edit permissions
-        val hasAccess = user.role == com.docuvault.domain.user.UserRole.SUPER_ADMIN ||
-            spacePermissionRepository.existsByUserIdAndSpaceIdAndPermissionLevelIn(
-                user.id!!, spaceId, listOf(PermissionLevel.EDIT, PermissionLevel.ADMIN)
-            )
-        if (!hasAccess) {
+        // Check space edit permissions (with hierarchy inheritance)
+        if (!permissionService.hasEditAccess(user.id!!, spaceId, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 

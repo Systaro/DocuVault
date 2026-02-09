@@ -1,12 +1,10 @@
 package com.docuvault.api.documents
 
 import com.docuvault.domain.space.Document
-import com.docuvault.domain.space.PermissionLevel
-import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.DocumentRepository
-import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.PermissionService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.GitService
@@ -26,8 +24,8 @@ import java.util.*
 class DocumentController(
     private val spaceRepository: SpaceRepository,
     private val documentRepository: DocumentRepository,
-    private val spacePermissionRepository: SpacePermissionRepository,
     private val userRepository: UserRepository,
+    private val permissionService: PermissionService,
     private val gitService: GitService,
     private val embeddingService: EmbeddingService
 ) {
@@ -42,7 +40,7 @@ class DocumentController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -58,7 +56,7 @@ class DocumentController(
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        if (!hasAccess(user.id!!, spaceId, user.role)) {
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -78,7 +76,7 @@ class DocumentController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -119,7 +117,7 @@ class DocumentController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -167,7 +165,7 @@ class DocumentController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -243,7 +241,7 @@ class DocumentController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -264,20 +262,6 @@ class DocumentController(
         document?.let { documentRepository.delete(it) }
 
         return ResponseEntity.noContent().build()
-    }
-
-    private fun hasAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
-        if (userRole == UserRole.SUPER_ADMIN) return true
-        return spacePermissionRepository.findByUserIdAndSpaceId(userId, spaceId) != null
-    }
-
-    private fun hasEditAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
-        if (userRole == UserRole.SUPER_ADMIN) return true
-        return spacePermissionRepository.existsByUserIdAndSpaceIdAndPermissionLevelIn(
-            userId,
-            spaceId,
-            listOf(PermissionLevel.EDIT, PermissionLevel.ADMIN)
-        )
     }
 
     private fun extractTitle(content: String, path: String): String {
