@@ -58,6 +58,18 @@ export class AuthService {
     );
   }
 
+  forgotPassword(email: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>('/api/auth/forgot-password', { email }).pipe(
+      catchError(error => of({ message: error.error?.error || 'Something went wrong. Please try again.' }))
+    );
+  }
+
+  resetPassword(token: string, password: string): Observable<{ message?: string; error?: string }> {
+    return this.http.post<{ message?: string; error?: string }>('/api/auth/reset-password', { token, password }).pipe(
+      catchError(error => of({ error: error.error?.error || 'Something went wrong. Please try again.' }))
+    );
+  }
+
   logout(): void {
     this.http.post('/api/auth/logout', {}, { withCredentials: true }).subscribe({
       complete: () => {},

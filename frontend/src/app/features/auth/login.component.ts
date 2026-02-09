@@ -70,7 +70,7 @@ import { AuthService } from '../../core/auth/auth.service';
                 <input type="checkbox" [(ngModel)]="rememberMe" name="rememberMe" />
                 Remember me
               </label>
-              <a href="#" class="link">Forgot password?</a>
+              <a routerLink="/forgot-password" class="link">Forgot password?</a>
             </div>
 
             <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full">

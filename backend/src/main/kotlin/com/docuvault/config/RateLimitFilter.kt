@@ -22,7 +22,7 @@ class RateLimitFilter : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val path = request.requestURI
-        if (path.startsWith("/api/auth/login") && request.method == "POST") {
+        if ((path.startsWith("/api/auth/login") || path.startsWith("/api/auth/forgot-password")) && request.method == "POST") {
             val clientIp = request.remoteAddr
             val now = System.currentTimeMillis()
 

@@ -1,9 +1,13 @@
 package com.docuvault.api.auth
 
+import com.docuvault.domain.user.PasswordResetToken
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
+import com.docuvault.infrastructure.repository.PasswordResetTokenRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.EmailService
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.transaction.Transactional
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -18,6 +22,8 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.web.bind.annotation.*
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.*
 
 @RestController
@@ -25,7 +31,9 @@ import java.util.*
 class AuthController(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val authenticationManager: AuthenticationManager
+    private val authenticationManager: AuthenticationManager,
+    private val passwordResetTokenRepository: PasswordResetTokenRepository,
+    private val emailService: EmailService
 ) {
     @PostMapping("/register")
     fun register(
@@ -95,6 +103,117 @@ class AuthController(
         return ResponseEntity.ok(AuthResponse(user = user.toDto()))
     }
 
+    @PostMapping("/forgot-password")
+    @Transactional
+    fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequest): ResponseEntity<Map<String, String>> {
+        val message = "If an account with that email exists, a password reset link has been sent."
+
+        val user = userRepository.findByEmail(request.email)
+        if (user != null) {
+            passwordResetTokenRepository.deleteByEmail(request.email)
+
+            val token = PasswordResetToken(
+                email = request.email,
+                token = UUID.randomUUID().toString(),
+                expiresAt = Instant.now().plus(1, ChronoUnit.HOURS)
+            )
+
+            val saved = passwordResetTokenRepository.save(token)
+            sendPasswordResetEmail(saved)
+        }
+
+        return ResponseEntity.ok(mapOf("message" to message))
+    }
+
+    @PostMapping("/reset-password")
+    @Transactional
+    fun resetPassword(@Valid @RequestBody request: ResetPasswordRequest): ResponseEntity<Map<String, String>> {
+        val token = passwordResetTokenRepository.findByToken(request.token)
+            ?: return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+
+        if (token.usedAt != null) {
+            return ResponseEntity.badRequest().body(mapOf("error" to "This reset link has already been used."))
+        }
+
+        if (token.expiresAt.isBefore(Instant.now())) {
+            return ResponseEntity.badRequest().body(mapOf("error" to "This reset link has expired. Please request a new one."))
+        }
+
+        val user = userRepository.findByEmail(token.email)
+            ?: return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+
+        user.passwordHash = passwordEncoder.encode(request.password)
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+
+        token.usedAt = Instant.now()
+        passwordResetTokenRepository.save(token)
+
+        return ResponseEntity.ok(mapOf("message" to "Password has been reset successfully. You can now sign in."))
+    }
+
+    private fun sendPasswordResetEmail(token: PasswordResetToken) {
+        val resetUrl = "https://docuvault.systaro.de/reset-password?token=${token.token}"
+        emailService.sendHtml(
+            to = token.email,
+            subject = "Reset your DocuVault password",
+            htmlBody = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0f2f5; padding: 40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width: 560px; width: 100%;">
+        <!-- Header -->
+        <tr><td style="background: linear-gradient(135deg, #4a8a8f 0%, #6fb3b8 50%, #8fcdd2 100%); border-radius: 16px 16px 0 0; padding: 40px 40px 32px; text-align: center;">
+          <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+            <img src="https://docuvault.systaro.de/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
+          </div>
+          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Reset Your Password</h1>
+          <p style="color: rgba(255,255,255,0.85); font-size: 15px; margin: 0;">DocuVault account security</p>
+        </td></tr>
+        <!-- Body -->
+        <tr><td style="background: #ffffff; padding: 40px;">
+          <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 8px;">Hi there,</p>
+          <p style="color: #555; font-size: 15px; line-height: 1.7; margin: 0 0 32px;">
+            We received a request to reset your <strong style="color: #333;">DocuVault</strong> password.
+            Click the button below to choose a new password.
+          </p>
+          <!-- Button -->
+          <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding: 0 0 32px;">
+            <a href="$resetUrl" style="display: inline-block; background: linear-gradient(135deg, #4a8a8f, #6fb3b8); color: #ffffff; padding: 14px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; letter-spacing: 0.3px; box-shadow: 0 4px 14px rgba(111,179,184,0.4);">
+              Reset Password
+            </a>
+          </td></tr></table>
+          <!-- Details -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="background: #f8fafb; border-radius: 10px; border: 1px solid #e9eef2;">
+            <tr><td style="padding: 20px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="color: #888; font-size: 13px;">This link expires in</td>
+                  <td style="color: #333; font-size: 13px; font-weight: 600; text-align: right;">1 hour</td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="background: #fafbfc; border-radius: 0 0 16px 16px; border-top: 1px solid #eef1f4; padding: 24px 40px; text-align: center;">
+          <p style="color: #aaa; font-size: 12px; line-height: 1.6; margin: 0;">
+            If you didn't request a password reset, you can safely ignore this email.<br>
+            &copy; DocuVault &middot; <a href="https://docuvault.systaro.de" style="color: #6fb3b8; text-decoration: none;">docuvault.systaro.de</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+            """.trimIndent()
+        )
+    }
+
     private fun authenticateSession(request: HttpServletRequest, email: String, password: String) {
         val authToken = UsernamePasswordAuthenticationToken(email, password)
         val authentication = authenticationManager.authenticate(authToken)
@@ -141,6 +260,25 @@ data class UserDto(
     val email: String,
     val name: String,
     val role: String
+)
+
+data class ForgotPasswordRequest(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String
+)
+
+data class ResetPasswordRequest(
+    @field:NotBlank(message = "Token is required")
+    val token: String,
+
+    @field:NotBlank(message = "Password is required")
+    @field:Size(min = 10, message = "Password must be at least 10 characters")
+    @field:Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{10,}$",
+        message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+    )
+    val password: String
 )
 
 fun User.toDto() = UserDto(
