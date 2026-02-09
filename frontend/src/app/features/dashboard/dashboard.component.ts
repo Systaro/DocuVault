@@ -1224,14 +1224,7 @@ export class DashboardComponent implements OnInit {
   }
 
   navigateToGroup(group: Space): void {
-    const newBreadcrumbs = [...this.breadcrumbs(), {
-      id: group.id,
-      name: group.name,
-      slug: group.slug
-    }];
-    this.breadcrumbs.set(newBreadcrumbs);
-    this.currentParent.set(group);
-    this.loadSpaces();
+    this.router.navigate(['/spaces', group.fullPath]);
   }
 
   navigateToRoot(): void {
