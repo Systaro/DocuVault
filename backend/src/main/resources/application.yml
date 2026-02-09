@@ -16,6 +16,14 @@ spring:
     show-sql: false
     open-in-view: false
 
+  session:
+    store-type: redis
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:587}
