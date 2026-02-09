@@ -7,7 +7,8 @@ import com.docuvault.infrastructure.repository.PasswordResetTokenRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
 import jakarta.servlet.http.HttpServletRequest
-import jakarta.transaction.Transactional
+import org.slf4j.LoggerFactory
+import org.springframework.transaction.annotation.Transactional
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -35,6 +36,7 @@ class AuthController(
     private val passwordResetTokenRepository: PasswordResetTokenRepository,
     private val emailService: EmailService
 ) {
+    private val logger = LoggerFactory.getLogger(AuthController::class.java)
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: RegisterRequest,
@@ -108,7 +110,10 @@ class AuthController(
     fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequest): ResponseEntity<Map<String, String>> {
         val message = "If an account with that email exists, a password reset link has been sent."
 
+        logger.info("Password reset requested for email: ${request.email}")
         val user = userRepository.findByEmail(request.email)
+        logger.info("User lookup result: ${if (user != null) "found (${user.email})" else "not found"}")
+
         if (user != null) {
             passwordResetTokenRepository.deleteByEmail(request.email)
 
@@ -119,6 +124,7 @@ class AuthController(
             )
 
             val saved = passwordResetTokenRepository.save(token)
+            logger.info("Password reset token created for ${request.email}, sending email...")
             sendPasswordResetEmail(saved)
         }
 
