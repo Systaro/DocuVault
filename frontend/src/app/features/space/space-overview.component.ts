@@ -184,16 +184,20 @@ export class SpaceOverviewComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.route.parent?.paramMap.subscribe(params => {
-      const slug = params.get('slug');
-      if (slug) {
-        this.loadSpace(slug);
+    this.route.parent?.params.subscribe(params => {
+      const parts: string[] = [];
+      if (params['path1']) parts.push(params['path1']);
+      if (params['path2']) parts.push(params['path2']);
+      if (params['path3']) parts.push(params['path3']);
+      const fullPath = parts.join('/');
+      if (fullPath) {
+        this.loadSpaceByPath(fullPath);
       }
     });
   }
 
-  loadSpace(slug: string): void {
-    this.spacesService.getSpaceBySlug(slug).subscribe({
+  loadSpaceByPath(path: string): void {
+    this.spacesService.getSpaceByPath(path).subscribe({
       next: (space) => {
         this.space.set(space);
         this.loadDocuments(space.id);
@@ -222,7 +226,7 @@ export class SpaceOverviewComponent implements OnInit {
             result.message || 'Successfully synced from Git repository.'
           );
           this.loadDocuments(space.id);
-          this.loadSpace(space.slug); // Reload to clear error and update lastSyncedAt
+          this.loadSpaceByPath(space.fullPath); // Reload to clear error and update lastSyncedAt
         } else {
           this.handleSyncError(result);
         }
