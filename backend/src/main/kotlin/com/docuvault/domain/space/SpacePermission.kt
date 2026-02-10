@@ -26,7 +26,15 @@ data class SpacePermission(
 
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now()
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SpacePermission) return false
+        return id != null && id == other.id
+    }
+
+    override fun hashCode(): Int = id?.hashCode() ?: 0
+}
 
 enum class PermissionLevel {
     VIEW,
