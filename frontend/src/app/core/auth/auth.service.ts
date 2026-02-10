@@ -8,11 +8,15 @@ export interface User {
   email: string;
   name: string;
   role: string;
+  impersonating?: boolean;
+  originalAdminName?: string;
 }
 
 export interface AuthResponse {
   user?: User;
   error?: string;
+  impersonating?: boolean;
+  originalAdminName?: string;
 }
 
 export interface LoginRequest {
@@ -38,6 +42,7 @@ export class AuthService {
     const user = this.userSignal();
     return user?.role === 'SUPER_ADMIN' || user?.role === 'ORG_ADMIN';
   });
+  isImpersonating = computed(() => !!this.userSignal()?.impersonating);
 
   constructor(
     private http: HttpClient,
@@ -101,10 +106,25 @@ export class AuthService {
     );
   }
 
+  stopImpersonation(): void {
+    this.http.post<User>('/api/users/stop-impersonation', {}, { withCredentials: true }).subscribe({
+      next: () => {
+        this.checkAuth().subscribe(() => {
+          this.router.navigate(['/admin']);
+        });
+      }
+    });
+  }
+
   private handleAuthResponse(response: AuthResponse): void {
     if (response.user) {
-      localStorage.setItem(this.USER_KEY, JSON.stringify(response.user));
-      this.userSignal.set(response.user);
+      const user: User = {
+        ...response.user,
+        impersonating: response.impersonating ?? undefined,
+        originalAdminName: response.originalAdminName ?? undefined
+      };
+      localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+      this.userSignal.set(user);
     }
   }
 

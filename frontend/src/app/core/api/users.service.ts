@@ -42,6 +42,10 @@ export class UsersService {
     return this.http.delete<void>(`/api/users/${id}`);
   }
 
+  impersonateUser(id: string): Observable<User> {
+    return this.http.post<User>(`/api/users/${id}/impersonate`, {});
+  }
+
   inviteUser(email: string, spaceId?: string, role?: string): Observable<Invitation> {
     return this.http.post<Invitation>('/api/users/invite', {
       email,

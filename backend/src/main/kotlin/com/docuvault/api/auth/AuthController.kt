@@ -94,7 +94,10 @@ class AuthController(
     }
 
     @GetMapping("/me")
-    fun me(@AuthenticationPrincipal userDetails: UserDetails?): ResponseEntity<AuthResponse> {
+    fun me(
+        @AuthenticationPrincipal userDetails: UserDetails?,
+        request: HttpServletRequest
+    ): ResponseEntity<AuthResponse> {
         if (userDetails == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "Not authenticated"))
@@ -102,7 +105,16 @@ class AuthController(
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse(error = "User not found"))
-        return ResponseEntity.ok(AuthResponse(user = user.toDto()))
+
+        val originalAdminEmail = request.getSession(false)
+            ?.getAttribute("ORIGINAL_ADMIN_EMAIL") as? String
+        val originalAdmin = originalAdminEmail?.let { userRepository.findByEmail(it) }
+
+        return ResponseEntity.ok(AuthResponse(
+            user = user.toDto(),
+            impersonating = if (originalAdmin != null) true else null,
+            originalAdminName = originalAdmin?.name
+        ))
     }
 
     @PostMapping("/forgot-password")
@@ -258,7 +270,9 @@ data class LoginRequest(
 
 data class AuthResponse(
     val user: UserDto? = null,
-    val error: String? = null
+    val error: String? = null,
+    val impersonating: Boolean? = null,
+    val originalAdminName: String? = null
 )
 
 data class UserDto(

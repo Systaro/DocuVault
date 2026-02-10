@@ -65,6 +65,17 @@ import { ThemeService } from '../../core/services/theme.service';
         </div>
       </header>
 
+      <!-- Impersonation Banner -->
+      @if (authService.isImpersonating()) {
+        <div class="impersonation-banner">
+          <span class="material-icons">swap_horiz</span>
+          <span>Viewing as <strong>{{ authService.user()?.name }}</strong></span>
+          <button class="stop-btn" (click)="authService.stopImpersonation()">
+            Stop Impersonating
+          </button>
+        </div>
+      }
+
       <!-- Main content -->
       <main class="app-main">
         <ng-content></ng-content>
@@ -153,6 +164,44 @@ import { ThemeService } from '../../core/services/theme.service';
       margin-left: var(--spacing-sm);
       padding-left: var(--spacing-md);
       border-left: 1px solid var(--border);
+    }
+
+    .impersonation-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-xl);
+      background: #f59e0b;
+      color: #78350f;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 101;
+
+      .material-icons {
+        font-size: 18px;
+      }
+
+      strong {
+        font-weight: 700;
+      }
+    }
+
+    .stop-btn {
+      margin-left: var(--spacing-md);
+      padding: 4px 12px;
+      background: rgba(120, 53, 15, 0.15);
+      color: #78350f;
+      border: 1px solid rgba(120, 53, 15, 0.3);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+
+      &:hover {
+        background: rgba(120, 53, 15, 0.25);
+      }
     }
 
     .app-main {

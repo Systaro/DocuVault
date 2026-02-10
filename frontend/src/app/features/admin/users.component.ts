@@ -1,8 +1,9 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { UsersService, Invitation } from '../../core/api/users.service';
-import { User } from '../../core/auth/auth.service';
+import { AuthService, User } from '../../core/auth/auth.service';
 
 @Component({
   selector: 'app-users',
@@ -84,6 +85,11 @@ import { User } from '../../core/auth/auth.service';
                   </span>
                 </div>
                 <div class="table-cell actions-col">
+                  @if (authService.user()?.role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN') {
+                    <button class="icon-btn" (click)="impersonateUser(user)" title="Impersonate">
+                      <span class="material-icons">swap_horiz</span>
+                    </button>
+                  }
                   <button class="icon-btn" (click)="editUser(user)" title="Edit">
                     <span class="material-icons">edit</span>
                   </button>
@@ -517,7 +523,7 @@ import { User } from '../../core/auth/auth.service';
     }
 
     .actions-col {
-      flex: 0 0 130px;
+      flex: 0 0 170px;
       display: flex;
       justify-content: flex-end;
       gap: var(--spacing-xs);
@@ -765,7 +771,11 @@ export class UsersComponent implements OnInit {
     role: ''
   };
 
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    public authService: AuthService,
+    private router: Router
+  ) {}
 
   ngOnInit(): void {
     this.loadUsers();
@@ -864,6 +874,16 @@ export class UsersComponent implements OnInit {
         next: () => this.loadInvitations()
       });
     }
+  }
+
+  impersonateUser(user: User): void {
+    this.usersService.impersonateUser(user.id).subscribe({
+      next: () => {
+        this.authService.checkAuth().subscribe(() => {
+          this.router.navigate(['/dashboard']);
+        });
+      }
+    });
   }
 
   editUser(user: User): void {

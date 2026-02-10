@@ -9,6 +9,7 @@ import com.docuvault.infrastructure.repository.InvitationRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.security.core.userdetails.UserDetailsService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
@@ -35,7 +36,8 @@ class UserController(
     private val spaceRepository: SpaceRepository,
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
-    private val authenticationManager: AuthenticationManager
+    private val authenticationManager: AuthenticationManager,
+    private val userDetailsService: UserDetailsService
 ) {
     @GetMapping("/me")
     fun getCurrentUser(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<UserDto> {
@@ -100,6 +102,62 @@ class UserController(
         }
         userRepository.deleteById(id)
         return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/{id}/impersonate")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    fun impersonateUser(
+        @PathVariable id: UUID,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<UserDto> {
+        val targetUser = userRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (targetUser.role == UserRole.SUPER_ADMIN) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        val currentAuth = SecurityContextHolder.getContext().authentication
+        val adminEmail = currentAuth.name
+
+        val targetUserDetails = userDetailsService.loadUserByUsername(targetUser.email)
+        val newAuth = UsernamePasswordAuthenticationToken(
+            targetUserDetails, null, targetUserDetails.authorities
+        )
+
+        val session = httpRequest.getSession(true)
+        session.setAttribute("ORIGINAL_ADMIN_EMAIL", adminEmail)
+        val context = SecurityContextHolder.createEmptyContext()
+        context.authentication = newAuth
+        SecurityContextHolder.setContext(context)
+        session.setAttribute("SPRING_SECURITY_CONTEXT", context)
+
+        return ResponseEntity.ok(targetUser.toDto())
+    }
+
+    @PostMapping("/stop-impersonation")
+    fun stopImpersonation(httpRequest: HttpServletRequest): ResponseEntity<UserDto> {
+        val session = httpRequest.getSession(false)
+            ?: return ResponseEntity.badRequest().build()
+
+        val originalAdminEmail = session.getAttribute("ORIGINAL_ADMIN_EMAIL") as? String
+            ?: return ResponseEntity.badRequest().build()
+
+        val adminUser = userRepository.findByEmail(originalAdminEmail)
+            ?: return ResponseEntity.badRequest().build()
+
+        val adminUserDetails = userDetailsService.loadUserByUsername(adminUser.email)
+        val adminAuth = UsernamePasswordAuthenticationToken(
+            adminUserDetails, null, adminUserDetails.authorities
+        )
+
+        session.removeAttribute("ORIGINAL_ADMIN_EMAIL")
+        val context = SecurityContextHolder.createEmptyContext()
+        context.authentication = adminAuth
+        SecurityContextHolder.setContext(context)
+        session.setAttribute("SPRING_SECURITY_CONTEXT", context)
+
+        return ResponseEntity.ok(adminUser.toDto())
     }
 
     @PostMapping("/invite")
