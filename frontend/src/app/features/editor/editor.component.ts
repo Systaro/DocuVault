@@ -31,6 +31,7 @@ import { marked } from 'marked';
   imports: [CommonModule, FormsModule],
   template: `
     <div class="h-full flex flex-col">
+      @if (!isPreviewFile()) {
       <!-- Toolbar -->
       <div class="border-b border-gray-200 bg-white px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-1">
@@ -194,6 +195,8 @@ import { marked } from 'marked';
         </div>
       </div>
 
+      }
+
       <!-- AI Menu Dropdown -->
       @if (showAiMenu()) {
         <div class="absolute top-16 left-4 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-48">
@@ -224,33 +227,43 @@ import { marked } from 'marked';
         </div>
       }
 
-      <!-- Editor Area -->
-      <div class="flex-1 overflow-y-auto editor-bg">
-        <div class="max-w-4xl mx-auto px-8 py-6 paper">
-          @if (loading()) {
-            <div class="flex items-center justify-center py-12">
-              <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-            </div>
-          } @else {
-            <!-- Document Title -->
-            <input
-              type="text"
-              [(ngModel)]="documentTitle"
-              placeholder="Untitled"
-              class="w-full text-3xl font-bold text-gray-900 border-none outline-none mb-6 bg-transparent"
-            />
-
-            <!-- TipTap Editor Container -->
-            <div
-              #editorElement
-              class="prose prose-lg max-w-none"
-            ></div>
-          }
+      @if (isPreviewFile()) {
+        <!-- File Preview -->
+        <div class="flex-1 overflow-y-auto editor-bg">
+          <div class="preview-container">
+            <div class="preview-filename">{{ documentPath.split('/').pop() }}</div>
+            <img [src]="previewUrl()" [alt]="documentPath.split('/').pop()" class="preview-image" />
+          </div>
         </div>
-      </div>
+      } @else {
+        <!-- Editor Area -->
+        <div class="flex-1 overflow-y-auto editor-bg">
+          <div class="max-w-4xl mx-auto px-8 py-6 paper">
+            @if (loading()) {
+              <div class="flex items-center justify-center py-12">
+                <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+              </div>
+            } @else {
+              <!-- Document Title -->
+              <input
+                type="text"
+                [(ngModel)]="documentTitle"
+                placeholder="Untitled"
+                class="w-full text-3xl font-bold text-gray-900 border-none outline-none mb-6 bg-transparent"
+              />
+
+              <!-- TipTap Editor Container -->
+              <div
+                #editorElement
+                class="prose prose-lg max-w-none"
+              ></div>
+            }
+          </div>
+        </div>
+      }
 
       <!-- Chat Sidebar Toggle -->
       <button
@@ -282,6 +295,28 @@ import { marked } from 'marked';
       border-radius: 4px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
     }
+
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      gap: 1rem;
+    }
+
+    .preview-filename {
+      font-size: 0.875rem;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    .preview-image {
+      max-width: 100%;
+      max-height: calc(100vh - 160px);
+      object-fit: contain;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
   `]
 })
 export class EditorComponent implements OnInit, OnDestroy {
@@ -296,6 +331,10 @@ export class EditorComponent implements OnInit, OnDestroy {
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
 
+  private static readonly IMAGE_EXTENSIONS = new Set([
+    'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
+  ]);
+
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
   documentTitle = '';
@@ -306,6 +345,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   hasChanges = signal(false);
   showAiMenu = signal(false);
   showChat = signal(false);
+  isPreviewFile = signal(false);
+  previewUrl = signal('');
 
   constructor(
     private route: ActivatedRoute,
@@ -340,10 +381,22 @@ export class EditorComponent implements OnInit, OnDestroy {
       const path = params.get('path');
       if (path) {
         this.documentPath = path;
-        if (this.space()) {
-          this.loadDocument();
+        const ext = path.split('.').pop()?.toLowerCase() || '';
+        if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
+          }
+        } else {
+          this.isPreviewFile.set(false);
+          if (this.space()) {
+            this.loadDocument();
+          }
         }
       } else {
+        this.isPreviewFile.set(false);
         this.initializeNewDocument();
       }
     });
@@ -359,7 +412,9 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.spacesService.getSpaceByPath(fullPath).subscribe({
       next: (space) => {
         this.space.set(space);
-        if (this.documentPath) {
+        if (this.isPreviewFile()) {
+          this.previewUrl.set(`/api/spaces/${space.id}/files/${this.documentPath}`);
+        } else if (this.documentPath) {
           this.loadDocument();
         }
       }
