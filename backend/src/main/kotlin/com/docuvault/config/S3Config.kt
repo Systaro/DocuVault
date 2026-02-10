@@ -23,18 +23,20 @@ class S3Config(
 ) {
     private val logger = LoggerFactory.getLogger(S3Config::class.java)
 
-    @Bean
-    fun s3Client(): S3Client = S3Client.builder()
+    private fun buildClient(): S3Client = S3Client.builder()
         .endpointOverride(URI.create(endpoint))
         .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
         .region(Region.US_EAST_1)
         .forcePathStyle(true)
         .build()
 
+    @Bean
+    fun s3Client(): S3Client = buildClient()
+
     @PostConstruct
     fun ensureBucket() {
         try {
-            val client = s3Client()
+            val client = buildClient()
             try {
                 client.headBucket(HeadBucketRequest.builder().bucket(bucket).build())
                 logger.info("S3 bucket '$bucket' already exists")
