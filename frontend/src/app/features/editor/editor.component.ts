@@ -402,12 +402,16 @@ export class EditorComponent implements OnInit, OnDestroy {
     // Convert markdown to HTML for editor
     let htmlContent = marked.parse(content) as string;
 
-    // Rewrite relative image src to serve from API
+    // Rewrite relative image src to serve from API, resolved relative to the document's directory
     const space = this.space();
     if (space) {
+      const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
       htmlContent = htmlContent.replace(
         /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
-        `$1/api/spaces/${space.id}/files/$2$3`
+        (_match, pre, src, post) => {
+          const resolved = this.resolveRelativePath(docDir + src);
+          return `${pre}/api/spaces/${space.id}/files/${resolved}${post}`;
+        }
       );
     }
 
@@ -545,6 +549,19 @@ export class EditorComponent implements OnInit, OnDestroy {
     const title = this.documentTitle || 'untitled';
     const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     return `docs/${slug}.md`;
+  }
+
+  private resolveRelativePath(path: string): string {
+    const parts = path.split('/');
+    const resolved: string[] = [];
+    for (const part of parts) {
+      if (part === '..') {
+        resolved.pop();
+      } else if (part !== '.' && part !== '') {
+        resolved.push(part);
+      }
+    }
+    return resolved.join('/');
   }
 
   // Toolbar actions
