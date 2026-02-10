@@ -4,11 +4,12 @@ import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, Nav
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
+import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ChatSidebarComponent],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -73,6 +74,14 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
                   <span class="material-icons">home</span>
                   Overview
                 </a>
+                <button
+                  (click)="showChat.set(!showChat())"
+                  class="nav-item"
+                  [class.active]="showChat()"
+                >
+                  <span class="material-icons">auto_awesome</span>
+                  AI Chat
+                </button>
                 <a
                   [routerLink]="['/spaces', spaceSignal()?.fullPath, 'settings']"
                   routerLinkActive="active"
@@ -110,6 +119,10 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
             </main>
           </div>
         </div>
+
+        @if (showChat()) {
+          <app-chat-sidebar [spaceId]="spaceSignal()!.id" (close)="showChat.set(false)"></app-chat-sidebar>
+        }
       }
 
       <!-- File Tree Template -->
@@ -438,6 +451,7 @@ export class SpaceComponent implements OnInit, OnChanges {
   spaceSignal = signal<Space | null>(null);
   fileTree = signal<FileNode[]>([]);
   loading = signal(false);
+  showChat = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
   currentDocPath = signal<string | null>(null);
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
