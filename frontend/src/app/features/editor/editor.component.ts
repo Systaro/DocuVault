@@ -400,7 +400,16 @@ export class EditorComponent implements OnInit, OnDestroy {
     const lowlight = createLowlight(common);
 
     // Convert markdown to HTML for editor
-    const htmlContent = marked.parse(content) as string;
+    let htmlContent = marked.parse(content) as string;
+
+    // Rewrite relative image src to serve from API
+    const space = this.space();
+    if (space) {
+      htmlContent = htmlContent.replace(
+        /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
+        `$1/api/spaces/${space.id}/files/$2$3`
+      );
+    }
 
     // Destroy existing editor if any
     this.editor?.destroy();
@@ -449,7 +458,12 @@ export class EditorComponent implements OnInit, OnDestroy {
     const space = this.space();
     if (!space || !this.editor || this.saving()) return;
 
-    const html = this.editor.getHTML();
+    let html = this.editor.getHTML();
+    // Restore relative image paths before converting to markdown
+    html = html.replace(
+      /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
+      '$1$2$3'
+    );
     const markdown = this.turndownService.turndown(html);
 
     this.saving.set(true);
@@ -497,7 +511,11 @@ export class EditorComponent implements OnInit, OnDestroy {
     const user = this.authService.user();
     if (!space || !this.editor || !user) return;
 
-    const html = this.editor.getHTML();
+    let html = this.editor.getHTML();
+    html = html.replace(
+      /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
+      '$1$2$3'
+    );
     const markdown = this.turndownService.turndown(html);
 
     this.saving.set(true);
