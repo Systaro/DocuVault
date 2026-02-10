@@ -39,6 +39,15 @@ class UserController(
     private val authenticationManager: AuthenticationManager,
     private val userDetailsService: UserDetailsService
 ) {
+    @GetMapping("/search")
+    fun searchUsers(@RequestParam q: String): ResponseEntity<List<UserSearchResult>> {
+        if (q.length < 2) return ResponseEntity.ok(emptyList())
+        val users = userRepository.searchByNameOrEmail(q).map {
+            UserSearchResult(id = it.id!!, name = it.name, email = it.email)
+        }
+        return ResponseEntity.ok(users)
+    }
+
     @GetMapping("/me")
     fun getCurrentUser(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<UserDto> {
         val user = userRepository.findByEmail(userDetails.username)
@@ -379,6 +388,12 @@ data class AcceptInvitationRequest(
         message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
     )
     val password: String
+)
+
+data class UserSearchResult(
+    val id: UUID,
+    val name: String,
+    val email: String
 )
 
 data class InvitationDto(

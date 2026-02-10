@@ -3,6 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { User } from '../auth/auth.service';
 
+export interface UserSearchResult {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface Invitation {
   id: string;
   email: string;
@@ -17,6 +23,12 @@ export interface Invitation {
 @Injectable({ providedIn: 'root' })
 export class UsersService {
   constructor(private http: HttpClient) {}
+
+  searchUsers(query: string): Observable<UserSearchResult[]> {
+    return this.http.get<UserSearchResult[]>('/api/users/search', {
+      params: { q: query }
+    });
+  }
 
   getCurrentUser(): Observable<User> {
     return this.http.get<User>('/api/users/me');

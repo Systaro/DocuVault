@@ -90,7 +90,7 @@ import { AuthService } from '../../core/auth/auth.service';
               </svg>
               <p class="text-gray-600">No documents yet</p>
               <a
-                [routerLink]="['/spaces', space()?.slug, 'doc']"
+                [routerLink]="['/spaces', space()?.fullPath, 'doc']"
                 class="btn btn-primary mt-4 inline-flex"
               >
                 Create your first document
@@ -100,7 +100,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="divide-y divide-gray-200">
               @for (doc of documents().slice(0, 10); track doc.id) {
                 <a
-                  [routerLink]="['/spaces', space()?.slug, 'doc']"
+                  [routerLink]="['/spaces', space()?.fullPath, 'doc']"
                   [queryParams]="{ path: doc.path }"
                   class="flex items-center justify-between p-4 hover:bg-gray-50"
                 >

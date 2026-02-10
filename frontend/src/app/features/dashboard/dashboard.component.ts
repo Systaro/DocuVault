@@ -9,6 +9,7 @@ import { SpacesService, Space, CreateSpaceRequest, SpaceType } from '../../core/
 import { GitService, GitLabProject } from '../../core/api/git.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { QuickShareDialogComponent } from '../../shared/components/quick-share-dialog.component';
 
 interface BreadcrumbItem {
   id: string;
@@ -19,7 +20,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, LayoutComponent, ChatSidebarComponent, LogoUploadComponent],
+  imports: [CommonModule, RouterLink, FormsModule, LayoutComponent, ChatSidebarComponent, LogoUploadComponent, QuickShareDialogComponent],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -110,6 +111,10 @@ interface BreadcrumbItem {
                         </button>
                         @if (openMenuId() === space.id) {
                           <div class="dropdown-menu">
+                            <button class="dropdown-item" (click)="openShareDialog(space)">
+                              <span class="material-icons">share</span>
+                              Share
+                            </button>
                             <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
                               <span class="material-icons">settings</span>
                               Settings
@@ -169,6 +174,10 @@ interface BreadcrumbItem {
                         </button>
                         @if (openMenuId() === space.id) {
                           <div class="dropdown-menu">
+                            <button class="dropdown-item" (click)="openShareDialog(space)">
+                              <span class="material-icons">share</span>
+                              Share
+                            </button>
                             <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
                               <span class="material-icons">settings</span>
                               Settings
@@ -455,6 +464,15 @@ interface BreadcrumbItem {
             </form>
           </div>
         </div>
+      }
+
+      <!-- Quick Share Dialog -->
+      @if (showShareDialog()) {
+        <app-quick-share-dialog
+          [spaceId]="shareSpaceId()"
+          [spaceName]="shareSpaceName()"
+          (close)="showShareDialog.set(false)"
+        />
       }
 
       <!-- Delete Confirmation Modal -->
@@ -1171,6 +1189,11 @@ export class DashboardComponent implements OnInit {
   gitConnected = signal(false);
   gitlabProjects = signal<GitLabProject[]>([]);
 
+  // Share dialog state
+  showShareDialog = signal(false);
+  shareSpaceId = signal('');
+  shareSpaceName = signal('');
+
   // Hierarchy state
   currentParent = signal<Space | null>(null);
   breadcrumbs = signal<BreadcrumbItem[]>([]);
@@ -1391,6 +1414,13 @@ export class DashboardComponent implements OnInit {
     } else {
       this.openMenuId.set(spaceId);
     }
+  }
+
+  openShareDialog(space: Space): void {
+    this.openMenuId.set(null);
+    this.shareSpaceId.set(space.id);
+    this.shareSpaceName.set(space.name);
+    this.showShareDialog.set(true);
   }
 
   goToSettings(slug: string): void {
