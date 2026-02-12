@@ -6,6 +6,7 @@ import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
 import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
+import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 
 @Component({
   selector: 'app-space',
@@ -129,7 +130,7 @@ import { ShareLinkDialogComponent } from '../../shared/components/share-link-dia
           <app-share-link-dialog
             [spaceId]="spaceSignal()!.id"
             [filePath]="shareFilePath()!"
-            (close)="shareFilePath.set(null)"
+            (close)="onShareDialogClose()"
           />
         }
       }
@@ -166,6 +167,9 @@ import { ShareLinkDialogComponent } from '../../shared/components/share-link-dia
                 >
                   <span class="material-icons file-icon">description</span>
                   <span class="tree-name">{{ node.name }}</span>
+                  @if (sharedFilePaths().has(node.path)) {
+                    <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                  }
                 </a>
                 <button
                   class="tree-share-btn"
@@ -471,6 +475,13 @@ import { ShareLinkDialogComponent } from '../../shared/components/share-link-dia
       }
     }
 
+    .shared-indicator {
+      font-size: 14px;
+      color: var(--primary);
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+
     .sidebar-footer {
       padding: var(--spacing-md);
       border-top: 1px solid var(--border);
@@ -512,12 +523,14 @@ export class SpaceComponent implements OnInit, OnChanges {
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
   shareFilePath = signal<string | null>(null);
+  sharedFilePaths = signal<Set<string>>(new Set());
 
   constructor(
     private route: ActivatedRoute,
     private router: Router,
     private spacesService: SpacesService,
-    private documentsService: DocumentsService
+    private documentsService: DocumentsService,
+    private sharedLinksService: SharedLinksService
   ) {}
 
   ngOnInit(): void {
@@ -535,6 +548,7 @@ export class SpaceComponent implements OnInit, OnChanges {
     if (changes['space'] && this.space) {
       this.spaceSignal.set(this.space);
       this.loadFileTree(this.space.id);
+      this.loadSharedLinks(this.space.id);
       this.buildPathBreadcrumbs();
     }
   }
@@ -602,5 +616,27 @@ export class SpaceComponent implements OnInit, OnChanges {
 
   openShareDialog(filePath: string): void {
     this.shareFilePath.set(filePath);
+  }
+
+  onShareDialogClose(): void {
+    this.shareFilePath.set(null);
+    const space = this.spaceSignal();
+    if (space) {
+      this.loadSharedLinks(space.id);
+    }
+  }
+
+  loadSharedLinks(spaceId: string): void {
+    this.sharedLinksService.getLinks(spaceId).subscribe({
+      next: (links) => {
+        const now = new Date().toISOString();
+        const activePaths = new Set(
+          links
+            .filter(l => !l.revokedAt && (!l.expiresAt || l.expiresAt > now))
+            .map(l => l.filePath)
+        );
+        this.sharedFilePaths.set(activePaths);
+      }
+    });
   }
 }

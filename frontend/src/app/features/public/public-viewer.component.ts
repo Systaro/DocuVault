@@ -45,8 +45,8 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
         } @else if (renderMode() === 'html') {
           <div class="html-container">
             <iframe
-              [srcdoc]="htmlContent()"
-              sandbox="allow-same-origin"
+              [src]="safeRawUrl()"
+              sandbox="allow-same-origin allow-scripts"
               class="html-iframe"
             ></iframe>
           </div>
@@ -212,7 +212,6 @@ export class PublicViewerComponent implements OnInit {
   error = signal<string | null>(null);
   renderMode = signal<'markdown' | 'html' | 'image' | 'pdf' | 'download' | null>(null);
   renderedHtml = signal<SafeHtml>('');
-  htmlContent = signal('');
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
 
@@ -253,7 +252,7 @@ export class PublicViewerComponent implements OnInit {
       this.loadMarkdownContent();
     } else if (ext === 'html' || ext === 'htm') {
       this.renderMode.set('html');
-      this.loadHtmlContent();
+      this.loading.set(false);
     } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'].includes(ext)) {
       this.renderMode.set('image');
       this.loading.set(false);
@@ -285,16 +284,4 @@ export class PublicViewerComponent implements OnInit {
     });
   }
 
-  private loadHtmlContent(): void {
-    this.sharedLinksService.getSharedFileContent(this.token).subscribe({
-      next: (content) => {
-        this.htmlContent.set(content);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.error.set('Failed to load file content.');
-        this.loading.set(false);
-      }
-    });
-  }
 }
