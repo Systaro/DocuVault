@@ -5,11 +5,12 @@ import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
 import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
+import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ChatSidebarComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ChatSidebarComponent, ShareLinkDialogComponent],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -123,6 +124,14 @@ import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
         @if (showChat()) {
           <app-chat-sidebar [spaceId]="spaceSignal()!.id" (close)="showChat.set(false)"></app-chat-sidebar>
         }
+
+        @if (shareFilePath() && spaceSignal()) {
+          <app-share-link-dialog
+            [spaceId]="spaceSignal()!.id"
+            [filePath]="shareFilePath()!"
+            (close)="shareFilePath.set(null)"
+          />
+        }
       }
 
       <!-- File Tree Template -->
@@ -148,15 +157,24 @@ import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
                 </div>
               }
             } @else {
-              <a
-                [routerLink]="['/spaces', spaceSignal()?.fullPath, 'doc']"
-                [queryParams]="{ path: node.path }"
-                class="tree-item file"
-                [style.padding-left.px]="32 + level * 16"
-              >
-                <span class="material-icons file-icon">description</span>
-                <span class="tree-name">{{ node.name }}</span>
-              </a>
+              <div class="tree-file-row">
+                <a
+                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'doc']"
+                  [queryParams]="{ path: node.path }"
+                  class="tree-item file"
+                  [style.padding-left.px]="32 + level * 16"
+                >
+                  <span class="material-icons file-icon">description</span>
+                  <span class="tree-name">{{ node.name }}</span>
+                </a>
+                <button
+                  class="tree-share-btn"
+                  title="Share file"
+                  (click)="openShareDialog(node.path); $event.stopPropagation(); $event.preventDefault()"
+                >
+                  <span class="material-icons">share</span>
+                </button>
+              </div>
             }
           </div>
         }
@@ -416,6 +434,43 @@ import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
       }
     }
 
+    .tree-file-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .tree-item {
+        flex: 1;
+      }
+
+      .tree-share-btn {
+        position: absolute;
+        right: 4px;
+        opacity: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px;
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        transition: opacity var(--transition), color var(--transition);
+
+        .material-icons {
+          font-size: 16px;
+        }
+
+        &:hover {
+          color: var(--primary);
+        }
+      }
+
+      &:hover .tree-share-btn {
+        opacity: 1;
+      }
+    }
+
     .sidebar-footer {
       padding: var(--spacing-md);
       border-top: 1px solid var(--border);
@@ -456,6 +511,7 @@ export class SpaceComponent implements OnInit, OnChanges {
   currentDocPath = signal<string | null>(null);
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
+  shareFilePath = signal<string | null>(null);
 
   constructor(
     private route: ActivatedRoute,
@@ -542,5 +598,9 @@ export class SpaceComponent implements OnInit, OnChanges {
 
   createNewDocument(): void {
     // Will navigate to editor with empty path for new document
+  }
+
+  openShareDialog(filePath: string): void {
+    this.shareFilePath.set(filePath);
   }
 }

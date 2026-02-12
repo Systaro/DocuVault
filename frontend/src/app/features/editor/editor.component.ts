@@ -21,6 +21,7 @@ import { DocumentsService, DocumentContent } from '../../core/api/documents.serv
 import { AiService } from '../../core/api/ai.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { GitService } from '../../core/api/git.service';
+import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
@@ -28,7 +29,7 @@ import { marked } from 'marked';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ShareLinkDialogComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -185,6 +186,17 @@ import { marked } from 'marked';
           } @else if (lastSaved()) {
             <span class="text-sm text-gray-500">Saved</span>
           }
+          @if (documentPath) {
+            <button
+              (click)="showShareDialog.set(true)"
+              class="p-2 rounded hover:bg-gray-100"
+              title="Share file"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+              </svg>
+            </button>
+          }
           <button
             (click)="saveAndCommit()"
             [disabled]="!hasChanges() || saving()"
@@ -231,7 +243,18 @@ import { marked } from 'marked';
         <!-- File Preview -->
         <div class="flex-1 overflow-y-auto editor-bg">
           <div class="preview-container">
-            <div class="preview-filename">{{ documentPath.split('/').pop() }}</div>
+            <div class="preview-header">
+              <div class="preview-filename">{{ documentPath.split('/').pop() }}</div>
+              <button
+                (click)="showShareDialog.set(true)"
+                class="p-2 rounded hover:bg-gray-100"
+                title="Share file"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                </svg>
+              </button>
+            </div>
             <img [src]="previewUrl()" [alt]="documentPath.split('/').pop()" class="preview-image" />
           </div>
         </div>
@@ -274,6 +297,14 @@ import { marked } from 'marked';
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
         </svg>
       </button>
+
+      @if (showShareDialog() && space() && documentPath) {
+        <app-share-link-dialog
+          [spaceId]="space()!.id"
+          [filePath]="documentPath"
+          (close)="showShareDialog.set(false)"
+        />
+      }
     </div>
   `,
   styles: [`
@@ -302,6 +333,12 @@ import { marked } from 'marked';
       align-items: center;
       padding: 2rem;
       gap: 1rem;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     .preview-filename {
@@ -345,6 +382,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   hasChanges = signal(false);
   showAiMenu = signal(false);
   showChat = signal(false);
+  showShareDialog = signal(false);
   isPreviewFile = signal(false);
   previewUrl = signal('');
 

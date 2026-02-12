@@ -12,30 +12,22 @@ import java.util.concurrent.atomic.AtomicInteger
 class RateLimitFilter : OncePerRequestFilter() {
 
     companion object {
-        private const val MAX_ATTEMPTS = 10
-        private const val WINDOW_MS = 15 * 60 * 1000L // 15 minutes
+        private const val AUTH_MAX_ATTEMPTS = 10
+        private const val AUTH_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
+        private const val SHARED_MAX_ATTEMPTS = 60
+        private const val SHARED_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
     }
 
     private data class RateEntry(val count: AtomicInteger = AtomicInteger(0), val windowStart: Long = System.currentTimeMillis())
 
-    private val attempts = ConcurrentHashMap<String, RateEntry>()
+    private val authAttempts = ConcurrentHashMap<String, RateEntry>()
+    private val sharedAttempts = ConcurrentHashMap<String, RateEntry>()
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val path = request.requestURI
+
         if ((path.startsWith("/api/auth/login") || path.startsWith("/api/auth/forgot-password")) && request.method == "POST") {
-            val clientIp = request.remoteAddr
-            val now = System.currentTimeMillis()
-
-            val entry = attempts.compute(clientIp) { _, existing ->
-                if (existing == null || now - existing.windowStart > WINDOW_MS) {
-                    RateEntry(AtomicInteger(1), now)
-                } else {
-                    existing.count.incrementAndGet()
-                    existing
-                }
-            }!!
-
-            if (entry.count.get() > MAX_ATTEMPTS) {
+            if (isRateLimited(request.remoteAddr, authAttempts, AUTH_MAX_ATTEMPTS, AUTH_WINDOW_MS)) {
                 response.status = 429
                 response.contentType = "application/json"
                 response.writer.write("""{"error":"Too many login attempts. Please try again later."}""")
@@ -43,6 +35,33 @@ class RateLimitFilter : OncePerRequestFilter() {
             }
         }
 
+        if (path.startsWith("/api/shared/")) {
+            if (isRateLimited(request.remoteAddr, sharedAttempts, SHARED_MAX_ATTEMPTS, SHARED_WINDOW_MS)) {
+                response.status = 429
+                response.contentType = "application/json"
+                response.writer.write("""{"error":"Too many requests. Please try again later."}""")
+                return
+            }
+        }
+
         filterChain.doFilter(request, response)
+    }
+
+    private fun isRateLimited(
+        clientIp: String,
+        store: ConcurrentHashMap<String, RateEntry>,
+        maxAttempts: Int,
+        windowMs: Long
+    ): Boolean {
+        val now = System.currentTimeMillis()
+        val entry = store.compute(clientIp) { _, existing ->
+            if (existing == null || now - existing.windowStart > windowMs) {
+                RateEntry(AtomicInteger(1), now)
+            } else {
+                existing.count.incrementAndGet()
+                existing
+            }
+        }!!
+        return entry.count.get() > maxAttempts
     }
 }

@@ -113,6 +113,20 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Shared links for public file sharing
+CREATE TABLE IF NOT EXISTS shared_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token VARCHAR(64) UNIQUE NOT NULL,
+    space_id UUID NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    file_path VARCHAR(1000) NOT NULL,
+    created_by UUID NOT NULL REFERENCES users(id),
+    expires_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_accessed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_spaces_slug ON spaces(slug);
@@ -127,3 +141,5 @@ CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
 CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_email ON password_reset_tokens(email);
+CREATE INDEX IF NOT EXISTS idx_shared_links_token ON shared_links(token);
+CREATE INDEX IF NOT EXISTS idx_shared_links_space_file ON shared_links(space_id, file_path);
