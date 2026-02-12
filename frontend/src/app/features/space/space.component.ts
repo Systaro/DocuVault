@@ -473,6 +473,10 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
       &:hover .tree-share-btn {
         opacity: 1;
       }
+
+      &:hover .shared-indicator {
+        display: none;
+      }
     }
 
     .shared-indicator {
