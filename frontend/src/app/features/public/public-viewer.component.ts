@@ -46,7 +46,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
           <div class="html-container">
             <iframe
               [src]="safeRawUrl()"
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-same-origin allow-popups"
               class="html-iframe"
             ></iframe>
           </div>
