@@ -12,7 +12,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 @RestController
-@RequestMapping("/api/shared")
+@RequestMapping("/shared")
 class PublicShareController(
     private val sharedLinkService: SharedLinkService,
     private val gitService: GitService

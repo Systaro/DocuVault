@@ -43,7 +43,7 @@ class SecurityConfig(
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/api/users/accept-invitation").permitAll()
-                    .requestMatchers("/api/shared/**").permitAll()
+                    .requestMatchers("/shared/**").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)

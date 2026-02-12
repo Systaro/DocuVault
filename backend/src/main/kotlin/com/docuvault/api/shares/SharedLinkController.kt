@@ -14,7 +14,7 @@ import java.time.temporal.ChronoUnit
 import java.util.*
 
 @RestController
-@RequestMapping("/api/spaces/{spaceId}/shares")
+@RequestMapping("/spaces/{spaceId}/shares")
 class SharedLinkController(
     private val sharedLinkService: SharedLinkService,
     private val spaceRepository: SpaceRepository,
