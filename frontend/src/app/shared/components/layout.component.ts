@@ -181,7 +181,9 @@ import { GlobalSearchComponent } from './global-search.component';
       color: #78350f;
       font-size: 14px;
       font-weight: 500;
-      z-index: 101;
+      position: sticky;
+      top: 64px;
+      z-index: 99;
 
       .material-icons {
         font-size: 18px;
