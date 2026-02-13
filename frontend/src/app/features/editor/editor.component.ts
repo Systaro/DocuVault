@@ -16,6 +16,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
 import { AiService } from '../../core/api/ai.service';
@@ -255,7 +256,11 @@ import { marked } from 'marked';
                 </svg>
               </button>
             </div>
-            <img [src]="previewUrl()" [alt]="documentPath.split('/').pop()" class="preview-image" />
+            @if (previewType() === 'html') {
+              <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+            } @else {
+              <img [src]="previewUrl()" [alt]="documentPath.split('/').pop()" class="preview-image" />
+            }
           </div>
         </div>
       } @else {
@@ -354,6 +359,16 @@ import { marked } from 'marked';
       border-radius: 4px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
+
+    .preview-iframe {
+      width: 100%;
+      flex: 1;
+      min-height: calc(100vh - 160px);
+      border: none;
+      border-radius: 4px;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
   `]
 })
 export class EditorComponent implements OnInit, OnDestroy {
@@ -371,6 +386,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   private static readonly IMAGE_EXTENSIONS = new Set([
     'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
   ]);
+  private static readonly HTML_EXTENSIONS = new Set(['html', 'htm']);
 
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
@@ -384,7 +400,9 @@ export class EditorComponent implements OnInit, OnDestroy {
   showChat = signal(false);
   showShareDialog = signal(false);
   isPreviewFile = signal(false);
+  previewType = signal<'image' | 'html'>('image');
   previewUrl = signal('');
+  safePreviewUrl = signal<SafeResourceUrl>('');
 
   constructor(
     private route: ActivatedRoute,
@@ -392,7 +410,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     private documentsService: DocumentsService,
     private aiService: AiService,
     private gitService: GitService,
-    private authService: AuthService
+    private authService: AuthService,
+    private sanitizer: DomSanitizer
   ) {
     // Auto-save setup
     this.autoSave$.pipe(
@@ -422,10 +441,21 @@ export class EditorComponent implements OnInit, OnDestroy {
         const ext = path.split('.').pop()?.toLowerCase() || '';
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
           this.isPreviewFile.set(true);
+          this.previewType.set('image');
           this.loading.set(false);
           const space = this.space();
           if (space) {
             this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
+          }
+        } else if (EditorComponent.HTML_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.previewType.set('html');
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            const url = `/api/spaces/${space.id}/files/${path}`;
+            this.previewUrl.set(url);
+            this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
           }
         } else {
           this.isPreviewFile.set(false);
@@ -451,7 +481,11 @@ export class EditorComponent implements OnInit, OnDestroy {
       next: (space) => {
         this.space.set(space);
         if (this.isPreviewFile()) {
-          this.previewUrl.set(`/api/spaces/${space.id}/files/${this.documentPath}`);
+          const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
+          this.previewUrl.set(url);
+          if (this.previewType() === 'html') {
+            this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+          }
         } else if (this.documentPath) {
           this.loadDocument();
         }
