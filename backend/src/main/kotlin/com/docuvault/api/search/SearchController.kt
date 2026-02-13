@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
 import java.util.*
 
@@ -20,6 +21,7 @@ class SearchController(
     private val gitService: GitService
 ) {
     @GetMapping
+    @Transactional(readOnly = true)
     fun search(
         @RequestParam q: String,
         @RequestParam(defaultValue = "20") limit: Int,
