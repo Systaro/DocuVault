@@ -1,13 +1,14 @@
-import { Component } from '@angular/core';
+import { Component, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { GlobalSearchComponent } from './global-search.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
@@ -39,7 +40,7 @@ import { ThemeService } from '../../core/services/theme.service';
         </nav>
 
         <div class="header-actions">
-          <button class="icon-btn" title="Search">
+          <button class="icon-btn" title="Search (Ctrl+K)" (click)="showSearch.set(true)">
             <span class="material-icons">search</span>
           </button>
           <button class="icon-btn" title="Notifications">
@@ -80,6 +81,10 @@ import { ThemeService } from '../../core/services/theme.service';
       <main class="app-main">
         <ng-content></ng-content>
       </main>
+
+      @if (showSearch()) {
+        <app-global-search (close)="showSearch.set(false)" />
+      }
     </div>
   `,
   styles: [`
@@ -224,7 +229,17 @@ import { ThemeService } from '../../core/services/theme.service';
   `]
 })
 export class LayoutComponent {
+  showSearch = signal(false);
+
   constructor(public authService: AuthService, public themeService: ThemeService) {}
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      event.preventDefault();
+      this.showSearch.set(true);
+    }
+  }
 
   getInitials(name: string | undefined): string {
     if (!name) return '?';
