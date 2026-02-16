@@ -2,6 +2,7 @@ import { Component, Input, OnInit, OnChanges, SimpleChanges, signal } from '@ang
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
+import { CreateSpaceModalComponent } from '../../shared/components/create-space-modal.component';
 import { SpacesService, Space, SpaceType } from '../../core/api/spaces.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
@@ -14,7 +15,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-group',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent],
   template: `
     <app-layout>
       <div class="group-content">
@@ -139,6 +140,15 @@ interface BreadcrumbItem {
               </div>
             }
           </div>
+        }
+
+        @if (showCreateModal()) {
+          <app-create-space-modal
+            [type]="createType()"
+            [parentId]="group()!.id"
+            (close)="showCreateModal.set(false)"
+            (created)="onSpaceCreated($event)"
+          />
         }
       </div>
     </app-layout>
@@ -442,6 +452,8 @@ export class GroupComponent implements OnInit, OnChanges {
   children = signal<Space[]>([]);
   breadcrumbs = signal<BreadcrumbItem[]>([]);
   loading = signal(false);
+  showCreateModal = signal(false);
+  createType = signal<SpaceType>('REPOSITORY');
 
   constructor(
     private route: ActivatedRoute,
@@ -498,14 +510,17 @@ export class GroupComponent implements OnInit, OnChanges {
   }
 
   createSubgroup(): void {
-    // Navigate to dashboard with create modal open
-    // For now, show a toast - this would need a proper create modal
-    this.toastService.info('Create Subgroup', 'Use the dashboard to create a new subgroup');
-    this.router.navigate(['/dashboard']);
+    this.createType.set('GROUP');
+    this.showCreateModal.set(true);
   }
 
   createRepository(): void {
-    this.toastService.info('Create Repository', 'Use the dashboard to create a new repository');
-    this.router.navigate(['/dashboard']);
+    this.createType.set('REPOSITORY');
+    this.showCreateModal.set(true);
+  }
+
+  onSpaceCreated(space: Space): void {
+    this.showCreateModal.set(false);
+    this.loadChildren(this.group()!.id);
   }
 }
