@@ -102,6 +102,23 @@ class EmbeddingService(
         }
     }
 
+    fun findSimilarAcrossSpaces(spaceIds: List<UUID>, query: String, limit: Int = 10): List<CrossSpaceChunk> {
+        val queryEmbedding = generateEmbedding(query) ?: return emptyList()
+        val embeddingString = "[${queryEmbedding.joinToString(",")}]"
+
+        val results = documentEmbeddingRepository.findSimilarWithSpaceBySpaceIds(spaceIds, embeddingString, limit)
+        return results.map { row ->
+            CrossSpaceChunk(
+                documentId = row[1] as UUID,
+                documentPath = row[4] as String,
+                documentTitle = row[5] as String?,
+                chunkIndex = row[2] as Int,
+                content = row[3] as String,
+                spaceId = row[6] as UUID
+            )
+        }
+    }
+
     private fun resolveSpaceIds(spaceId: UUID): List<UUID> {
         val space = spaceRepository.findById(spaceId).orElse(null) ?: return listOf(spaceId)
         if (space.type != SpaceType.GROUP) return listOf(spaceId)
@@ -145,4 +162,13 @@ data class SimilarChunk(
     val documentTitle: String?,
     val chunkIndex: Int,
     val content: String
+)
+
+data class CrossSpaceChunk(
+    val documentId: UUID,
+    val documentPath: String,
+    val documentTitle: String?,
+    val chunkIndex: Int,
+    val content: String,
+    val spaceId: UUID
 )

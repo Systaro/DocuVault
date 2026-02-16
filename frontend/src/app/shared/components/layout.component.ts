@@ -55,9 +55,9 @@ import { GlobalSearchComponent } from './global-search.component';
             </a>
           }
           <div class="header-user">
-            <div class="avatar" [title]="authService.user()?.name || ''">
+            <a routerLink="/account" class="avatar" [title]="authService.user()?.name || ''">
               {{ getInitials(authService.user()?.name) }}
-            </div>
+            </a>
             <button (click)="authService.logout()" class="btn btn-ghost">
               <span class="material-icons">logout</span>
               Sign out

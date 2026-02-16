@@ -27,7 +27,8 @@ import com.docuvault.infrastructure.repository.UserRepository
 @EnableMethodSecurity
 class SecurityConfig(
     private val userDetailsService: UserDetailsService,
-    private val rateLimitFilter: RateLimitFilter
+    private val rateLimitFilter: RateLimitFilter,
+    private val apiTokenAuthFilter: ApiTokenAuthFilter
 ) {
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -47,6 +48,7 @@ class SecurityConfig(
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(apiTokenAuthFilter, RateLimitFilter::class.java)
 
         return http.build()
     }

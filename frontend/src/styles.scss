@@ -338,6 +338,13 @@ body {
   color: white;
   font-weight: 600;
   font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity var(--transition);
+
+  &:hover {
+    opacity: 0.85;
+  }
 }
 
 .avatar-sm {

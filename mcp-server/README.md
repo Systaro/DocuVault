@@ -1,0 +1,59 @@
+# DocuVault MCP Server
+
+An MCP (Model Context Protocol) server that gives Claude Code access to your DocuVault documentation. Search, browse, and read documentation directly from your coding environment.
+
+## Quick Start
+
+1. **Generate an API token** in DocuVault: go to Account > API Tokens > Create Token
+2. **Add to your project's `.mcp.json`:**
+
+```json
+{
+  "mcpServers": {
+    "docuvault": {
+      "command": "npx",
+      "args": ["-y", "@docuvault/mcp-server"],
+      "env": {
+        "DOCUVAULT_URL": "https://docuvault.systaro.de",
+        "DOCUVAULT_TOKEN": "dv_your-token-here"
+      }
+    }
+  }
+}
+```
+
+3. **Restart Claude Code** - DocuVault tools will appear automatically.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_documentation` | Semantic vector search across all accessible documentation |
+| `search_by_keyword` | Full-text keyword search by document title and path |
+| `read_document` | Read the full content of a specific document |
+| `list_spaces` | List all documentation spaces you have access to |
+| `list_documents` | List the file tree of a documentation space |
+
+## Configuration
+
+| Environment Variable | Required | Description |
+|---------------------|----------|-------------|
+| `DOCUVAULT_URL` | Yes | Your DocuVault instance URL |
+| `DOCUVAULT_TOKEN` | Yes | API token (starts with `dv_`) |
+
+## Troubleshooting
+
+**"Token validation failed"** - Your token may be expired or revoked. Generate a new one from Account > API Tokens.
+
+**"Missing required environment variables"** - Ensure both `DOCUVAULT_URL` and `DOCUVAULT_TOKEN` are set in your `.mcp.json` env block.
+
+**No search results** - Semantic search requires that documents have been processed for embeddings. Check that AI features are enabled in DocuVault admin settings.
+
+## Development
+
+```bash
+npm install
+npm run dev     # Run with tsx (hot reload)
+npm run build   # Compile TypeScript
+npm start       # Run compiled output
+```
