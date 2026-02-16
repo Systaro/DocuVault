@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { SharedLinksService, SharedFileMetadata } from '../../core/api/shared-links.service';
@@ -71,6 +71,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
       </main>
     </div>
   `,
+  encapsulation: ViewEncapsulation.None,
   styles: [`
     .public-viewer {
       min-height: 100vh;
@@ -174,6 +175,164 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
       background: white;
       border-radius: 8px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .markdown-container article {
+      color: #1f2937;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .markdown-container :is(h1, h2, h3, h4, h5, h6) {
+      color: #111827;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-top: 2em;
+      margin-bottom: 0.75em;
+    }
+
+    .markdown-container :is(h1, h2, h3, h4, h5, h6):first-child {
+      margin-top: 0;
+    }
+
+    .markdown-container h1 {
+      font-size: 2em;
+      padding-bottom: 0.3em;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .markdown-container h2 {
+      font-size: 1.5em;
+      padding-bottom: 0.25em;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .markdown-container h3 {
+      font-size: 1.25em;
+    }
+
+    .markdown-container h4 {
+      font-size: 1em;
+    }
+
+    .markdown-container p {
+      margin: 0 0 1em;
+    }
+
+    .markdown-container ul,
+    .markdown-container ol {
+      margin: 0 0 1em;
+      padding-left: 2em;
+    }
+
+    .markdown-container ul {
+      list-style-type: disc;
+    }
+
+    .markdown-container ol {
+      list-style-type: decimal;
+    }
+
+    .markdown-container li {
+      margin-bottom: 0.5em;
+    }
+
+    .markdown-container li > ul,
+    .markdown-container li > ol {
+      margin-top: 0.5em;
+      margin-bottom: 0;
+    }
+
+    .markdown-container code {
+      background: #f3f4f6;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      font-size: 0.875em;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      color: #d6336c;
+    }
+
+    .markdown-container pre {
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 16px 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 0 0 1em;
+      line-height: 1.6;
+    }
+
+    .markdown-container pre code {
+      background: none;
+      padding: 0;
+      border-radius: 0;
+      font-size: 0.875em;
+      color: inherit;
+    }
+
+    .markdown-container blockquote {
+      border-left: 4px solid #6fb3b8;
+      margin: 0 0 1em;
+      padding: 0.5em 1em;
+      color: #4b5563;
+      background: #f9fafb;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .markdown-container blockquote p:last-child {
+      margin-bottom: 0;
+    }
+
+    .markdown-container table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 1em;
+      font-size: 0.9em;
+    }
+
+    .markdown-container th,
+    .markdown-container td {
+      border: 1px solid #e5e7eb;
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    .markdown-container th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+
+    .markdown-container tr:nth-child(even) {
+      background: #f9fafb;
+    }
+
+    .markdown-container a {
+      color: #6fb3b8;
+      text-decoration: none;
+    }
+
+    .markdown-container a:hover {
+      text-decoration: underline;
+    }
+
+    .markdown-container strong {
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .markdown-container em {
+      font-style: italic;
+    }
+
+    .markdown-container hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 2em 0;
+    }
+
+    .markdown-container img {
+      max-width: 100%;
+      border-radius: 6px;
     }
 
     .html-container, .pdf-container {
