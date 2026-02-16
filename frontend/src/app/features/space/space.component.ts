@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnChanges, SimpleChanges, signal } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
@@ -59,7 +59,7 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
 
           <div class="browser-main">
             <!-- Sidebar -->
-            <aside class="sidebar">
+            <aside class="sidebar" [style.width.px]="sidebarWidth()">
               <div class="sidebar-header">
                 <span class="material-icons">folder_special</span>
                 Project Files
@@ -114,6 +114,13 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
                 </button>
               </div>
             </aside>
+
+            <!-- Resize Handle -->
+            <div
+              class="resize-handle"
+              (mousedown)="onResizeStart($event)"
+              (dblclick)="resetSidebarWidth()"
+            ></div>
 
             <!-- Main Content -->
             <main class="content-area">
@@ -300,12 +307,27 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
     }
 
     .sidebar {
-      width: 280px;
       background: var(--surface);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      min-width: 200px;
+      max-width: 500px;
+    }
+
+    .resize-handle {
+      width: 4px;
+      cursor: col-resize;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+      transition: background var(--transition);
+
+      &:hover,
+      &.resizing {
+        background: var(--primary);
+      }
     }
 
     .sidebar-header {
@@ -514,7 +536,11 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
     }
   `]
 })
-export class SpaceComponent implements OnInit, OnChanges {
+export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
+  private static readonly SIDEBAR_WIDTH_KEY = 'docuvault-sidebar-width';
+  private static readonly DEFAULT_WIDTH = 280;
+  private static readonly MIN_WIDTH = 200;
+  private static readonly MAX_WIDTH = 500;
   @Input() space!: Space;
   @Input() fullPath!: string;
 
@@ -528,6 +554,12 @@ export class SpaceComponent implements OnInit, OnChanges {
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
   shareFilePath = signal<string | null>(null);
   sharedFilePaths = signal<Set<string>>(new Set());
+  sidebarWidth = signal(
+    parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
+  );
+  private resizing = false;
+  private boundOnMouseMove = this.onResizeMove.bind(this);
+  private boundOnMouseUp = this.onResizeEnd.bind(this);
 
   constructor(
     private route: ActivatedRoute,
@@ -642,5 +674,45 @@ export class SpaceComponent implements OnInit, OnChanges {
         this.sharedFilePaths.set(activePaths);
       }
     });
+  }
+
+  onResizeStart(event: MouseEvent): void {
+    event.preventDefault();
+    this.resizing = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', this.boundOnMouseMove);
+    document.addEventListener('mouseup', this.boundOnMouseUp);
+  }
+
+  private onResizeMove(event: MouseEvent): void {
+    if (!this.resizing) return;
+    const sidebar = document.querySelector('.sidebar') as HTMLElement;
+    if (!sidebar) return;
+    const newWidth = Math.min(
+      SpaceComponent.MAX_WIDTH,
+      Math.max(SpaceComponent.MIN_WIDTH, event.clientX - sidebar.getBoundingClientRect().left)
+    );
+    this.sidebarWidth.set(newWidth);
+  }
+
+  private onResizeEnd(): void {
+    if (!this.resizing) return;
+    this.resizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', this.boundOnMouseMove);
+    document.removeEventListener('mouseup', this.boundOnMouseUp);
+    localStorage.setItem(SpaceComponent.SIDEBAR_WIDTH_KEY, String(this.sidebarWidth()));
+  }
+
+  resetSidebarWidth(): void {
+    this.sidebarWidth.set(SpaceComponent.DEFAULT_WIDTH);
+    localStorage.removeItem(SpaceComponent.SIDEBAR_WIDTH_KEY);
+  }
+
+  ngOnDestroy(): void {
+    document.removeEventListener('mousemove', this.boundOnMouseMove);
+    document.removeEventListener('mouseup', this.boundOnMouseUp);
   }
 }
