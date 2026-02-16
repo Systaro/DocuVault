@@ -1,12 +1,28 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DocuVaultClient } from './client.js';
+import type { Space } from './types.js';
 
-export function registerTools(server: McpServer, client: DocuVaultClient): void {
+function buildSpaceCatalog(spaces: Space[]): string {
+  const repoSpaces = spaces.filter(s => s.type === 'REPOSITORY');
+  if (repoSpaces.length === 0) return '';
+
+  const lines = repoSpaces.map(s => {
+    const docs = s.documentCount !== undefined ? ` (${s.documentCount} docs)` : '';
+    const desc = s.description ? ` - ${s.description}` : '';
+    return `  - ${s.name}${docs}${desc} [spaceId: ${s.id}]`;
+  });
+
+  return `\n\nAvailable documentation spaces:\n${lines.join('\n')}\n\nWhen the user asks about any of these projects or related topics, use this tool to find relevant documentation.`;
+}
+
+export function registerTools(server: McpServer, client: DocuVaultClient, spaces: Space[] = []): void {
+
+  const spaceCatalog = buildSpaceCatalog(spaces);
 
   server.tool(
     'search_documentation',
-    'Semantic vector search across all accessible DocuVault documentation. Returns relevant document chunks ranked by similarity.',
+    `Semantic vector search across all accessible DocuVault documentation. Returns relevant document chunks ranked by similarity.${spaceCatalog}`,
     {
       query: z.string().describe('The search query - can be a question or topic description'),
       spaceId: z.string().optional().describe('Optional: limit search to a specific space ID'),

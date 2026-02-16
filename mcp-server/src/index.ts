@@ -26,12 +26,22 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Fetch available spaces on startup for dynamic tool descriptions
+  let spaces: Awaited<ReturnType<typeof client.listSpaces>> = [];
+  try {
+    spaces = await client.listSpaces();
+    const repoSpaces = spaces.filter(s => s.type === 'REPOSITORY');
+    console.error(`Discovered ${repoSpaces.length} documentation spaces: ${repoSpaces.map(s => s.name).join(', ')}`);
+  } catch (error) {
+    console.error(`Warning: Could not fetch spaces for auto-discovery: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   const server = new McpServer({
     name: 'docuvault',
     version: '1.0.0',
   });
 
-  registerTools(server, client);
+  registerTools(server, client, spaces);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
