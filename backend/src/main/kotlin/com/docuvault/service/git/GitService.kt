@@ -81,6 +81,7 @@ class GitService(
         try {
             Git.open(repoDir).use { git ->
                 val result = git.pull()
+                    .setRemoteBranchName(space.branch)
                     .setCredentialsProvider(getCredentialsProvider())
                     .call()
 
