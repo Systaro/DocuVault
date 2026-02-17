@@ -16,6 +16,14 @@ function buildSpaceCatalog(spaces: Space[]): string {
   return `\n\nAvailable documentation spaces:\n${lines.join('\n')}\n\nWhen the user asks about any of these projects or related topics, use this tool to find relevant documentation.`;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveSpaceId(spaces: Space[], input: string): string | null {
+  if (UUID_REGEX.test(input)) return input;
+  const match = spaces.find(s => s.fullPath === input || s.slug === input || s.name === input);
+  return match?.id ?? null;
+}
+
 export function registerTools(server: McpServer, client: DocuVaultClient, spaces: Space[] = []): void {
 
   const spaceCatalog = buildSpaceCatalog(spaces);
@@ -30,7 +38,15 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
     },
     async ({ query, spaceId, limit }) => {
       try {
-        const results = await client.searchSemantic(query, spaceId, limit);
+        let resolvedSpaceId: string | undefined;
+        if (spaceId) {
+          const id = resolveSpaceId(spaces, spaceId);
+          if (!id) {
+            return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+          }
+          resolvedSpaceId = id;
+        }
+        const results = await client.searchSemantic(query, resolvedSpaceId, limit);
 
         if (results.length === 0) {
           return { content: [{ type: 'text', text: 'No results found.' }] };
@@ -85,7 +101,11 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
     },
     async ({ spaceId, path }) => {
       try {
-        const doc = await client.readDocument(spaceId, path);
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        const doc = await client.readDocument(resolvedId, path);
         const header = `# ${doc.title}\nPath: ${doc.path}\n\n`;
         return { content: [{ type: 'text', text: header + doc.content }] };
       } catch (error) {
@@ -130,7 +150,11 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
     },
     async ({ spaceId }) => {
       try {
-        const tree = await client.getFileTree(spaceId);
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        const tree = await client.getFileTree(resolvedId);
 
         if (tree.length === 0) {
           return { content: [{ type: 'text', text: 'No documents in this space.' }] };
