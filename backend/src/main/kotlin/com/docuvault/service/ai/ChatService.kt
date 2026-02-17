@@ -7,6 +7,7 @@ import com.aallam.openai.api.model.ModelId
 import com.docuvault.config.OpenAIProvider
 import com.docuvault.domain.ai.ChatHistory
 import com.docuvault.infrastructure.repository.ChatHistoryRepository
+import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.embedding.EmbeddingService
@@ -22,7 +23,8 @@ class ChatService(
     private val embeddingService: EmbeddingService,
     private val chatHistoryRepository: ChatHistoryRepository,
     private val userRepository: UserRepository,
-    private val spaceRepository: SpaceRepository
+    private val spaceRepository: SpaceRepository,
+    private val documentRepository: DocumentRepository
 ) {
     fun chat(
         userEmail: String,
@@ -58,8 +60,12 @@ class ChatService(
                 title = message.take(50)
             )
 
+        // Build space metadata for context
+        val documents = documentRepository.findBySpaceId(spaceId)
+        val spaceInfo = buildSpaceInfo(space, documents.map { it.title ?: it.path })
+
         // Build conversation messages
-        val messages = buildMessages(chatHistory, message, context)
+        val messages = buildMessages(chatHistory, message, context, spaceInfo)
 
         // Call OpenAI
         val response = runBlocking {
@@ -120,10 +126,23 @@ class ChatService(
         chatHistoryRepository.deleteById(chatHistoryId)
     }
 
+    private fun buildSpaceInfo(space: com.docuvault.domain.space.Space, documentTitles: List<String>): String {
+        val sb = StringBuilder()
+        sb.appendLine("Project: ${space.name}")
+        if (!space.description.isNullOrBlank()) {
+            sb.appendLine("Description: ${space.description}")
+        }
+        sb.appendLine("Branch: ${space.branch}")
+        sb.appendLine("Documents (${documentTitles.size}):")
+        documentTitles.forEach { sb.appendLine("  - $it") }
+        return sb.toString()
+    }
+
     private fun buildMessages(
         chatHistory: ChatHistory,
         newMessage: String,
-        context: String
+        context: String,
+        spaceInfo: String
     ): List<ChatMessage> {
         val messages = mutableListOf<ChatMessage>()
 
@@ -133,8 +152,11 @@ class ChatService(
                 role = ChatRole.System,
                 content = """You are a helpful documentation assistant for the "${chatHistory.space?.name ?: "documentation"}" project.
                 |
-                |Your job is to answer questions about the documentation based on the context provided.
-                |Be concise and helpful. If you don't know the answer based on the provided context, say so.
+                |Here is an overview of this project:
+                |$spaceInfo
+                |
+                |Your job is to answer questions about the documentation based on the project info and context provided.
+                |Be concise and helpful. If you don't have enough detail to answer a specific question, summarize what you do know about the project from the available documents.
                 |When referencing documentation, mention the source document.
                 |
                 |Context from relevant documents:
