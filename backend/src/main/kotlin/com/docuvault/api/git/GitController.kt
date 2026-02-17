@@ -3,6 +3,7 @@ package com.docuvault.api.git
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.SyncScheduler
 import com.docuvault.service.git.*
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -20,7 +21,8 @@ class GitController(
     private val gitService: GitService,
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val syncScheduler: SyncScheduler
 ) {
     private val logger = LoggerFactory.getLogger(GitController::class.java)
 
@@ -72,6 +74,7 @@ class GitController(
 
         return try {
             gitService.pullChanges(space)
+            syncScheduler.indexDocuments(space)
 
             // Update last synced timestamp and clear error
             space.lastSyncedAt = java.time.Instant.now()

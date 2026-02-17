@@ -56,7 +56,7 @@ class SyncScheduler(
         }
     }
 
-    private fun indexDocuments(space: Space) {
+    fun indexDocuments(space: Space) {
         val repoPath = gitService.getRepoPath(space.id!!)
         if (!Files.exists(repoPath)) return
 
