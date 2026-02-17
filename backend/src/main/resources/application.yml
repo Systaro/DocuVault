@@ -25,18 +25,17 @@ spring:
       password: ${SPRING_DATA_REDIS_PASSWORD:}
 
   mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:587}
+    host: ${MAIL_HOST:mailrelay.systaro.de}
+    port: ${MAIL_PORT:25}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
           auth: true
-          localhost: ${MAIL_SMTP_LOCALHOST:localhost}
+          localhost: ${MAIL_SMTP_LOCALHOST:docuvault.systaro.de}
           starttls:
-            enable: true
-            required: true
+            enable: false
 
 server:
   address: 0.0.0.0
