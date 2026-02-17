@@ -16,8 +16,8 @@ RUN ./gradlew dependencies --no-daemon
 # Copy source code
 COPY src src
 
-# Build the application
-RUN ./gradlew bootJar --no-daemon
+# Build the application (rm daemon files to avoid Kaniko snapshot race)
+RUN ./gradlew bootJar --no-daemon && rm -rf /root/.kotlin
 
 FROM eclipse-temurin:21-jre
 
