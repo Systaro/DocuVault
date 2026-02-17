@@ -33,160 +33,14 @@ import { marked } from 'marked';
   imports: [CommonModule, FormsModule, ShareLinkDialogComponent],
   template: `
     <div class="h-full flex flex-col">
+      <!-- TODO: Once the markdown saving is fixed, re-enable the toolbar and editing -->
       @if (!isPreviewFile()) {
-      <!-- Toolbar -->
+      <!-- Toolbar (read-only mode) -->
       <div class="border-b border-gray-200 bg-white px-4 py-2 flex items-center justify-between">
-        <div class="flex items-center gap-1">
-          <!-- Text formatting -->
-          <button
-            (click)="toggleBold()"
-            [class.bg-gray-200]="isActive('bold')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Bold"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleItalic()"
-            [class.bg-gray-200]="isActive('italic')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Italic"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 4h4m-2 0v16m4-16h-4m0 16h4"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleStrike()"
-            [class.bg-gray-200]="isActive('strike')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Strikethrough"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 10H3M21 14H3m4-4v8"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleCode()"
-            [class.bg-gray-200]="isActive('code')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Code"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
-            </svg>
-          </button>
-
-          <div class="w-px h-6 bg-gray-300 mx-2"></div>
-
-          <!-- Headings -->
-          <button
-            (click)="setHeading(1)"
-            [class.bg-gray-200]="isActive('heading', { level: 1 })"
-            class="p-2 rounded hover:bg-gray-100 text-sm font-bold"
-            title="Heading 1"
-          >
-            H1
-          </button>
-          <button
-            (click)="setHeading(2)"
-            [class.bg-gray-200]="isActive('heading', { level: 2 })"
-            class="p-2 rounded hover:bg-gray-100 text-sm font-bold"
-            title="Heading 2"
-          >
-            H2
-          </button>
-          <button
-            (click)="setHeading(3)"
-            [class.bg-gray-200]="isActive('heading', { level: 3 })"
-            class="p-2 rounded hover:bg-gray-100 text-sm font-bold"
-            title="Heading 3"
-          >
-            H3
-          </button>
-
-          <div class="w-px h-6 bg-gray-300 mx-2"></div>
-
-          <!-- Lists -->
-          <button
-            (click)="toggleBulletList()"
-            [class.bg-gray-200]="isActive('bulletList')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Bullet List"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleOrderedList()"
-            [class.bg-gray-200]="isActive('orderedList')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Ordered List"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleTaskList()"
-            [class.bg-gray-200]="isActive('taskList')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Task List"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
-            </svg>
-          </button>
-
-          <div class="w-px h-6 bg-gray-300 mx-2"></div>
-
-          <!-- Block types -->
-          <button
-            (click)="toggleBlockquote()"
-            [class.bg-gray-200]="isActive('blockquote')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Quote"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
-            </svg>
-          </button>
-          <button
-            (click)="toggleCodeBlock()"
-            [class.bg-gray-200]="isActive('codeBlock')"
-            class="p-2 rounded hover:bg-gray-100"
-            title="Code Block"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-            </svg>
-          </button>
-
-          <div class="w-px h-6 bg-gray-300 mx-2"></div>
-
-          <!-- AI Features -->
-          <button
-            (click)="showAiMenu.set(!showAiMenu())"
-            class="p-2 rounded hover:bg-gray-100 flex items-center gap-1"
-            title="AI Assistant"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-            <span class="text-sm">AI</span>
-          </button>
-        </div>
-
         <div class="flex items-center gap-2">
-          @if (saving()) {
-            <span class="text-sm text-gray-500">Saving...</span>
-          } @else if (lastSaved()) {
-            <span class="text-sm text-gray-500">Saved</span>
-          }
+          <span class="text-sm text-amber-600 font-medium">Read-only mode — editing temporarily disabled</span>
+        </div>
+        <div class="flex items-center gap-2">
           @if (documentPath) {
             <button
               (click)="showShareDialog.set(true)"
@@ -198,46 +52,9 @@ import { marked } from 'marked';
               </svg>
             </button>
           }
-          <button
-            (click)="saveAndCommit()"
-            [disabled]="!hasChanges() || saving()"
-            class="btn btn-primary text-sm"
-          >
-            Save & Commit
-          </button>
         </div>
       </div>
 
-      }
-
-      <!-- AI Menu Dropdown -->
-      @if (showAiMenu()) {
-        <div class="absolute top-16 left-4 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-48">
-          <button
-            (click)="aiAction('IMPROVE')"
-            class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
-          >
-            Improve writing
-          </button>
-          <button
-            (click)="aiAction('EXPAND')"
-            class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
-          >
-            Expand content
-          </button>
-          <button
-            (click)="aiAction('SUMMARIZE')"
-            class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
-          >
-            Summarize
-          </button>
-          <button
-            (click)="aiAction('FIX_GRAMMAR')"
-            class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded"
-          >
-            Fix grammar
-          </button>
-        </div>
       }
 
       @if (isPreviewFile()) {
@@ -275,12 +92,13 @@ import { marked } from 'marked';
                 </svg>
               </div>
             } @else {
-              <!-- Document Title -->
+              <!-- Document Title (read-only until markdown saving is fixed) -->
               <input
                 type="text"
                 [(ngModel)]="documentTitle"
                 placeholder="Untitled"
-                class="w-full text-3xl font-bold text-gray-900 border-none outline-none mb-6 bg-transparent"
+                readonly
+                class="w-full text-3xl font-bold text-gray-900 border-none outline-none mb-6 bg-transparent cursor-default"
               />
 
               <!-- TipTap Editor Container -->
@@ -413,11 +231,12 @@ export class EditorComponent implements OnInit, OnDestroy {
     private authService: AuthService,
     private sanitizer: DomSanitizer
   ) {
-    // Auto-save setup
-    this.autoSave$.pipe(
-      debounceTime(2000),
-      takeUntil(this.destroy$)
-    ).subscribe(() => this.saveDocument());
+    // TODO: Once the markdown saving is fixed, re-enable auto-save and editing
+    // Auto-save setup (disabled — saving currently destroys markdown)
+    // this.autoSave$.pipe(
+    //   debounceTime(2000),
+    //   takeUntil(this.destroy$)
+    // ).subscribe(() => this.saveDocument());
   }
 
   ngOnInit(): void {
@@ -548,8 +367,10 @@ export class EditorComponent implements OnInit, OnDestroy {
     const el = this.editorElement?.nativeElement;
     if (!el) return;
 
+    // TODO: Once the markdown saving is fixed, set editable back to true
     this.editor = new Editor({
       element: el,
+      editable: false,
       extensions: [
         StarterKit.configure({
           codeBlock: false
@@ -577,11 +398,12 @@ export class EditorComponent implements OnInit, OnDestroy {
         })
       ],
       content: htmlContent,
-      onUpdate: () => {
-        this.hasChanges.set(true);
-        this.lastSaved.set(false);
-        this.autoSave$.next();
-      }
+      // TODO: Once the markdown saving is fixed, re-enable onUpdate
+      // onUpdate: () => {
+      //   this.hasChanges.set(true);
+      //   this.lastSaved.set(false);
+      //   this.autoSave$.next();
+      // }
     });
   }
 
