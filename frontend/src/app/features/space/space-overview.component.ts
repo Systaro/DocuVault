@@ -102,19 +102,19 @@ import { AuthService } from '../../core/auth/auth.service';
                 <a
                   [routerLink]="['/spaces', space()?.fullPath, 'doc']"
                   [queryParams]="{ path: doc.path }"
-                  class="flex items-center justify-between p-4 hover:bg-gray-50"
+                  class="flex items-center justify-between gap-4 p-4 hover:bg-gray-50"
                 >
-                  <div class="flex items-center gap-3">
-                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <svg class="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    <div>
-                      <div class="font-medium text-gray-900">{{ doc.title || doc.path }}</div>
-                      <div class="text-sm text-gray-500">{{ doc.path }}</div>
+                    <div class="min-w-0">
+                      <div class="font-medium text-gray-900 truncate">{{ doc.title || doc.path }}</div>
+                      <div class="text-sm text-gray-500 truncate">{{ doc.path }}</div>
                     </div>
                   </div>
                   @if (doc.lastSyncedAt) {
-                    <div class="text-sm text-gray-500">
+                    <div class="text-sm text-gray-500 flex-shrink-0">
                       {{ formatDate(doc.lastSyncedAt) }}
                     </div>
                   }
