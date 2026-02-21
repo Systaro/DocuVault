@@ -17,7 +17,7 @@ RUN ./gradlew dependencies --no-daemon
 COPY src src
 
 # Build the application (rm daemon files to avoid Kaniko snapshot race)
-RUN ./gradlew bootJar --no-daemon && rm -rf /root/.kotlin
+RUN ./gradlew bootJar --no-daemon && rm -rf /root/.kotlin /tmp/hsperfdata_root
 
 FROM eclipse-temurin:21-jre
 
