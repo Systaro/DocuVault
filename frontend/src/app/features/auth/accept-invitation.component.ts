@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -46,7 +46,11 @@ import { UsersService } from '../../core/api/users.service';
             @if (error()) {
               <div class="error-message">
                 <span class="material-icons">error_outline</span>
-                {{ error() }}
+                <div class="error-text">
+                  @for (line of errorLines(); track line) {
+                    <span>{{ line }}</span>
+                  }
+                </div>
               </div>
             }
 
@@ -253,7 +257,7 @@ import { UsersService } from '../../core/api/users.service';
 
     .error-message {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
       padding: 12px 16px;
       background: rgba(244, 67, 54, 0.1);
@@ -265,6 +269,13 @@ import { UsersService } from '../../core/api/users.service';
 
       .material-icons {
         font-size: 20px;
+        margin-top: 1px;
+      }
+
+      .error-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
     }
 
@@ -318,6 +329,7 @@ export class AcceptInvitationComponent implements OnInit {
   showPassword = signal(false);
   loading = signal(false);
   error = signal<string | null>(null);
+  errorLines = computed(() => this.error()?.split('\n') ?? []);
   invalidToken = signal(false);
   success = signal(false);
 
@@ -361,6 +373,10 @@ export class AcceptInvitationComponent implements OnInit {
           this.invalidToken.set(true);
         } else if (err.status === 409) {
           this.error.set('An account with this email already exists.');
+        } else if (err.status === 400 && err.error?.errors?.length) {
+          this.error.set(err.error.errors.map((e: string) => e.replace(/^\w+:\s*/, '')).join('\n'));
+        } else if (err.error?.message) {
+          this.error.set(err.error.message);
         } else {
           this.error.set('Something went wrong. Please try again.');
         }
