@@ -67,7 +67,7 @@ import { AuthService } from '../../core/auth/auth.service';
                     {{ showPassword() ? 'visibility_off' : 'visibility' }}
                   </span>
                 </div>
-                <p class="hint">Min 10 characters with uppercase, lowercase, number, and special character</p>
+                <p class="hint">Min 8 characters with uppercase, lowercase, number, and special character</p>
               </div>
 
               <div class="form-group">
@@ -332,8 +332,8 @@ export class ResetPasswordComponent implements OnInit {
       return;
     }
 
-    if (this.password.length < 10) {
-      this.error.set('Password must be at least 10 characters.');
+    if (this.password.length < 8) {
+      this.error.set('Password must be at least 8 characters.');
       return;
     }
 
