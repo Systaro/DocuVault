@@ -71,6 +71,25 @@ class UserController(
         return ResponseEntity.ok(updated.toDto())
     }
 
+    @PostMapping("/me/change-password")
+    fun changePassword(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: ChangePasswordRequest
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!passwordEncoder.matches(request.currentPassword, user.passwordHash)) {
+            return ResponseEntity.badRequest().body(mapOf("errors" to listOf("Current password is incorrect")))
+        }
+
+        user.passwordHash = passwordEncoder.encode(request.newPassword)
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+
+        return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
     fun listUsers(): ResponseEntity<List<UserDto>> {
@@ -388,6 +407,19 @@ data class AcceptInvitationRequest(
         message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
     )
     val password: String
+)
+
+data class ChangePasswordRequest(
+    @field:NotBlank(message = "Current password is required")
+    val currentPassword: String,
+
+    @field:NotBlank(message = "New password is required")
+    @field:jakarta.validation.constraints.Size(min = 8, message = "Password must be at least 8 characters")
+    @field:jakarta.validation.constraints.Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{8,}$",
+        message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
+    )
+    val newPassword: String
 )
 
 data class UserSearchResult(

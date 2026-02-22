@@ -78,6 +78,10 @@ export class UsersService {
     return this.http.get<Invitation[]>('/api/users/invitations');
   }
 
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    return this.http.post<void>('/api/users/me/change-password', { currentPassword, newPassword });
+  }
+
   acceptInvitation(token: string, name: string, password: string): Observable<User> {
     return this.http.post<User>('/api/users/accept-invitation', {
       token,

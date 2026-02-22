@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/auth/auth.service';
 import { ApiTokensService, ApiToken } from '../../core/api/api-tokens.service';
+import { UsersService } from '../../core/api/users.service';
 import { LayoutComponent } from '../../shared/components/layout.component';
 
 @Component({
@@ -41,6 +42,89 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                 <span class="role-badge">{{ authService.user()?.role?.replace('_', ' ') }}</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Change Password Section -->
+        <div class="card">
+          <div class="card-header">
+            <span class="material-icons card-icon">lock</span>
+            <div>
+              <h2>Change Password</h2>
+              <p>Update your account password</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <form (ngSubmit)="changePassword()" class="password-form">
+              <div class="form-group">
+                <label for="currentPassword">Current Password</label>
+                <div class="password-input-wrapper">
+                  <input
+                    [type]="showCurrentPassword() ? 'text' : 'password'"
+                    id="currentPassword"
+                    [(ngModel)]="currentPassword"
+                    name="currentPassword"
+                    class="form-input full-width"
+                    placeholder="Enter current password"
+                    [disabled]="changingPassword()"
+                  />
+                  <button type="button" class="btn btn-ghost password-toggle" (click)="showCurrentPassword.set(!showCurrentPassword())">
+                    <span class="material-icons">{{ showCurrentPassword() ? 'visibility_off' : 'visibility' }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="newPassword">New Password</label>
+                <div class="password-input-wrapper">
+                  <input
+                    [type]="showNewPassword() ? 'text' : 'password'"
+                    id="newPassword"
+                    [(ngModel)]="newPassword"
+                    name="newPassword"
+                    class="form-input full-width"
+                    placeholder="Enter new password"
+                    [disabled]="changingPassword()"
+                  />
+                  <button type="button" class="btn btn-ghost password-toggle" (click)="showNewPassword.set(!showNewPassword())">
+                    <span class="material-icons">{{ showNewPassword() ? 'visibility_off' : 'visibility' }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="confirmPassword">Confirm New Password</label>
+                <div class="password-input-wrapper">
+                  <input
+                    [type]="showNewPassword() ? 'text' : 'password'"
+                    id="confirmPassword"
+                    [(ngModel)]="confirmPassword"
+                    name="confirmPassword"
+                    class="form-input full-width"
+                    placeholder="Confirm new password"
+                    [disabled]="changingPassword()"
+                  />
+                </div>
+              </div>
+              <p class="password-hint">Min 8 characters, with uppercase, lowercase, digit, and special character (&#64;$!%*?&amp;-_#)</p>
+              @if (passwordError()) {
+                <div class="form-error">{{ passwordError() }}</div>
+              }
+              @if (passwordSuccess()) {
+                <div class="form-success">
+                  <span class="material-icons">check_circle</span>
+                  {{ passwordSuccess() }}
+                </div>
+              }
+              <button
+                type="submit"
+                class="btn btn-primary"
+                [disabled]="!currentPassword || !newPassword || !confirmPassword || changingPassword()"
+              >
+                @if (changingPassword()) {
+                  <span class="material-icons animate-spin">sync</span>
+                }
+                Change Password
+              </button>
+            </form>
           </div>
         </div>
 
@@ -280,6 +364,63 @@ import { LayoutComponent } from '../../shared/components/layout.component';
       font-size: 13px !important;
       font-weight: 500;
       text-transform: capitalize;
+    }
+
+    .password-form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-md);
+      max-width: 420px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+
+      label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+    }
+
+    .password-input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .full-width {
+      width: 100%;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 4px;
+      padding: 4px;
+
+      .material-icons {
+        font-size: 20px;
+      }
+    }
+
+    .password-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .form-success {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      color: #16a34a;
+      font-size: 13px;
+
+      .material-icons {
+        font-size: 18px;
+      }
     }
 
     .create-token-form {
@@ -589,6 +730,15 @@ export class AccountComponent implements OnInit {
   copied = signal(false);
   mcpCopied = signal(false);
 
+  changingPassword = signal(false);
+  passwordError = signal<string | null>(null);
+  passwordSuccess = signal<string | null>(null);
+  showCurrentPassword = signal(false);
+  showNewPassword = signal(false);
+  currentPassword = '';
+  newPassword = '';
+  confirmPassword = '';
+
   newTokenName = '';
   newTokenExpiry: number | null = 90;
 
@@ -596,7 +746,8 @@ export class AccountComponent implements OnInit {
 
   constructor(
     public authService: AuthService,
-    private apiTokensService: ApiTokensService
+    private apiTokensService: ApiTokensService,
+    private usersService: UsersService
   ) {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://docuvault.systaro.de';
     this.mcpConfig = JSON.stringify({
@@ -672,6 +823,42 @@ export class AccountComponent implements OnInit {
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 2000);
     }
+  }
+
+  changePassword(): void {
+    this.passwordError.set(null);
+    this.passwordSuccess.set(null);
+
+    if (this.newPassword !== this.confirmPassword) {
+      this.passwordError.set('Passwords do not match');
+      return;
+    }
+
+    if (this.newPassword.length < 8) {
+      this.passwordError.set('Password must be at least 8 characters');
+      return;
+    }
+
+    this.changingPassword.set(true);
+
+    this.usersService.changePassword(this.currentPassword, this.newPassword).subscribe({
+      next: () => {
+        this.passwordSuccess.set('Password changed successfully');
+        this.currentPassword = '';
+        this.newPassword = '';
+        this.confirmPassword = '';
+        this.changingPassword.set(false);
+      },
+      error: (err) => {
+        const errors = err.error?.errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+          this.passwordError.set(errors.join(', '));
+        } else {
+          this.passwordError.set(err.error?.message || 'Failed to change password');
+        }
+        this.changingPassword.set(false);
+      }
+    });
   }
 
   copyMcpConfig(): void {
