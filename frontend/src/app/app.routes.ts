@@ -56,6 +56,10 @@ export const routes: Routes = [
           {
             path: 'doc',
             loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          },
+          {
+            path: 'chat',
+            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
           }
         ]
       },
@@ -74,6 +78,10 @@ export const routes: Routes = [
           {
             path: 'doc',
             loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          },
+          {
+            path: 'chat',
+            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
           }
         ]
       },
@@ -92,6 +100,10 @@ export const routes: Routes = [
           {
             path: 'doc',
             loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+          },
+          {
+            path: 'chat',
+            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
           }
         ]
       }

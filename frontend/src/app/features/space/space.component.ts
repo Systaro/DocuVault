@@ -4,14 +4,13 @@ import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, Nav
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
-import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ChatSidebarComponent, ShareLinkDialogComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -76,14 +75,14 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
                   <span class="material-icons">home</span>
                   Overview
                 </a>
-                <button
-                  (click)="showChat.set(!showChat())"
+                <a
+                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'chat']"
+                  routerLinkActive="active"
                   class="nav-item"
-                  [class.active]="showChat()"
                 >
                   <span class="material-icons">auto_awesome</span>
                   AI Chat
-                </button>
+                </a>
                 <a
                   [routerLink]="['/spaces', spaceSignal()?.fullPath, 'settings']"
                   routerLinkActive="active"
@@ -128,10 +127,6 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
             </main>
           </div>
         </div>
-
-        @if (showChat()) {
-          <app-chat-sidebar [spaceId]="spaceSignal()!.id" (close)="showChat.set(false)"></app-chat-sidebar>
-        }
 
         @if (shareFilePath() && spaceSignal()) {
           <app-share-link-dialog
@@ -547,7 +542,6 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   spaceSignal = signal<Space | null>(null);
   fileTree = signal<FileNode[]>([]);
   loading = signal(false);
-  showChat = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
   currentDocPath = signal<string | null>(null);
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);

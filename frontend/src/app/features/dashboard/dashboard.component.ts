@@ -2,7 +2,6 @@ import { Component, HostListener, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
-import { ChatSidebarComponent } from '../ai/chat-sidebar.component';
 import { CreateSpaceModalComponent } from '../../shared/components/create-space-modal.component';
 import { SpacesService, Space, SpaceType } from '../../core/api/spaces.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -18,7 +17,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent, ChatSidebarComponent, CreateSpaceModalComponent, QuickShareDialogComponent],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -273,7 +272,7 @@ interface BreadcrumbItem {
         </div>
 
         <!-- Floating AI Button -->
-        @if (!showChat()) {
+        @if (!showSpacePicker()) {
           <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
             <span class="material-icons">auto_awesome</span>
           </button>
@@ -290,7 +289,7 @@ interface BreadcrumbItem {
               </div>
               <div class="space-picker-list">
                 @for (space of spaces(); track space.id) {
-                  <button class="space-picker-item" (click)="selectSpaceForChat(space.id)">
+                  <button class="space-picker-item" (click)="selectSpaceForChat(space)">
                     @if (space.logoUrl) {
                       <img [src]="space.logoUrl" [alt]="space.name" class="space-picker-logo" />
                     } @else if (space.type === 'GROUP') {
@@ -317,9 +316,6 @@ interface BreadcrumbItem {
           </div>
         }
 
-        @if (showChat()) {
-          <app-chat-sidebar [spaceId]="selectedSpaceId()!" (close)="showChat.set(false)"></app-chat-sidebar>
-        }
       </div>
 
       <!-- Create Space Modal -->
@@ -1039,9 +1035,7 @@ export class DashboardComponent implements OnInit {
   showDeleteConfirm = signal(false);
   spaceToDelete = signal<Space | null>(null);
   deleting = signal(false);
-  showChat = signal(false);
   showSpacePicker = signal(false);
-  selectedSpaceId = signal<string | null>(null);
   showCreateModal = signal(false);
 
   // Share dialog state
@@ -1125,23 +1119,22 @@ export class DashboardComponent implements OnInit {
   }
 
   onAiFabClick(): void {
-    if (this.showChat()) {
-      this.showChat.set(false);
-      return;
-    }
     const allSpaces = this.spaces();
     if (allSpaces.length === 0) return;
     if (allSpaces.length === 1) {
-      this.selectSpaceForChat(allSpaces[0].id);
+      this.navigateToChat(allSpaces[0]);
       return;
     }
     this.showSpacePicker.set(true);
   }
 
-  selectSpaceForChat(spaceId: string): void {
-    this.selectedSpaceId.set(spaceId);
+  selectSpaceForChat(space: Space): void {
     this.showSpacePicker.set(false);
-    this.showChat.set(true);
+    this.navigateToChat(space);
+  }
+
+  private navigateToChat(space: Space): void {
+    this.router.navigate(['/spaces', space.fullPath, 'chat']);
   }
 
   closeModal(): void {
