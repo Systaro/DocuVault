@@ -24,7 +24,9 @@ data class SharedLinkDto(
 data class SharedFileMetadataDto(
     val fileName: String,
     val extension: String,
-    val contentType: String
+    val contentType: String,
+    val spaceName: String,
+    val filePath: String
 )
 
 fun SharedLink.toDto() = SharedLinkDto(

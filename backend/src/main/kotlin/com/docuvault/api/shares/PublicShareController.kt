@@ -28,7 +28,13 @@ class PublicShareController(
         val extension = fileName.substringAfterLast('.', "")
         val contentType = getContentType(extension)
 
-        return ResponseEntity.ok(SharedFileMetadataDto(fileName, extension, contentType))
+        return ResponseEntity.ok(SharedFileMetadataDto(
+            fileName = fileName,
+            extension = extension,
+            contentType = contentType,
+            spaceName = link.space.name,
+            filePath = link.filePath
+        ))
     }
 
     @GetMapping("/{token}/content")
@@ -115,6 +121,52 @@ class PublicShareController(
             .contentType(MediaType.parseMediaType(contentType))
             .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
             .body(bytes)
+    }
+
+    @GetMapping("/{token}/og")
+    fun getOgPreview(
+        @PathVariable token: String,
+        request: HttpServletRequest
+    ): ResponseEntity<String> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.TEXT_HTML)
+                .body("<html><head><title>Link Not Available</title></head><body><p>This shared link is no longer available.</p></body></html>")
+
+        val fileName = link.filePath.substringAfterLast('/')
+        val spaceName = link.space.name
+        val breadcrumb = link.filePath.replace("/", " / ")
+        val description = "$fileName - shared from $spaceName on DocuVault"
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
+        val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
+        val shareUrl = "$scheme://$host/share/$token"
+
+        val html = """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8">
+                <title>$fileName - $spaceName | DocuVault</title>
+                <meta name="description" content="$description">
+                <meta property="og:title" content="$fileName - $spaceName">
+                <meta property="og:description" content="$breadcrumb">
+                <meta property="og:type" content="article">
+                <meta property="og:url" content="$shareUrl">
+                <meta property="og:site_name" content="DocuVault">
+                <meta name="twitter:card" content="summary">
+                <meta name="twitter:title" content="$fileName - $spaceName">
+                <meta name="twitter:description" content="$breadcrumb">
+                <meta http-equiv="refresh" content="0;url=$shareUrl">
+            </head>
+            <body>
+                <p>Redirecting to <a href="$shareUrl">$fileName</a>...</p>
+            </body>
+            </html>
+        """.trimIndent()
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.TEXT_HTML)
+            .body(html)
     }
 
     private fun getContentType(extension: String): String = when (extension.lowercase()) {

@@ -18,6 +18,8 @@ export interface SharedFileMetadata {
   fileName: string;
   extension: string;
   contentType: string;
+  spaceName: string;
+  filePath: string;
 }
 
 export interface CreateShareLinkRequest {

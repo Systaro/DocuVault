@@ -1,9 +1,9 @@
-import { Component, OnInit, signal, ViewEncapsulation } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { SharedLinksService, SharedFileMetadata } from '../../core/api/shared-links.service';
 import { marked } from 'marked';
-import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
 
 @Component({
   selector: 'app-public-viewer',
@@ -17,8 +17,15 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
           <span class="brand-icon material-icons">menu_book</span>
           <span class="brand-name">DocuVault</span>
         </div>
-        @if (metadata()) {
-          <div class="header-filename">{{ metadata()!.fileName }}</div>
+        @if (breadcrumbSegments().length) {
+          <nav class="header-breadcrumb" aria-label="File location">
+            @for (segment of breadcrumbSegments(); track segment.label; let last = $last) {
+              <span class="breadcrumb-segment" [class.breadcrumb-current]="last">{{ segment.label }}</span>
+              @if (!last) {
+                <span class="breadcrumb-separator material-icons">chevron_right</span>
+              }
+            }
+          </nav>
         }
       </header>
 
@@ -103,11 +110,36 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
       font-size: 24px;
     }
 
-    .header-filename {
-      font-size: 14px;
-      color: #6b7280;
+    .header-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 4px;
       padding-left: 16px;
       border-left: 1px solid #e5e7eb;
+      font-size: 14px;
+      color: #6b7280;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .breadcrumb-segment {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      flex-shrink: 1;
+    }
+
+    .breadcrumb-current {
+      color: #374151;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .breadcrumb-separator {
+      font-size: 18px;
+      color: #d1d5db;
+      flex-shrink: 0;
     }
 
     .viewer-content {
@@ -364,7 +396,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-brows
     }
   `]
 })
-export class PublicViewerComponent implements OnInit {
+export class PublicViewerComponent implements OnInit, OnDestroy {
   token = '';
   metadata = signal<SharedFileMetadata | null>(null);
   loading = signal(true);
@@ -374,10 +406,22 @@ export class PublicViewerComponent implements OnInit {
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
 
+  breadcrumbSegments = computed(() => {
+    const meta = this.metadata();
+    if (!meta) return [];
+    const parts = meta.filePath.split('/').filter(p => p.length > 0);
+    return [
+      { label: meta.spaceName },
+      ...parts.map(p => ({ label: p }))
+    ];
+  });
+
   constructor(
     private route: ActivatedRoute,
     private sharedLinksService: SharedLinksService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private titleService: Title,
+    private metaService: Meta
   ) {}
 
   ngOnInit(): void {
@@ -394,6 +438,7 @@ export class PublicViewerComponent implements OnInit {
     this.sharedLinksService.getSharedFileMetadata(this.token).subscribe({
       next: (meta) => {
         this.metadata.set(meta);
+        this.setPageMeta(meta);
         this.determineRenderMode(meta);
       },
       error: () => {
@@ -401,6 +446,38 @@ export class PublicViewerComponent implements OnInit {
         this.loading.set(false);
       }
     });
+  }
+
+  ngOnDestroy(): void {
+    this.titleService.setTitle('DocuVault');
+    this.metaService.removeTag('name="description"');
+    this.metaService.removeTag('property="og:title"');
+    this.metaService.removeTag('property="og:description"');
+    this.metaService.removeTag('property="og:type"');
+    this.metaService.removeTag('property="og:url"');
+    this.metaService.removeTag('property="og:site_name"');
+    this.metaService.removeTag('name="twitter:card"');
+    this.metaService.removeTag('name="twitter:title"');
+    this.metaService.removeTag('name="twitter:description"');
+  }
+
+  private setPageMeta(meta: SharedFileMetadata): void {
+    const pageTitle = `${meta.fileName} - ${meta.spaceName} | DocuVault`;
+    const description = `${meta.fileName} - shared from ${meta.spaceName} on DocuVault`;
+    const breadcrumb = meta.filePath.replace(/\//g, ' / ');
+    const shareUrl = window.location.href;
+
+    this.titleService.setTitle(pageTitle);
+
+    this.metaService.updateTag({ name: 'description', content: description });
+    this.metaService.updateTag({ property: 'og:title', content: `${meta.fileName} - ${meta.spaceName}` });
+    this.metaService.updateTag({ property: 'og:description', content: breadcrumb });
+    this.metaService.updateTag({ property: 'og:type', content: 'article' });
+    this.metaService.updateTag({ property: 'og:url', content: shareUrl });
+    this.metaService.updateTag({ property: 'og:site_name', content: 'DocuVault' });
+    this.metaService.updateTag({ name: 'twitter:card', content: 'summary' });
+    this.metaService.updateTag({ name: 'twitter:title', content: `${meta.fileName} - ${meta.spaceName}` });
+    this.metaService.updateTag({ name: 'twitter:description', content: breadcrumb });
   }
 
   private determineRenderMode(meta: SharedFileMetadata): void {
