@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation } fro
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { SharedLinksService, SharedFileMetadata } from '../../core/api/shared-links.service';
-import { marked } from 'marked';
+import { marked, Renderer } from 'marked';
 import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
 
 @Component({
@@ -46,7 +46,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
             <p>{{ error() }}</p>
           </div>
         } @else if (renderMode() === 'markdown') {
-          <div class="markdown-container">
+          <div class="markdown-container" (click)="onMarkdownClick($event)">
             <article class="prose prose-lg max-w-none" [innerHTML]="renderedHtml()"></article>
           </div>
         } @else if (renderMode() === 'html') {
@@ -461,6 +461,24 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.metaService.removeTag('name="twitter:description"');
   }
 
+  onMarkdownClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    const anchor = target.closest('a');
+    if (!anchor) return;
+
+    const href = anchor.getAttribute('href');
+    if (href && href.startsWith('#')) {
+      event.preventDefault();
+      const id = href.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+      // Update URL hash without triggering Angular router
+      history.replaceState(null, '', window.location.pathname + href);
+    }
+  }
+
   private setPageMeta(meta: SharedFileMetadata): void {
     const pageTitle = `${meta.fileName} - ${meta.spaceName} | DocuVault`;
     const description = `${meta.fileName} - shared from ${meta.spaceName} on DocuVault`;
@@ -504,7 +522,12 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   private loadMarkdownContent(): void {
     this.sharedLinksService.getSharedFileContent(this.token).subscribe({
       next: (content) => {
-        let html = marked.parse(content) as string;
+        const renderer = new Renderer();
+        renderer.heading = (text: string, level: number, raw: string) => {
+          const id = raw.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').trim();
+          return `<h${level} id="${id}">${text}</h${level}>\n`;
+        };
+        let html = marked.parse(content, { renderer }) as string;
         // Rewrite relative image paths to use the shared files endpoint
         html = html.replace(
           /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
