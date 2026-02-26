@@ -17,8 +17,8 @@ import { AuthService } from '../../core/auth/auth.service';
         <!-- Header -->
         <div class="flex justify-between items-start mb-8">
           <div>
-            <h1 class="text-2xl font-bold text-gray-900">{{ space()?.name }}</h1>
-            <p class="text-gray-600 mt-1">{{ space()?.description || 'No description' }}</p>
+            <h1 class="text-2xl font-bold overview-text-primary">{{ space()?.name }}</h1>
+            <p class="overview-text-secondary mt-1">{{ space()?.description || 'No description' }}</p>
           </div>
           <div class="flex gap-2">
             @if (space()?.gitlabUrl) {
@@ -63,32 +63,32 @@ import { AuthService } from '../../core/auth/auth.service';
         <!-- Stats -->
         <div class="grid grid-cols-3 gap-4 mb-8">
           <div class="card p-4">
-            <div class="text-2xl font-bold text-gray-900">{{ documents().length }}</div>
-            <div class="text-sm text-gray-600">Documents</div>
+            <div class="text-2xl font-bold overview-text-primary">{{ documents().length }}</div>
+            <div class="text-sm overview-text-secondary">Documents</div>
           </div>
           <div class="card p-4">
-            <div class="text-2xl font-bold text-gray-900">{{ space()?.branch || 'N/A' }}</div>
-            <div class="text-sm text-gray-600">Branch</div>
+            <div class="text-2xl font-bold overview-text-primary">{{ space()?.branch || 'N/A' }}</div>
+            <div class="text-sm overview-text-secondary">Branch</div>
           </div>
           <div class="card p-4">
-            <div class="text-2xl font-bold text-gray-900">
+            <div class="text-2xl font-bold overview-text-primary">
               {{ space()?.lastSyncedAt ? formatDate(space()!.lastSyncedAt!) : 'Never' }}
             </div>
-            <div class="text-sm text-gray-600">Last Synced</div>
+            <div class="text-sm overview-text-secondary">Last Synced</div>
           </div>
         </div>
 
         <!-- Recent Documents -->
         <div class="card">
-          <div class="p-4 border-b border-gray-200">
-            <h2 class="font-semibold text-gray-900">Recent Documents</h2>
+          <div class="p-4 overview-section-header">
+            <h2 class="font-semibold overview-text-primary">Recent Documents</h2>
           </div>
           @if (documents().length === 0) {
             <div class="p-8 text-center">
-              <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-12 h-12 mx-auto overview-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
               </svg>
-              <p class="text-gray-600">No documents yet</p>
+              <p class="overview-text-secondary">No documents yet</p>
               <a
                 [routerLink]="['/spaces', space()?.fullPath, 'doc']"
                 class="btn btn-primary mt-4 inline-flex"
@@ -97,24 +97,24 @@ import { AuthService } from '../../core/auth/auth.service';
               </a>
             </div>
           } @else {
-            <div class="divide-y divide-gray-200">
+            <div class="overview-doc-list">
               @for (doc of documents().slice(0, 10); track doc.id) {
                 <a
                   [routerLink]="['/spaces', space()?.fullPath, 'doc']"
                   [queryParams]="{ path: doc.path }"
-                  class="flex items-center justify-between gap-4 p-4 hover:bg-gray-50"
+                  class="overview-doc-item flex items-center justify-between gap-4 p-4"
                 >
                   <div class="flex items-center gap-3 min-w-0">
-                    <svg class="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 flex-shrink-0 overview-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                     <div class="min-w-0">
-                      <div class="font-medium text-gray-900 truncate">{{ doc.title || doc.path }}</div>
-                      <div class="text-sm text-gray-500 truncate">{{ doc.path }}</div>
+                      <div class="font-medium overview-text-primary truncate">{{ doc.title || doc.path }}</div>
+                      <div class="text-sm overview-text-muted truncate">{{ doc.path }}</div>
                     </div>
                   </div>
                   @if (doc.lastSyncedAt) {
-                    <div class="text-sm text-gray-500 flex-shrink-0">
+                    <div class="text-sm overview-text-muted flex-shrink-0">
                       {{ formatDate(doc.lastSyncedAt) }}
                     </div>
                   }
@@ -127,6 +127,37 @@ import { AuthService } from '../../core/auth/auth.service';
     </div>
   `,
   styles: [`
+    .overview-text-primary {
+      color: var(--text-primary);
+    }
+
+    .overview-text-secondary {
+      color: var(--text-secondary);
+    }
+
+    .overview-text-muted {
+      color: var(--text-muted);
+    }
+
+    .overview-section-header {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .overview-doc-list {
+      & > * + * {
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    .overview-doc-item {
+      text-decoration: none;
+      transition: background var(--transition-fast);
+
+      &:hover {
+        background: var(--background);
+      }
+    }
+
     .sync-error-alert {
       display: flex;
       align-items: center;
