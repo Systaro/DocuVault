@@ -36,7 +36,7 @@ import { marked } from 'marked';
       <!-- TODO: Once the markdown saving is fixed, re-enable the toolbar and editing -->
       @if (!isPreviewFile()) {
       <!-- Toolbar (read-only mode) -->
-      <div class="border-b border-gray-200 bg-white px-4 py-2 flex items-center justify-between">
+      <div class="editor-toolbar">
         <div class="flex items-center gap-2">
           <span class="text-sm text-amber-600 font-medium">Read-only mode — editing temporarily disabled</span>
         </div>
@@ -45,10 +45,10 @@ import { marked } from 'marked';
             <div class="relative">
               <button
                 (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
-                class="p-2 rounded hover:bg-gray-100"
+                class="editor-icon-btn"
                 title="Actions"
               >
-                <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="5" r="2"/>
                   <circle cx="12" cy="12" r="2"/>
                   <circle cx="12" cy="19" r="2"/>
@@ -88,10 +88,10 @@ import { marked } from 'marked';
               <div class="relative">
                 <button
                   (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
-                  class="p-2 rounded hover:bg-gray-100"
+                  class="editor-icon-btn"
                   title="Actions"
                 >
-                  <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                     <circle cx="12" cy="5" r="2"/>
                     <circle cx="12" cy="12" r="2"/>
                     <circle cx="12" cy="19" r="2"/>
@@ -142,7 +142,7 @@ import { marked } from 'marked';
                 [(ngModel)]="documentTitle"
                 placeholder="Untitled"
                 readonly
-                class="w-full text-3xl font-bold text-gray-900 border-none outline-none mb-6 bg-transparent cursor-default"
+                class="editor-title"
               />
 
               <!-- TipTap Editor Container -->
@@ -185,13 +185,49 @@ import { marked } from 'marked';
       background: var(--background-darker);
     }
 
+    .editor-toolbar {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .editor-icon-btn {
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+
+      &:hover {
+        background: var(--background);
+      }
+    }
+
+    .editor-title {
+      width: 100%;
+      font-size: 1.875rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      border: none;
+      outline: none;
+      margin-bottom: 24px;
+      background: transparent;
+      cursor: default;
+    }
+
     .paper {
-      background: white;
+      background: var(--surface);
       min-height: calc(100vh - 120px);
       margin-top: 24px;
       margin-bottom: 24px;
       border-radius: 4px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+      box-shadow: var(--shadow-sm);
     }
 
     .preview-container {
@@ -210,7 +246,7 @@ import { marked } from 'marked';
 
     .preview-filename {
       font-size: 0.875rem;
-      color: #6b7280;
+      color: var(--text-muted);
       font-weight: 500;
     }
 
@@ -219,7 +255,7 @@ import { marked } from 'marked';
       max-height: calc(100vh - 160px);
       object-fit: contain;
       border-radius: 4px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      box-shadow: var(--shadow-sm);
     }
 
     .preview-iframe {
@@ -228,8 +264,8 @@ import { marked } from 'marked';
       min-height: calc(100vh - 160px);
       border: none;
       border-radius: 4px;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
     }
 
     .action-menu {
@@ -237,10 +273,10 @@ import { marked } from 'marked';
       right: 0;
       top: 100%;
       margin-top: 4px;
-      background: white;
-      border: 1px solid #e5e7eb;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      box-shadow: var(--shadow-lg);
       min-width: 200px;
       z-index: 50;
       padding: 4px;
@@ -253,7 +289,7 @@ import { marked } from 'marked';
       width: 100%;
       padding: 8px 12px;
       font-size: 0.875rem;
-      color: #374151;
+      color: var(--text-primary);
       border: none;
       background: none;
       border-radius: 6px;
@@ -263,7 +299,7 @@ import { marked } from 'marked';
     }
 
     .action-menu-item:hover {
-      background: #f3f4f6;
+      background: var(--background);
     }
   `]
 })
