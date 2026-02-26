@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -42,15 +42,37 @@ import { marked } from 'marked';
         </div>
         <div class="flex items-center gap-2">
           @if (documentPath) {
-            <button
-              (click)="showShareDialog.set(true)"
-              class="p-2 rounded hover:bg-gray-100"
-              title="Share file"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
-              </svg>
-            </button>
+            <div class="relative">
+              <button
+                (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
+                class="p-2 rounded hover:bg-gray-100"
+                title="Actions"
+              >
+                <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="5" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+              @if (showActionMenu()) {
+                <div class="action-menu">
+                  <button class="action-menu-item" (click)="showShareDialog.set(true); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                    </svg>
+                    Create a public share
+                  </button>
+                  @if (getGitUrl()) {
+                    <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                      {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
           }
         </div>
       </div>
@@ -63,15 +85,37 @@ import { marked } from 'marked';
           <div class="preview-container">
             <div class="preview-header">
               <div class="preview-filename">{{ documentPath.split('/').pop() }}</div>
-              <button
-                (click)="showShareDialog.set(true)"
-                class="p-2 rounded hover:bg-gray-100"
-                title="Share file"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
-                </svg>
-              </button>
+              <div class="relative">
+                <button
+                  (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
+                  class="p-2 rounded hover:bg-gray-100"
+                  title="Actions"
+                >
+                  <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="5" r="2"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <circle cx="12" cy="19" r="2"/>
+                  </svg>
+                </button>
+                @if (showActionMenu()) {
+                  <div class="action-menu">
+                    <button class="action-menu-item" (click)="showShareDialog.set(true); showActionMenu.set(false)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                      </svg>
+                      Create a public share
+                    </button>
+                    @if (getGitUrl()) {
+                      <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                        </svg>
+                        {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
             </div>
             @if (previewType() === 'html') {
               <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -187,6 +231,40 @@ import { marked } from 'marked';
       background: white;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
+
+    .action-menu {
+      position: absolute;
+      right: 0;
+      top: 100%;
+      margin-top: 4px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      min-width: 200px;
+      z-index: 50;
+      padding: 4px;
+    }
+
+    .action-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 0.875rem;
+      color: #374151;
+      border: none;
+      background: none;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      text-align: left;
+    }
+
+    .action-menu-item:hover {
+      background: #f3f4f6;
+    }
   `]
 })
 export class EditorComponent implements OnInit, OnDestroy {
@@ -217,6 +295,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   showAiMenu = signal(false);
   showChat = signal(false);
   showShareDialog = signal(false);
+  showActionMenu = signal(false);
+  gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html'>('image');
   previewUrl = signal('');
@@ -237,6 +317,26 @@ export class EditorComponent implements OnInit, OnDestroy {
     //   debounceTime(2000),
     //   takeUntil(this.destroy$)
     // ).subscribe(() => this.saveDocument());
+  }
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.showActionMenu.set(false);
+  }
+
+  getGitUrl(): string | null {
+    const s = this.space();
+    if (!s?.gitlabUrl || !this.documentPath) return null;
+    const base = s.gitlabUrl.replace(/\/+$/, '');
+    return `${base}/-/blob/${s.branch}/${this.documentPath}`;
+  }
+
+  copyGitLink(): void {
+    const url = this.getGitUrl();
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    this.gitLinkCopied.set(true);
+    setTimeout(() => this.gitLinkCopied.set(false), 2000);
   }
 
   ngOnInit(): void {
