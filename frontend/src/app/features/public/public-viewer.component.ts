@@ -528,10 +528,16 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
           return `<h${level} id="${id}">${text}</h${level}>\n`;
         };
         let html = marked.parse(content, { renderer }) as string;
-        // Rewrite relative image paths to use the shared files endpoint
+        // Rewrite relative image paths to use the shared files endpoint,
+        // resolving ../ segments against the document's directory
+        const filePath = this.metadata()?.filePath || '';
+        const docDir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
         html = html.replace(
           /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
-          `$1/api/shared/${this.token}/files/$2$3`
+          (_match, pre, src, post) => {
+            const resolved = this.resolveRelativePath(docDir + src);
+            return `${pre}/api/shared/${this.token}/files/${resolved}${post}`;
+          }
         );
         this.renderedHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
         this.loading.set(false);
@@ -541,6 +547,19 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       }
     });
+  }
+
+  private resolveRelativePath(path: string): string {
+    const parts = path.split('/');
+    const resolved: string[] = [];
+    for (const part of parts) {
+      if (part === '..') {
+        resolved.pop();
+      } else if (part !== '.' && part !== '') {
+        resolved.push(part);
+      }
+    }
+    return resolved.join('/');
   }
 
 }
