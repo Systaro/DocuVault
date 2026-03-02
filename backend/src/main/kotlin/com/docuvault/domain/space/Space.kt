@@ -55,6 +55,9 @@ data class Space(
     @Column(name = "last_sync_error", length = 1000)
     var lastSyncError: String? = null,
 
+    @Column(name = "last_sync_files_changed")
+    var lastSyncFilesChanged: Int? = null,
+
     @Column(name = "logo_url", length = 500)
     var logoUrl: String? = null,
 

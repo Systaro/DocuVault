@@ -74,11 +74,12 @@ class GitController(
 
         return try {
             gitService.pullChanges(space)
-            syncScheduler.indexDocuments(space)
+            val filesChanged = syncScheduler.indexDocuments(space)
 
             // Update last synced timestamp and clear error
             space.lastSyncedAt = java.time.Instant.now()
             space.lastSyncError = null
+            space.lastSyncFilesChanged = filesChanged
             spaceRepository.save(space)
 
             logger.info("Successfully pulled changes for space '${space.name}' (${space.id})")

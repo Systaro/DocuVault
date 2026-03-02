@@ -644,7 +644,8 @@ data class SpaceDto(
     val gitError: String? = null,
     val documentCount: Long = 0,
     val childCount: Long = 0,
-    val logoUrl: String? = null
+    val logoUrl: String? = null,
+    val lastSyncFilesChanged: Int? = null
 )
 
 data class SpacePermissionDto(
@@ -675,7 +676,8 @@ fun Space.toDto(gitError: String? = null, documentCount: Long = 0, childCount: L
     gitError = gitError ?: this.lastSyncError,
     documentCount = documentCount,
     childCount = childCount,
-    logoUrl = this.logoUrl
+    logoUrl = this.logoUrl,
+    lastSyncFilesChanged = this.lastSyncFilesChanged
 )
 
 fun SpacePermission.toDto() = SpacePermissionDto(

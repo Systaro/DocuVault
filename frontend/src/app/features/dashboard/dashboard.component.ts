@@ -240,7 +240,17 @@ interface BreadcrumbItem {
                           Sync error
                         } @else if (space.syncEnabled) {
                           <span class="material-icons">check_circle</span>
-                          {{ space.lastSyncedAt ? 'Synced ' + formatDate(space.lastSyncedAt) : 'Sync enabled' }}
+                          @if (space.lastSyncedAt) {
+                            Synced {{ formatDate(space.lastSyncedAt) }}
+                            <span class="sync-details">
+                              {{ formatTime(space.lastSyncedAt) }}
+                              @if (space.lastSyncFilesChanged != null) {
+                                · {{ space.lastSyncFilesChanged }} {{ space.lastSyncFilesChanged === 1 ? 'file' : 'files' }} changed
+                              }
+                            </span>
+                          } @else {
+                            Sync enabled
+                          }
                         } @else {
                           <span class="material-icons">sync_disabled</span>
                           Sync disabled
@@ -681,6 +691,7 @@ interface BreadcrumbItem {
       align-items: center;
       gap: var(--spacing-xs);
       font-size: 12px;
+      flex-wrap: wrap;
 
       .material-icons {
         font-size: 16px;
@@ -696,6 +707,13 @@ interface BreadcrumbItem {
 
       &.error {
         color: var(--danger, #dc3545);
+      }
+
+      .sync-details {
+        color: var(--text-muted);
+        font-size: 11px;
+        width: 100%;
+        padding-left: 20px;
       }
     }
 
@@ -1205,6 +1223,11 @@ export class DashboardComponent implements OnInit {
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;
     return date.toLocaleDateString();
+  }
+
+  formatTime(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   extractRepoPath(url: string): string {

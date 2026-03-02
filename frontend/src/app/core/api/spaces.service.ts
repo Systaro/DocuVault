@@ -25,6 +25,7 @@ export interface Space {
   documentCount?: number;
   childCount?: number;
   logoUrl?: string;
+  lastSyncFilesChanged?: number;
 }
 
 export interface CreateSpaceRequest {

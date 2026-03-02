@@ -42,8 +42,8 @@ class SyncScheduler(
                 try {
                     logger.info("Syncing space: ${space.name}")
                     gitService.pullChanges(space)
-                    indexDocuments(space)
-                    spaceRepository.updateSyncStatus(space.id!!, Instant.now(), null)
+                    val filesChanged = indexDocuments(space)
+                    spaceRepository.updateSyncStatus(space.id!!, Instant.now(), null, filesChanged)
                     logger.info("Successfully synced space: ${space.name}")
                 } catch (e: GitOperationException) {
                     logger.warn("Failed to sync space '${space.name}': [${e.errorCode}] ${e.message}")
@@ -56,9 +56,9 @@ class SyncScheduler(
         }
     }
 
-    fun indexDocuments(space: Space) {
+    fun indexDocuments(space: Space): Int {
         val repoPath = gitService.getRepoPath(space.id!!)
-        if (!Files.exists(repoPath)) return
+        if (!Files.exists(repoPath)) return 0
 
         var indexed = 0
         var skipped = 0
@@ -104,6 +104,8 @@ class SyncScheduler(
         if (indexed > 0 || skipped > 0) {
             logger.info("Indexing complete for space '${space.name}': $indexed indexed, $skipped unchanged")
         }
+
+        return indexed
     }
 
     private fun extractTitle(content: String, path: String): String {
