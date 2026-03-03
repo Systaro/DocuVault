@@ -78,9 +78,15 @@ class PublicShareController(
         val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
         val bytes = Files.readAllBytes(resolved)
 
+        val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
+            CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
+        } else {
+            CacheControl.noCache()
+        }
+
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
-            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+            .cacheControl(cachePolicy)
             .body(bytes)
     }
 
@@ -117,9 +123,15 @@ class PublicShareController(
         val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
         val bytes = Files.readAllBytes(resolved)
 
+        val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
+            CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
+        } else {
+            CacheControl.noCache()
+        }
+
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
-            .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+            .cacheControl(cachePolicy)
             .body(bytes)
     }
 
