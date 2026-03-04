@@ -62,6 +62,9 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
               <div class="sidebar-header">
                 <span class="material-icons">folder_special</span>
                 Project Files
+                @if (sharedFilePaths().has('')) {
+                  <span class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
+                }
                 <button
                   class="sidebar-share-btn"
                   title="Share entire repository"
@@ -162,6 +165,9 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
                     {{ expandedFolders().has(node.path) ? 'folder_open' : 'folder' }}
                   </span>
                   <span class="tree-name">{{ node.name }}</span>
+                  @if (sharedFilePaths().has(node.path)) {
+                    <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                  }
                 </button>
                 <button
                   class="tree-share-btn"
@@ -387,6 +393,10 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
       opacity: 1;
     }
 
+    .sidebar-header:hover .shared-indicator {
+      display: none;
+    }
+
     .sidebar-nav {
       padding: var(--spacing-sm);
       border-bottom: 1px solid var(--border);
@@ -533,6 +543,10 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
 
       &:hover .tree-share-btn {
         opacity: 1;
+      }
+
+      &:hover .shared-indicator {
+        display: none;
       }
     }
 
