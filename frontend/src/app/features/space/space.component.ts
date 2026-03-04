@@ -62,6 +62,13 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
               <div class="sidebar-header">
                 <span class="material-icons">folder_special</span>
                 Project Files
+                <button
+                  class="sidebar-share-btn"
+                  title="Share entire repository"
+                  (click)="openShareDialog('', true)"
+                >
+                  <span class="material-icons">share</span>
+                </button>
               </div>
 
               <!-- Navigation -->
@@ -351,6 +358,33 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
         font-size: 18px;
         color: var(--primary);
       }
+    }
+
+    .sidebar-share-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      opacity: 0;
+      transition: opacity var(--transition), color var(--transition);
+
+      .material-icons {
+        font-size: 16px;
+        color: var(--text-muted);
+      }
+
+      &:hover .material-icons {
+        color: var(--primary);
+      }
+    }
+
+    .sidebar-header:hover .sidebar-share-btn {
+      opacity: 1;
     }
 
     .sidebar-nav {
