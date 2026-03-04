@@ -132,6 +132,7 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
           <app-share-link-dialog
             [spaceId]="spaceSignal()!.id"
             [filePath]="shareFilePath()!"
+            [isDirectory]="shareIsDirectory()"
             (close)="onShareDialogClose()"
           />
         }
@@ -142,18 +143,27 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
         @for (node of nodes; track node.path) {
           <div class="tree-node">
             @if (node.isDirectory) {
-              <button
-                (click)="toggleFolder(node.path)"
-                class="tree-item"
-                [class.expanded]="expandedFolders().has(node.path)"
-                [style.padding-left.px]="12 + level * 16"
-              >
-                <span class="material-icons expand-icon">chevron_right</span>
-                <span class="material-icons folder-icon">
-                  {{ expandedFolders().has(node.path) ? 'folder_open' : 'folder' }}
-                </span>
-                <span class="tree-name">{{ node.name }}</span>
-              </button>
+              <div class="tree-folder-row">
+                <button
+                  (click)="toggleFolder(node.path)"
+                  class="tree-item"
+                  [class.expanded]="expandedFolders().has(node.path)"
+                  [style.padding-left.px]="12 + level * 16"
+                >
+                  <span class="material-icons expand-icon">chevron_right</span>
+                  <span class="material-icons folder-icon">
+                    {{ expandedFolders().has(node.path) ? 'folder_open' : 'folder' }}
+                  </span>
+                  <span class="tree-name">{{ node.name }}</span>
+                </button>
+                <button
+                  class="tree-share-btn"
+                  title="Share folder"
+                  (click)="openShareDialog(node.path, true); $event.stopPropagation(); $event.preventDefault()"
+                >
+                  <span class="material-icons">share</span>
+                </button>
+              </div>
               @if (expandedFolders().has(node.path) && node.children) {
                 <div class="tree-children">
                   <ng-container *ngTemplateOutlet="fileTreeTemplate; context: { nodes: node.children, level: level + 1 }"></ng-container>
@@ -176,7 +186,7 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
                 <button
                   class="tree-share-btn"
                   title="Share file"
-                  (click)="openShareDialog(node.path); $event.stopPropagation(); $event.preventDefault()"
+                  (click)="openShareDialog(node.path, false); $event.stopPropagation(); $event.preventDefault()"
                 >
                   <span class="material-icons">share</span>
                 </button>
@@ -455,6 +465,43 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
       }
     }
 
+    .tree-folder-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .tree-item {
+        flex: 1;
+      }
+
+      .tree-share-btn {
+        position: absolute;
+        right: 4px;
+        opacity: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px;
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        transition: opacity var(--transition), color var(--transition);
+
+        .material-icons {
+          font-size: 16px;
+        }
+
+        &:hover {
+          color: var(--primary);
+        }
+      }
+
+      &:hover .tree-share-btn {
+        opacity: 1;
+      }
+    }
+
     .tree-file-row {
       position: relative;
       display: flex;
@@ -547,6 +594,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
   shareFilePath = signal<string | null>(null);
+  shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
@@ -644,8 +692,9 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     // Will navigate to editor with empty path for new document
   }
 
-  openShareDialog(filePath: string): void {
+  openShareDialog(filePath: string, isDirectory = false): void {
     this.shareFilePath.set(filePath);
+    this.shareIsDirectory.set(isDirectory);
   }
 
   onShareDialogClose(): void {
