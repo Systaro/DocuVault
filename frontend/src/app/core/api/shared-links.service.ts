@@ -12,6 +12,8 @@ export interface SharedLink {
   accessCount: number;
   lastAccessedAt: string | null;
   createdAt: string;
+  hasPassword: boolean;
+  shareType: 'FILE' | 'FOLDER';
 }
 
 export interface SharedFileMetadata {
@@ -20,11 +22,22 @@ export interface SharedFileMetadata {
   contentType: string;
   spaceName: string;
   filePath: string;
+  shareType: 'FILE' | 'FOLDER';
+  requiresPassword: boolean;
 }
 
 export interface CreateShareLinkRequest {
   filePath: string;
   expiresInDays?: number | null;
+  password?: string | null;
+  shareType?: 'FILE' | 'FOLDER';
+}
+
+export interface FileNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children?: FileNode[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -46,11 +59,27 @@ export class SharedLinksService {
     return this.http.delete<void>(`/api/spaces/${spaceId}/shares/${linkId}`);
   }
 
+  updateSharePassword(spaceId: string, linkId: string, password: string | null): Observable<void> {
+    return this.http.patch<void>(`/api/spaces/${spaceId}/shares/${linkId}/password`, { password });
+  }
+
   getSharedFileMetadata(token: string): Observable<SharedFileMetadata> {
-    return this.http.get<SharedFileMetadata>(`/api/shared/${token}`);
+    return this.http.get<SharedFileMetadata>(`/api/shared/${token}`, { withCredentials: true });
   }
 
   getSharedFileContent(token: string): Observable<string> {
-    return this.http.get(`/api/shared/${token}/content`, { responseType: 'text' });
+    return this.http.get(`/api/shared/${token}/content`, { responseType: 'text', withCredentials: true });
+  }
+
+  verifySharePassword(token: string, password: string): Observable<{ valid: boolean }> {
+    return this.http.post<{ valid: boolean }>(`/api/shared/${token}/verify`, { password }, { withCredentials: true });
+  }
+
+  getShareFileTree(token: string): Observable<FileNode[]> {
+    return this.http.get<FileNode[]>(`/api/shared/${token}/tree`, { withCredentials: true });
+  }
+
+  getSharedFolderContent(token: string, subPath: string): Observable<string> {
+    return this.http.get(`/api/shared/${token}/content/${subPath}`, { responseType: 'text', withCredentials: true });
   }
 }

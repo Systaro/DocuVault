@@ -29,7 +29,13 @@ export const routes: Routes = [
   },
   {
     path: 'share/:token',
-    loadComponent: () => import('./features/public/public-viewer.component').then(m => m.PublicViewerComponent)
+    loadComponent: () => import('./features/public/public-viewer.component').then(m => m.PublicViewerComponent),
+    children: [
+      {
+        path: '**',
+        loadComponent: () => import('./features/public/public-viewer.component').then(m => m.PublicViewerComponent)
+      }
+    ]
   },
   {
     path: 'dashboard',

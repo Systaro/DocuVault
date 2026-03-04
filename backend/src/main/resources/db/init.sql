@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS shared_links (
     created_by UUID NOT NULL REFERENCES users(id),
     expires_at TIMESTAMP WITH TIME ZONE,
     revoked_at TIMESTAMP WITH TIME ZONE,
+    password_hash VARCHAR(255),
+    share_type VARCHAR(10) NOT NULL DEFAULT 'FILE',
     access_count INTEGER NOT NULL DEFAULT 0,
     last_accessed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -5,6 +5,10 @@ import jakarta.persistence.*
 import java.time.Instant
 import java.util.*
 
+enum class ShareType {
+    FILE, FOLDER
+}
+
 @Entity
 @Table(name = "shared_links")
 data class SharedLink(
@@ -32,6 +36,13 @@ data class SharedLink(
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null,
 
+    @Column(name = "password_hash")
+    var passwordHash: String? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "share_type", nullable = false)
+    val shareType: ShareType = ShareType.FILE,
+
     @Column(name = "access_count", nullable = false)
     var accessCount: Int = 0,
 
@@ -42,4 +53,6 @@ data class SharedLink(
     val createdAt: Instant = Instant.now()
 ) {
     fun isActive(): Boolean = revokedAt == null && (expiresAt == null || expiresAt.isAfter(Instant.now()))
+
+    fun isPasswordProtected(): Boolean = passwordHash != null
 }

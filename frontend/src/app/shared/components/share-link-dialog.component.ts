@@ -13,7 +13,7 @@ import { ToastService } from '../services/toast.service';
       <div class="share-dialog" (click)="$event.stopPropagation()">
         <!-- Header -->
         <div class="share-header">
-          <h2>Share File</h2>
+          <h2>{{ isDirectory() ? 'Share Folder' : 'Share File' }}</h2>
           <button class="icon-btn" (click)="close.emit()">
             <span class="material-icons">close</span>
           </button>
@@ -25,6 +25,17 @@ import { ToastService } from '../services/toast.service';
             <span class="material-icons file-icon">{{ getFileIcon() }}</span>
             <span class="file-name">{{ getFileName() }}</span>
           </div>
+
+          <!-- Share type toggle (only for directories) -->
+          @if (isDirectory()) {
+            <div class="share-type-section">
+              <label class="toggle-label">
+                <input type="checkbox" [(ngModel)]="shareAsFolder" />
+                <span class="material-icons toggle-icon">{{ shareAsFolder ? 'folder_shared' : 'insert_drive_file' }}</span>
+                <span>{{ shareAsFolder ? 'Share entire folder with navigation' : 'Share as single file link' }}</span>
+              </label>
+            </div>
+          }
 
           <!-- Create section -->
           <div class="create-section">
@@ -38,7 +49,7 @@ import { ToastService } from '../services/toast.service';
               </select>
               <button
                 class="btn btn-primary btn-sm"
-                [disabled]="creating()"
+                [disabled]="creating() || (usePassword && !sharePassword)"
                 (click)="createLink()"
               >
                 @if (creating()) {
@@ -48,6 +59,23 @@ import { ToastService } from '../services/toast.service';
                 }
                 Generate Link
               </button>
+            </div>
+
+            <!-- Password protection -->
+            <div class="password-section">
+              <label class="toggle-label">
+                <input type="checkbox" [(ngModel)]="usePassword" />
+                <span class="material-icons toggle-icon">lock</span>
+                <span>Password protect</span>
+              </label>
+              @if (usePassword) {
+                <input
+                  type="password"
+                  class="password-input"
+                  [(ngModel)]="sharePassword"
+                  placeholder="Enter password"
+                />
+              }
             </div>
           </div>
 
@@ -73,6 +101,12 @@ import { ToastService } from '../services/toast.service';
                       {{ getShareUrl(link.token) | slice:0:50 }}...
                     </div>
                     <div class="link-meta">
+                      @if (link.hasPassword) {
+                        <span class="meta-badge password-badge">
+                          <span class="material-icons">lock</span> Password
+                        </span>
+                      }
+                      <span class="meta-badge type-badge">{{ link.shareType === 'FOLDER' ? 'Folder' : 'File' }}</span>
                       <span>{{ link.accessCount }} views</span>
                       @if (link.expiresAt) {
                         <span>Expires {{ formatDate(link.expiresAt) }}</span>
@@ -202,6 +236,46 @@ import { ToastService } from '../services/toast.service';
       flex: 1;
     }
 
+    .share-type-section {
+      margin-bottom: var(--spacing-md);
+    }
+
+    .password-section {
+      margin-top: var(--spacing-md);
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+
+      input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+      }
+    }
+
+    .toggle-icon {
+      font-size: 16px;
+      color: var(--text-muted);
+    }
+
+    .password-input {
+      display: block;
+      width: 100%;
+      margin-top: var(--spacing-xs);
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      background: var(--surface);
+      color: var(--text-primary);
+      box-sizing: border-box;
+    }
+
     .links-section {
       border-top: 1px solid var(--border);
       padding-top: var(--spacing-lg);
@@ -254,6 +328,33 @@ import { ToastService } from '../services/toast.service';
       font-size: 11px;
       color: var(--text-muted);
       margin-top: 2px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .meta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+
+      .material-icons {
+        font-size: 11px;
+      }
+    }
+
+    .password-badge {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .type-badge {
+      background: #dbeafe;
+      color: #1e40af;
     }
 
     .link-actions {
@@ -303,12 +404,16 @@ import { ToastService } from '../services/toast.service';
 export class ShareLinkDialogComponent implements OnInit {
   spaceId = input.required<string>();
   filePath = input.required<string>();
+  isDirectory = input(false);
   close = output<void>();
 
   links = signal<SharedLink[]>([]);
   loading = signal(false);
   creating = signal(false);
   selectedExpiry: number | null = null;
+  usePassword = false;
+  sharePassword = '';
+  shareAsFolder = false;
 
   constructor(
     private sharedLinksService: SharedLinksService,
@@ -317,6 +422,9 @@ export class ShareLinkDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadLinks();
+    if (this.isDirectory()) {
+      this.shareAsFolder = true;
+    }
   }
 
   loadLinks(): void {
@@ -339,13 +447,17 @@ export class ShareLinkDialogComponent implements OnInit {
     this.creating.set(true);
     this.sharedLinksService.createLink(this.spaceId(), {
       filePath: this.filePath(),
-      expiresInDays: this.selectedExpiry
+      expiresInDays: this.selectedExpiry,
+      password: this.usePassword ? this.sharePassword : null,
+      shareType: this.shareAsFolder ? 'FOLDER' : 'FILE'
     }).subscribe({
       next: (link) => {
         this.links.update(links => [link, ...links]);
         this.creating.set(false);
         this.copyLink(link.token);
         this.toastService.success('Link Created', 'Share link copied to clipboard.');
+        this.usePassword = false;
+        this.sharePassword = '';
       },
       error: () => {
         this.creating.set(false);
@@ -380,6 +492,7 @@ export class ShareLinkDialogComponent implements OnInit {
   }
 
   getFileIcon(): string {
+    if (this.isDirectory()) return 'folder';
     const ext = this.filePath().split('.').pop()?.toLowerCase() || '';
     switch (ext) {
       case 'md': return 'description';

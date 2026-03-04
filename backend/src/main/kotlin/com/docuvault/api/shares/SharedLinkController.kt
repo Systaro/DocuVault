@@ -1,5 +1,6 @@
 package com.docuvault.api.shares
 
+import com.docuvault.domain.space.ShareType
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
@@ -33,7 +34,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -41,7 +42,20 @@ class SharedLinkController(
             Instant.now().plus(it.toLong(), ChronoUnit.DAYS)
         }
 
-        val link = sharedLinkService.createLink(space, request.filePath, user, expiresAt)
+        val shareType = try {
+            ShareType.valueOf(request.shareType.uppercase())
+        } catch (_: IllegalArgumentException) {
+            ShareType.FILE
+        }
+
+        val link = sharedLinkService.createLink(
+            space = space,
+            filePath = request.filePath,
+            createdBy = user,
+            expiresAt = expiresAt,
+            password = request.password,
+            shareType = shareType
+        )
         return ResponseEntity.status(HttpStatus.CREATED).body(link.toDto())
     }
 
@@ -57,7 +71,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -82,12 +96,37 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         val revoked = sharedLinkService.revoke(linkId, spaceId)
         return if (revoked) {
+            ResponseEntity.noContent().build()
+        } else {
+            ResponseEntity.notFound().build()
+        }
+    }
+
+    @PatchMapping("/{linkId}/password")
+    fun updateSharePassword(
+        @PathVariable spaceId: UUID,
+        @PathVariable linkId: UUID,
+        @RequestBody request: UpdateSharePasswordRequest,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Void> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val updated = sharedLinkService.updatePassword(linkId, spaceId, request.password)
+        return if (updated) {
             ResponseEntity.noContent().build()
         } else {
             ResponseEntity.notFound().build()

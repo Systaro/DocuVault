@@ -6,7 +6,9 @@ import java.util.*
 
 data class CreateShareLinkRequest(
     val filePath: String,
-    val expiresInDays: Int? = null
+    val expiresInDays: Int? = null,
+    val password: String? = null,
+    val shareType: String = "FILE"
 )
 
 data class SharedLinkDto(
@@ -18,7 +20,9 @@ data class SharedLinkDto(
     val revokedAt: Instant?,
     val accessCount: Int,
     val lastAccessedAt: Instant?,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val hasPassword: Boolean,
+    val shareType: String
 )
 
 data class SharedFileMetadataDto(
@@ -26,8 +30,14 @@ data class SharedFileMetadataDto(
     val extension: String,
     val contentType: String,
     val spaceName: String,
-    val filePath: String
+    val filePath: String,
+    val shareType: String,
+    val requiresPassword: Boolean
 )
+
+data class SharePasswordRequest(val password: String)
+
+data class UpdateSharePasswordRequest(val password: String?)
 
 fun SharedLink.toDto() = SharedLinkDto(
     id = this.id!!,
@@ -38,5 +48,7 @@ fun SharedLink.toDto() = SharedLinkDto(
     revokedAt = this.revokedAt,
     accessCount = this.accessCount,
     lastAccessedAt = this.lastAccessedAt,
-    createdAt = this.createdAt
+    createdAt = this.createdAt,
+    hasPassword = this.passwordHash != null,
+    shareType = this.shareType.name
 )

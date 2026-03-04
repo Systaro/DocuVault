@@ -1,0 +1,2 @@
+ALTER TABLE shared_links ADD COLUMN password_hash VARCHAR(255);
+ALTER TABLE shared_links ADD COLUMN share_type VARCHAR(10) NOT NULL DEFAULT 'FILE';
