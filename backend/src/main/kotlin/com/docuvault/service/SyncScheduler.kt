@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.jsoup.Jsoup
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.Instant
@@ -26,7 +27,8 @@ class SyncScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(SyncScheduler::class.java)
 
-    private val indexableExtensions = setOf("md", "mdx", "txt", "rst", "adoc")
+    private val indexableExtensions = setOf("md", "mdx", "txt", "rst", "adoc", "html", "htm")
+    private val htmlExtensions = setOf("html", "htm")
 
     @Scheduled(fixedRate = 60000) // Run every minute
     @Transactional
@@ -70,8 +72,8 @@ class SyncScheduler(
             .forEach { filePath ->
                 try {
                     val relativePath = repoPath.relativize(filePath).toString()
-                    val content = Files.readString(filePath)
-                    val contentHash = sha256(content)
+                    val rawContent = Files.readString(filePath)
+                    val contentHash = sha256(rawContent)
 
                     val existingDoc = documentRepository.findBySpaceIdAndPath(space.id!!, relativePath)
 
@@ -80,15 +82,19 @@ class SyncScheduler(
                         return@forEach
                     }
 
+                    val isHtml = filePath.extension.lowercase() in htmlExtensions
+                    val htmlTitle = if (isHtml) extractHtmlTitle(rawContent) else null
+                    val content = if (isHtml) stripHtml(rawContent) else rawContent
+
                     val document = existingDoc?.apply {
                         this.contentHash = contentHash
-                        this.title = extractTitle(content, relativePath)
+                        this.title = htmlTitle ?: extractTitle(content, relativePath)
                         this.lastSyncedAt = Instant.now()
                         this.updatedAt = Instant.now()
                     } ?: Document(
                         space = space,
                         path = relativePath,
-                        title = extractTitle(content, relativePath),
+                        title = htmlTitle ?: extractTitle(content, relativePath),
                         contentHash = contentHash,
                         lastSyncedAt = Instant.now()
                     )
@@ -108,6 +114,11 @@ class SyncScheduler(
         return indexed
     }
 
+    private fun extractHtmlTitle(html: String): String? {
+        val title = Jsoup.parse(html).title()
+        return if (title.isNotBlank()) title.take(200) else null
+    }
+
     private fun extractTitle(content: String, path: String): String {
         val firstLine = content.lineSequence().firstOrNull { it.isNotBlank() } ?: return path
         return if (firstLine.startsWith("#")) {
@@ -115,6 +126,15 @@ class SyncScheduler(
         } else {
             path.substringAfterLast('/').substringBeforeLast('.')
         }
+    }
+
+    private fun stripHtml(html: String): String {
+        val doc = Jsoup.parse(html)
+        doc.select("style, script, link, meta, svg, noscript").remove()
+        // wholeText() preserves whitespace structure for better chunking
+        val text = doc.body()?.wholeText() ?: ""
+        // Collapse excessive blank lines
+        return text.replace(Regex("\n{3,}"), "\n\n").trim()
     }
 
     private fun sha256(content: String): String {

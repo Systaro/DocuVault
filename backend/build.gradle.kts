@@ -57,6 +57,9 @@ dependencies {
     // Markdown processing
     implementation("org.commonmark:commonmark:0.21.0")
 
+    // HTML parsing (strip tags for indexing)
+    implementation("org.jsoup:jsoup:1.17.2")
+
     // AWS S3 SDK (for MinIO)
     implementation(platform("software.amazon.awssdk:bom:2.25.16"))
     implementation("software.amazon.awssdk:s3")
