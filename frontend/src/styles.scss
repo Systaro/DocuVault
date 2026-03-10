@@ -1013,6 +1013,10 @@ body {
       padding: 6px 12px;
       text-align: left;
       color: var(--text-primary);
+
+      p {
+        margin-bottom: 0;
+      }
     }
 
     th {
