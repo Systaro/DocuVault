@@ -6,6 +6,7 @@ import com.docuvault.domain.user.Invitation
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.InvitationRepository
+import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import jakarta.servlet.http.HttpServletRequest
@@ -22,6 +23,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
 import com.docuvault.service.EmailService
 import java.time.Instant
@@ -34,17 +36,21 @@ class UserController(
     private val userRepository: UserRepository,
     private val invitationRepository: InvitationRepository,
     private val spaceRepository: SpaceRepository,
+    private val spacePermissionRepository: SpacePermissionRepository,
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
     private val authenticationManager: AuthenticationManager,
     private val userDetailsService: UserDetailsService
 ) {
     @GetMapping("/search")
-    fun searchUsers(@RequestParam q: String): ResponseEntity<List<UserSearchResult>> {
+    fun searchUsers(
+        @RequestParam q: String,
+        @RequestParam(required = false, defaultValue = "false") includeDisabled: Boolean
+    ): ResponseEntity<List<UserSearchResult>> {
         if (q.length < 2) return ResponseEntity.ok(emptyList())
-        val users = userRepository.searchByNameOrEmail(q).map {
-            UserSearchResult(id = it.id!!, name = it.name, email = it.email)
-        }
+        val users = userRepository.searchByNameOrEmail(q)
+            .filter { includeDisabled || it.enabled }
+            .map { UserSearchResult(id = it.id!!, name = it.name, email = it.email) }
         return ResponseEntity.ok(users)
     }
 
@@ -132,6 +138,82 @@ class UserController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/{id}/permissions")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    fun getUserPermissions(@PathVariable id: UUID): ResponseEntity<List<UserPermissionDto>> {
+        val user = userRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        val permissions = spacePermissionRepository.findAllByUserId(user.id!!)
+        return ResponseEntity.ok(permissions.map {
+            UserPermissionDto(
+                spaceId = it.space.id!!,
+                spaceName = it.space.name,
+                spaceFullPath = it.space.getFullPath(),
+                spaceType = it.space.type.name,
+                permissionLevel = it.permissionLevel.name
+            )
+        })
+    }
+
+    @PutMapping("/{id}/permissions")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional
+    fun setUserPermissions(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: SetUserPermissionsRequest
+    ): ResponseEntity<List<UserPermissionDto>> {
+        val user = userRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        // Get current permissions for this user
+        val currentPermissions = spacePermissionRepository.findAllByUserId(user.id!!)
+        val currentBySpaceId = currentPermissions.associateBy { it.space.id!! }
+
+        // Desired permissions from request
+        val desiredBySpaceId = request.permissions.associateBy { it.spaceId }
+
+        // Remove permissions not in the new set
+        currentBySpaceId.forEach { (spaceId, _) ->
+            if (!desiredBySpaceId.containsKey(spaceId)) {
+                spacePermissionRepository.deleteByUserIdAndSpaceId(user.id!!, spaceId)
+            }
+        }
+
+        // Add or update permissions
+        desiredBySpaceId.forEach { (spaceId, desired) ->
+            val existing = currentBySpaceId[spaceId]
+            val level = com.docuvault.domain.space.PermissionLevel.valueOf(desired.permissionLevel)
+            if (existing != null) {
+                if (existing.permissionLevel != level) {
+                    existing.permissionLevel = level
+                    spacePermissionRepository.save(existing)
+                }
+            } else {
+                val space = spaceRepository.findById(spaceId).orElse(null) ?: return@forEach
+                spacePermissionRepository.save(
+                    com.docuvault.domain.space.SpacePermission(
+                        user = user,
+                        space = space,
+                        permissionLevel = level
+                    )
+                )
+            }
+        }
+
+        // Return updated permissions
+        val updated = spacePermissionRepository.findAllByUserId(user.id!!)
+        return ResponseEntity.ok(updated.map {
+            UserPermissionDto(
+                spaceId = it.space.id!!,
+                spaceName = it.space.name,
+                spaceFullPath = it.space.getFullPath(),
+                spaceType = it.space.type.name,
+                permissionLevel = it.permissionLevel.name
+            )
+        })
+    }
+
     @PostMapping("/{id}/impersonate")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     fun impersonateUser(
@@ -197,7 +279,9 @@ class UserController(
         val inviter = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        if (userRepository.existsByEmail(request.email)) {
+        // Check if an active (enabled) user already exists with this email
+        val existingUser = userRepository.findByEmail(request.email)
+        if (existingUser != null && existingUser.enabled) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build()
         }
 
@@ -209,10 +293,47 @@ class UserController(
             spaceRepository.findById(it).orElse(null)
         }
 
+        val userRole = UserRole.valueOf(request.role ?: "VIEWER")
+
+        // Create a disabled placeholder user so permissions can be assigned before registration
+        val placeholderUser = if (existingUser == null) {
+            val user = User(
+                email = request.email,
+                passwordHash = passwordEncoder.encode(UUID.randomUUID().toString()),
+                name = request.email.substringBefore("@"),
+                role = userRole,
+                enabled = false
+            )
+            userRepository.save(user)
+        } else {
+            // Re-use existing disabled placeholder (e.g., if invitation was deleted and re-sent)
+            existingUser.role = userRole
+            userRepository.save(existingUser)
+        }
+
+        // If a specific space was provided, grant permission on it
+        if (space != null) {
+            val permissionLevel = when (userRole) {
+                UserRole.SUPER_ADMIN, UserRole.ORG_ADMIN -> com.docuvault.domain.space.PermissionLevel.ADMIN
+                UserRole.EDITOR -> com.docuvault.domain.space.PermissionLevel.EDIT
+                UserRole.VIEWER -> com.docuvault.domain.space.PermissionLevel.VIEW
+            }
+            val existingPerm = spacePermissionRepository.findByUserIdAndSpaceId(placeholderUser.id!!, space.id!!)
+            if (existingPerm == null) {
+                spacePermissionRepository.save(
+                    com.docuvault.domain.space.SpacePermission(
+                        user = placeholderUser,
+                        space = space,
+                        permissionLevel = permissionLevel
+                    )
+                )
+            }
+        }
+
         val invitation = Invitation(
             email = request.email,
             space = space,
-            role = UserRole.valueOf(request.role ?: "VIEWER"),
+            role = userRole,
             token = UUID.randomUUID().toString(),
             expiresAt = Instant.now().plus(7, ChronoUnit.DAYS),
             createdBy = inviter
@@ -312,6 +433,7 @@ class UserController(
 
     @DeleteMapping("/invitations/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional
     fun deleteInvitation(@PathVariable id: UUID): ResponseEntity<Unit> {
         val invitation = invitationRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
@@ -321,6 +443,16 @@ class UserController(
         }
 
         invitationRepository.delete(invitation)
+
+        // Clean up placeholder user if no other pending invitations exist for this email
+        val otherInvitations = invitationRepository.findByEmailAndAcceptedAtIsNull(invitation.email)
+        if (otherInvitations.isEmpty()) {
+            val placeholderUser = userRepository.findByEmail(invitation.email)
+            if (placeholderUser != null && !placeholderUser.enabled) {
+                userRepository.delete(placeholderUser)
+            }
+        }
+
         return ResponseEntity.noContent().build()
     }
 
@@ -347,18 +479,31 @@ class UserController(
             return ResponseEntity.status(HttpStatus.GONE).build()
         }
 
-        if (userRepository.existsByEmail(invitation.email)) {
+        // Find the placeholder user created during invitation
+        val existingUser = userRepository.findByEmail(invitation.email)
+
+        val savedUser = if (existingUser != null && !existingUser.enabled) {
+            // Activate the placeholder user
+            existingUser.passwordHash = passwordEncoder.encode(request.password)
+            existingUser.name = request.name
+            existingUser.role = invitation.role
+            existingUser.enabled = true
+            existingUser.updatedAt = Instant.now()
+            userRepository.save(existingUser)
+        } else if (existingUser != null && existingUser.enabled) {
+            // Already an active user with this email
             return ResponseEntity.status(HttpStatus.CONFLICT).build()
+        } else {
+            // No placeholder exists (edge case) — create fresh
+            val user = User(
+                email = invitation.email,
+                passwordHash = passwordEncoder.encode(request.password),
+                name = request.name,
+                role = invitation.role,
+                enabled = true
+            )
+            userRepository.save(user)
         }
-
-        val user = User(
-            email = invitation.email,
-            passwordHash = passwordEncoder.encode(request.password),
-            name = request.name,
-            role = invitation.role
-        )
-
-        val savedUser = userRepository.save(user)
 
         invitation.acceptedAt = Instant.now()
         invitationRepository.save(invitation)
@@ -448,4 +593,21 @@ fun Invitation.toDto() = InvitationDto(
     expiresAt = this.expiresAt,
     accepted = this.acceptedAt != null,
     createdAt = this.createdAt
+)
+
+data class UserPermissionDto(
+    val spaceId: UUID,
+    val spaceName: String,
+    val spaceFullPath: String,
+    val spaceType: String,
+    val permissionLevel: String
+)
+
+data class SetUserPermissionsRequest(
+    val permissions: List<PermissionEntry>
+)
+
+data class PermissionEntry(
+    val spaceId: UUID,
+    val permissionLevel: String
 )

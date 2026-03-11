@@ -8,6 +8,7 @@ export interface User {
   email: string;
   name: string;
   role: string;
+  enabled?: boolean;
   impersonating?: boolean;
   originalAdminName?: string;
 }

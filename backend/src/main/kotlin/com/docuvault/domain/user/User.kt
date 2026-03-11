@@ -24,6 +24,9 @@ data class User(
     @Column(nullable = false)
     var role: UserRole = UserRole.VIEWER,
 
+    @Column(nullable = false)
+    var enabled: Boolean = true,
+
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now(),
 

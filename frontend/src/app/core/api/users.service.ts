@@ -9,6 +9,14 @@ export interface UserSearchResult {
   email: string;
 }
 
+export interface UserPermission {
+  spaceId: string;
+  spaceName: string;
+  spaceFullPath: string;
+  spaceType: string;
+  permissionLevel: string;
+}
+
 export interface Invitation {
   id: string;
   email: string;
@@ -88,5 +96,13 @@ export class UsersService {
       name,
       password
     });
+  }
+
+  getUserPermissions(userId: string): Observable<UserPermission[]> {
+    return this.http.get<UserPermission[]>(`/api/users/${userId}/permissions`);
+  }
+
+  setUserPermissions(userId: string, permissions: { spaceId: string; permissionLevel: string }[]): Observable<UserPermission[]> {
+    return this.http.put<UserPermission[]>(`/api/users/${userId}/permissions`, { permissions });
   }
 }

@@ -85,6 +85,10 @@ class CustomUserDetailsService(
         return org.springframework.security.core.userdetails.User(
             user.email,
             user.passwordHash,
+            user.enabled,  // enabled
+            true,          // accountNonExpired
+            true,          // credentialsNonExpired
+            true,          // accountNonLocked
             listOf(SimpleGrantedAuthority("ROLE_${user.role.name}"))
         )
     }

@@ -2,7 +2,9 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { UsersService, Invitation } from '../../core/api/users.service';
+import { forkJoin } from 'rxjs';
+import { UsersService, Invitation, UserPermission } from '../../core/api/users.service';
+import { SpacesService, Space } from '../../core/api/spaces.service';
 import { AuthService, User } from '../../core/auth/auth.service';
 
 @Component({
@@ -71,11 +73,16 @@ import { AuthService, User } from '../../core/auth/auth.service';
           </div>
           <div class="table-body">
             @for (user of filteredUsers(); track user.id) {
-              <div class="table-row">
+              <div class="table-row" [class.disabled-user]="user.enabled === false">
                 <div class="table-cell user-col">
-                  <div class="user-avatar">{{ getInitials(user.name) }}</div>
+                  <div class="user-avatar" [class.avatar-pending]="user.enabled === false">{{ getInitials(user.name) }}</div>
                   <div class="user-details">
-                    <span class="user-name">{{ user.name }}</span>
+                    <span class="user-name">
+                      {{ user.name }}
+                      @if (user.enabled === false) {
+                        <span class="pending-tag">Invited</span>
+                      }
+                    </span>
                     <span class="user-email">{{ user.email }}</span>
                   </div>
                 </div>
@@ -85,12 +92,12 @@ import { AuthService, User } from '../../core/auth/auth.service';
                   </span>
                 </div>
                 <div class="table-cell actions-col">
-                  @if (authService.user()?.role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN') {
+                  @if (authService.user()?.role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN' && user.enabled !== false) {
                     <button class="icon-btn" (click)="impersonateUser(user)" title="Impersonate">
                       <span class="material-icons">swap_horiz</span>
                     </button>
                   }
-                  <button class="icon-btn" (click)="editUser(user)" title="Edit">
+                  <button class="icon-btn" (click)="editUser(user)" title="Edit & manage permissions">
                     <span class="material-icons">edit</span>
                   </button>
                   <button class="icon-btn" (click)="deleteUser(user)" title="Delete">
@@ -272,56 +279,112 @@ import { AuthService, User } from '../../core/auth/auth.service';
 
       <!-- Edit Modal -->
       @if (editingUser()) {
-        <div class="modal-overlay" (click)="editingUser.set(null)">
-          <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" (click)="closeEditModal()">
+          <div class="modal modal-wide" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>
                 <span class="material-icons">edit</span>
                 Edit User
+                @if (editingUser()!.enabled === false) {
+                  <span class="pending-tag">Invited</span>
+                }
               </h2>
-              <button class="icon-btn" (click)="editingUser.set(null)">
+              <button class="icon-btn" (click)="closeEditModal()">
                 <span class="material-icons">close</span>
               </button>
             </div>
 
-            <form (ngSubmit)="saveUser()" class="modal-body">
-              <div class="form-group">
-                <label class="form-label">Name</label>
-                <div class="input-icon">
-                  <span class="material-icons">person</span>
-                  <input
-                    type="text"
-                    [(ngModel)]="editForm.name"
-                    name="name"
-                    class="input"
-                    required
-                  />
+            <div class="modal-body">
+              <!-- User info section -->
+              <div class="edit-section">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <div class="input-icon">
+                      <span class="material-icons">person</span>
+                      <input
+                        type="text"
+                        [(ngModel)]="editForm.name"
+                        class="input"
+                        [disabled]="editingUser()!.enabled === false"
+                      />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Role</label>
+                    <div class="input-icon">
+                      <span class="material-icons">badge</span>
+                      <select [(ngModel)]="editForm.role" class="input">
+                        <option value="VIEWER">Viewer</option>
+                        <option value="EDITOR">Editor</option>
+                        <option value="ORG_ADMIN">Org Admin</option>
+                        <option value="SUPER_ADMIN">Super Admin</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label class="form-label">Role</label>
-                <div class="input-icon">
-                  <span class="material-icons">badge</span>
-                  <select [(ngModel)]="editForm.role" name="role" class="input">
-                    <option value="VIEWER">Viewer</option>
-                    <option value="EDITOR">Editor</option>
-                    <option value="ORG_ADMIN">Org Admin</option>
-                    <option value="SUPER_ADMIN">Super Admin</option>
-                  </select>
-                </div>
+              <!-- Permissions section -->
+              <div class="edit-section">
+                <h3 class="section-title">
+                  <span class="material-icons">security</span>
+                  Space Permissions
+                </h3>
+                <p class="section-hint">Grant or revoke access to spaces. Changes are saved together.</p>
+
+                @if (loadingPermissions()) {
+                  <div class="loading-permissions">
+                    <span class="material-icons animate-spin">sync</span>
+                    Loading...
+                  </div>
+                } @else {
+                  <div class="permissions-list">
+                    @for (space of allSpaces(); track space.id) {
+                      <div class="permission-row" [class.has-permission]="getSpacePermission(space.id)"
+                           [style.padding-left.px]="getSpaceIndent(space)">
+                        <div class="permission-space">
+                          <span class="material-icons space-icon">
+                            {{ space.type === 'GROUP' ? 'folder' : 'description' }}
+                          </span>
+                          <span class="space-name">{{ space.name }}</span>
+                          <span class="space-path">{{ space.fullPath }}</span>
+                        </div>
+                        <div class="permission-control">
+                          <select
+                            [ngModel]="getSpacePermission(space.id)"
+                            (ngModelChange)="setSpacePermission(space.id, $event)"
+                            class="permission-select"
+                          >
+                            <option value="">No access</option>
+                            <option value="VIEW">View</option>
+                            <option value="EDIT">Edit</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        </div>
+                      </div>
+                    } @empty {
+                      <div class="no-spaces">No spaces available</div>
+                    }
+                  </div>
+                }
               </div>
 
               <div class="modal-footer">
-                <button type="button" (click)="editingUser.set(null)" class="btn btn-secondary">
+                <button type="button" (click)="closeEditModal()" class="btn btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" class="btn btn-primary">
-                  <span class="material-icons">save</span>
-                  Save Changes
+                <button type="button" (click)="saveUser()" [disabled]="savingUser()" class="btn btn-primary">
+                  @if (savingUser()) {
+                    <span class="material-icons animate-spin">sync</span>
+                    Saving...
+                  } @else {
+                    <span class="material-icons">save</span>
+                    Save Changes
+                  }
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       }
@@ -640,6 +703,10 @@ import { AuthService, User } from '../../core/auth/auth.service';
       overflow-y: auto;
     }
 
+    .modal-wide {
+      max-width: 640px;
+    }
+
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -750,6 +817,152 @@ import { AuthService, User } from '../../core/auth/auth.service';
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+
+    .disabled-user {
+      opacity: 0.7;
+    }
+
+    .avatar-pending {
+      background: linear-gradient(135deg, #bbb 0%, #999 100%) !important;
+    }
+
+    .pending-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 500;
+      background: rgba(255, 152, 0, 0.15);
+      color: #f57c00;
+      margin-left: 6px;
+    }
+
+    .edit-section {
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-md);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--spacing-xs);
+
+      .material-icons {
+        font-size: 20px;
+        color: var(--primary);
+      }
+    }
+
+    .section-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: var(--spacing-md);
+    }
+
+    .loading-permissions {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-lg);
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .permissions-list {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      max-height: 340px;
+      overflow-y: auto;
+    }
+
+    .permission-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+      transition: background var(--transition);
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &:hover {
+        background: var(--background);
+      }
+
+      &.has-permission {
+        background: rgba(111, 179, 184, 0.06);
+      }
+    }
+
+    .permission-space {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .space-icon {
+      font-size: 18px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .space-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .space-path {
+      font-size: 12px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .permission-control {
+      flex-shrink: 0;
+      margin-left: var(--spacing-md);
+    }
+
+    .permission-select {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 100px;
+
+      &:focus {
+        outline: none;
+        border-color: var(--primary);
+      }
+    }
+
+    .no-spaces {
+      padding: var(--spacing-lg);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
   `]
 })
 export class UsersComponent implements OnInit {
@@ -758,9 +971,12 @@ export class UsersComponent implements OnInit {
   showInviteModal = signal(false);
   editingUser = signal<User | null>(null);
   sending = signal(false);
+  savingUser = signal(false);
   resendingId = signal<string | null>(null);
   copiedId = signal<string | null>(null);
   createdInvitation = signal<Invitation | null>(null);
+  loadingPermissions = signal(false);
+  allSpaces = signal<Space[]>([]);
   searchTerm = '';
 
   inviteEmail = '';
@@ -771,8 +987,12 @@ export class UsersComponent implements OnInit {
     role: ''
   };
 
+  // Map of spaceId -> permissionLevel for the user being edited
+  editPermissions: Record<string, string> = {};
+
   constructor(
     private usersService: UsersService,
+    private spacesService: SpacesService,
     public authService: AuthService,
     private router: Router
   ) {}
@@ -828,6 +1048,7 @@ export class UsersComponent implements OnInit {
         this.inviteEmail = '';
         this.inviteRole = 'VIEWER';
         this.loadInvitations();
+        this.loadUsers();
       },
       error: (err) => {
         this.sending.set(false);
@@ -892,16 +1113,75 @@ export class UsersComponent implements OnInit {
       name: user.name,
       role: user.role
     };
+    this.editPermissions = {};
+    this.loadingPermissions.set(true);
+
+    // Load spaces and user permissions in parallel
+    forkJoin({
+      spaces: this.spacesService.getSpaces(),
+      permissions: this.usersService.getUserPermissions(user.id)
+    }).subscribe({
+      next: ({ spaces, permissions }) => {
+        this.allSpaces.set(spaces.sort((a, b) => a.fullPath.localeCompare(b.fullPath)));
+        this.editPermissions = {};
+        permissions.forEach(p => {
+          this.editPermissions[p.spaceId] = p.permissionLevel;
+        });
+        this.loadingPermissions.set(false);
+      },
+      error: () => {
+        this.loadingPermissions.set(false);
+      }
+    });
+  }
+
+  closeEditModal(): void {
+    this.editingUser.set(null);
+    this.editPermissions = {};
+  }
+
+  getSpacePermission(spaceId: string): string {
+    return this.editPermissions[spaceId] || '';
+  }
+
+  setSpacePermission(spaceId: string, level: string): void {
+    if (level) {
+      this.editPermissions[spaceId] = level;
+    } else {
+      delete this.editPermissions[spaceId];
+    }
+  }
+
+  getSpaceIndent(space: Space): number {
+    const depth = (space.fullPath.match(/\//g) || []).length;
+    return 12 + depth * 20;
   }
 
   saveUser(): void {
     const user = this.editingUser();
     if (!user) return;
 
-    this.usersService.updateUser(user.id, this.editForm).subscribe({
+    this.savingUser.set(true);
+
+    // Build permissions array from the map
+    const permissions = Object.entries(this.editPermissions).map(([spaceId, permissionLevel]) => ({
+      spaceId,
+      permissionLevel
+    }));
+
+    // Save user info and permissions in parallel
+    forkJoin({
+      userUpdate: this.usersService.updateUser(user.id, this.editForm),
+      permUpdate: this.usersService.setUserPermissions(user.id, permissions)
+    }).subscribe({
       next: () => {
+        this.savingUser.set(false);
         this.editingUser.set(null);
+        this.editPermissions = {};
         this.loadUsers();
+      },
+      error: () => {
+        this.savingUser.set(false);
       }
     });
   }

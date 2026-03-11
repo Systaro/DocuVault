@@ -279,7 +279,8 @@ data class UserDto(
     val id: UUID,
     val email: String,
     val name: String,
-    val role: String
+    val role: String,
+    val enabled: Boolean = true
 )
 
 data class ForgotPasswordRequest(
@@ -305,5 +306,6 @@ fun User.toDto() = UserDto(
     id = this.id!!,
     email = this.email,
     name = this.name,
-    role = this.role.name
+    role = this.role.name,
+    enabled = this.enabled
 )
