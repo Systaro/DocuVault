@@ -46,3 +46,31 @@ export interface UserInfo {
   name: string;
   role: string;
 }
+
+export interface DocumentContent {
+  id?: string;
+  path: string;
+  title: string;
+  content: string;
+  contentHash?: string;
+  lastSyncedAt?: string;
+}
+
+export interface PatchOperation {
+  op: 'replace' | 'insert';
+  oldText?: string;
+  newText?: string;
+  content?: string;
+  after?: string;
+  before?: string;
+  replaceAll?: boolean;
+}
+
+export interface PatchResult {
+  id?: string;
+  path: string;
+  title: string;
+  content: string;
+  contentHash: string;
+  lastSyncedAt?: string;
+}

@@ -250,6 +250,42 @@ import { LayoutComponent } from '../../shared/components/layout.component';
             </div>
           </div>
           <div class="card-body">
+            <div class="mcp-explainer">
+              <p>
+                The <strong>Model Context Protocol (MCP)</strong> lets AI assistants like Claude access your documentation directly.
+                Once configured, Claude can search, read, and edit your docs without leaving the conversation.
+              </p>
+
+              <div class="mcp-capabilities">
+                <div class="capability-group">
+                  <h4><span class="material-icons">search</span> Read &amp; Search</h4>
+                  <ul>
+                    <li><strong>search_documentation</strong> &mdash; semantic search across all docs</li>
+                    <li><strong>search_by_keyword</strong> &mdash; find docs by title or path</li>
+                    <li><strong>read_document</strong> &mdash; read the full content of any page</li>
+                    <li><strong>list_spaces</strong> / <strong>list_documents</strong> &mdash; browse the doc tree</li>
+                  </ul>
+                </div>
+                <div class="capability-group">
+                  <h4><span class="material-icons">edit_note</span> Write &amp; Edit</h4>
+                  <ul>
+                    <li><strong>create_document</strong> &mdash; create new pages</li>
+                    <li><strong>edit_document</strong> &mdash; surgical find-and-replace that preserves all formatting</li>
+                    <li><strong>insert_in_document</strong> &mdash; add content at a specific location</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="mcp-note">
+                <span class="material-icons">info</span>
+                <p>
+                  Write tools require an API token with <strong>Editor</strong> or <strong>Admin</strong> permissions on the target space.
+                  Edits use optimistic locking — if the document changes between reading and writing, the edit is safely rejected.
+                </p>
+              </div>
+            </div>
+
+            <h3 class="setup-heading">Configuration</h3>
             <p class="setup-intro">
               Add the following to your project's <code>.mcp.json</code> file to enable DocuVault tools in Claude Code:
             </p>
@@ -631,6 +667,99 @@ import { LayoutComponent } from '../../shared/components/layout.component';
       &:hover {
         background: rgba(239, 68, 68, 0.1);
       }
+    }
+
+    .mcp-explainer {
+      margin-bottom: var(--spacing-xl);
+
+      > p {
+        color: var(--text-secondary);
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0 0 var(--spacing-lg);
+      }
+    }
+
+    .mcp-capabilities {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--spacing-md);
+      margin-bottom: var(--spacing-lg);
+
+      .capability-group {
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--spacing-md) var(--spacing-lg);
+
+        h4 {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-xs);
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0 0 var(--spacing-sm);
+
+          .material-icons {
+            font-size: 18px;
+            color: var(--primary);
+          }
+        }
+
+        ul {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+
+          li {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+
+            strong {
+              font-family: 'SF Mono', Monaco, Consolas, monospace;
+              font-size: 12px;
+              font-weight: 500;
+              color: var(--text-primary);
+            }
+          }
+        }
+      }
+    }
+
+    .mcp-note {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-md);
+      background: rgba(111, 179, 184, 0.08);
+      border: 1px solid rgba(111, 179, 184, 0.2);
+      border-radius: var(--radius-md);
+
+      > .material-icons {
+        font-size: 20px;
+        color: var(--primary);
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      p {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        margin: 0;
+      }
+    }
+
+    .setup-heading {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 var(--spacing-sm);
     }
 
     .setup-intro {

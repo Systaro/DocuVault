@@ -100,6 +100,7 @@ class DocumentController(
                 path = documentPath,
                 title = document?.title ?: extractTitle(content, documentPath),
                 content = content,
+                contentHash = hashContent(content),
                 lastSyncedAt = document?.lastSyncedAt
             )
         )
@@ -147,6 +148,7 @@ class DocumentController(
                 path = saved.path,
                 title = saved.title,
                 content = request.content,
+                contentHash = contentHash,
                 lastSyncedAt = saved.lastSyncedAt
             )
         )
@@ -224,9 +226,224 @@ class DocumentController(
                 path = saved.path,
                 title = saved.title,
                 content = request.content,
+                contentHash = contentHash,
                 lastSyncedAt = saved.lastSyncedAt
             )
         )
+    }
+
+    @PatchMapping("/**")
+    fun patchDocument(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: PatchDocumentRequest,
+        servletRequest: jakarta.servlet.http.HttpServletRequest
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Extract path from URL
+        val fullPath = servletRequest.requestURI
+        val basePath = "/api/spaces/$spaceId/documents/"
+        val documentPath = if (fullPath.startsWith(basePath)) {
+            fullPath.substring(basePath.length)
+        } else {
+            return ResponseEntity.badRequest().build()
+        }
+
+        // Read current content
+        val currentContent = gitService.readFile(space, documentPath)
+            ?: return ResponseEntity.notFound().build()
+
+        // Optimistic locking: verify content hasn't changed since client read it
+        if (request.contentHash != null) {
+            val actualHash = hashContent(currentContent)
+            if (request.contentHash != actualHash) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                    mapOf(
+                        "error" to "CONFLICT",
+                        "message" to "Document has been modified since you last read it. Please re-read the document and retry.",
+                        "currentHash" to actualHash
+                    )
+                )
+            }
+        }
+
+        // Validate operations
+        if (request.operations.isEmpty()) {
+            return ResponseEntity.badRequest().body(
+                mapOf("error" to "INVALID_REQUEST", "message" to "At least one operation is required")
+            )
+        }
+
+        if (request.operations.size > 20) {
+            return ResponseEntity.badRequest().body(
+                mapOf("error" to "INVALID_REQUEST", "message" to "Maximum 20 operations per request")
+            )
+        }
+
+        // Apply operations sequentially
+        var content = currentContent
+        for ((index, op) in request.operations.withIndex()) {
+            when (op.op) {
+                "replace" -> {
+                    if (op.oldText == null || op.newText == null) {
+                        return ResponseEntity.badRequest().body(
+                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'replace' requires 'oldText' and 'newText'")
+                        )
+                    }
+                    if (op.oldText == op.newText) {
+                        return ResponseEntity.badRequest().body(
+                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'oldText' and 'newText' must be different")
+                        )
+                    }
+                    val occurrences = countOccurrences(content, op.oldText)
+                    if (occurrences == 0) {
+                        return ResponseEntity.badRequest().body(
+                            mapOf(
+                                "error" to "TEXT_NOT_FOUND",
+                                "message" to "Operation $index: exact text not found in document",
+                                "operationIndex" to index
+                            )
+                        )
+                    }
+                    if (occurrences > 1 && op.replaceAll != true) {
+                        return ResponseEntity.badRequest().body(
+                            mapOf(
+                                "error" to "AMBIGUOUS_MATCH",
+                                "message" to "Operation $index: text appears $occurrences times. Provide more context to make it unique, or set replaceAll: true.",
+                                "operationIndex" to index,
+                                "occurrences" to occurrences
+                            )
+                        )
+                    }
+                    content = if (op.replaceAll == true) {
+                        content.replace(op.oldText, op.newText)
+                    } else {
+                        content.replaceFirst(op.oldText, op.newText)
+                    }
+                }
+
+                "insert" -> {
+                    if (op.content == null) {
+                        return ResponseEntity.badRequest().body(
+                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'insert' requires 'content'")
+                        )
+                    }
+                    when {
+                        op.after == "START" -> {
+                            content = op.content + content
+                        }
+                        op.after == "END" || (op.after == null && op.before == null) -> {
+                            content = content + op.content
+                        }
+                        op.after != null -> {
+                            val pos = content.indexOf(op.after)
+                            if (pos == -1) {
+                                return ResponseEntity.badRequest().body(
+                                    mapOf(
+                                        "error" to "TEXT_NOT_FOUND",
+                                        "message" to "Operation $index: anchor text for 'after' not found",
+                                        "operationIndex" to index
+                                    )
+                                )
+                            }
+                            val insertPos = pos + op.after.length
+                            content = content.substring(0, insertPos) + op.content + content.substring(insertPos)
+                        }
+                        op.before != null -> {
+                            val pos = content.indexOf(op.before)
+                            if (pos == -1) {
+                                return ResponseEntity.badRequest().body(
+                                    mapOf(
+                                        "error" to "TEXT_NOT_FOUND",
+                                        "message" to "Operation $index: anchor text for 'before' not found",
+                                        "operationIndex" to index
+                                    )
+                                )
+                            }
+                            content = content.substring(0, pos) + op.content + content.substring(pos)
+                        }
+                    }
+                }
+
+                else -> {
+                    return ResponseEntity.badRequest().body(
+                        mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: unknown operation '${op.op}'. Supported: 'replace', 'insert'")
+                    )
+                }
+            }
+        }
+
+        // Write the patched content
+        if (!gitService.writeFile(space, documentPath, content)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+
+        val newContentHash = hashContent(content)
+        val now = Instant.now()
+
+        var document = documentRepository.findBySpaceIdAndPath(spaceId, documentPath)
+
+        if (document != null) {
+            document.title = extractTitle(content, documentPath)
+            document.contentHash = newContentHash
+            document.lastSyncedAt = now
+            document.updatedAt = now
+        } else {
+            document = Document(
+                space = space,
+                path = documentPath,
+                title = extractTitle(content, documentPath),
+                contentHash = newContentHash,
+                lastSyncedAt = now
+            )
+        }
+
+        val saved = documentRepository.save(document)
+
+        // Re-generate embeddings
+        embeddingService.processDocument(saved.id!!, content)
+
+        // Commit if requested
+        if (request.autoCommit == true) {
+            gitService.commitAndPush(
+                space = space,
+                message = request.commitMessage ?: "Update ${documentPath}",
+                authorName = user.name,
+                authorEmail = user.email
+            )
+        }
+
+        return ResponseEntity.ok(
+            DocumentContentDto(
+                id = saved.id,
+                path = saved.path,
+                title = saved.title,
+                content = content,
+                contentHash = newContentHash,
+                lastSyncedAt = saved.lastSyncedAt
+            )
+        )
+    }
+
+    private fun countOccurrences(text: String, search: String): Int {
+        var count = 0
+        var startIndex = 0
+        while (true) {
+            val index = text.indexOf(search, startIndex)
+            if (index == -1) break
+            count++
+            startIndex = index + 1
+        }
+        return count
     }
 
     @DeleteMapping("/**")
@@ -314,7 +531,25 @@ data class DocumentContentDto(
     val path: String,
     val title: String?,
     val content: String,
+    val contentHash: String?,
     val lastSyncedAt: Instant?
+)
+
+data class PatchDocumentRequest(
+    val operations: List<PatchOperation>,
+    val contentHash: String? = null,
+    val autoCommit: Boolean? = false,
+    val commitMessage: String? = null
+)
+
+data class PatchOperation(
+    val op: String,
+    val oldText: String? = null,
+    val newText: String? = null,
+    val content: String? = null,
+    val after: String? = null,
+    val before: String? = null,
+    val replaceAll: Boolean? = false
 )
 
 fun Document.toDto() = DocumentDto(

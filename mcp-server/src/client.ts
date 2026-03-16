@@ -1,4 +1,4 @@
-import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo } from './types.js';
+import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult } from './types.js';
 
 export class DocuVaultClient {
   private baseUrl: string;
@@ -43,8 +43,32 @@ export class DocuVaultClient {
     return this.request<FileTreeEntry[]>(`/spaces/${spaceId}/documents/tree`);
   }
 
-  async readDocument(spaceId: string, path: string): Promise<{ path: string; title: string; content: string }> {
-    return this.request<{ path: string; title: string; content: string }>(`/spaces/${spaceId}/documents/${path}`);
+  async readDocument(spaceId: string, path: string): Promise<DocumentContent> {
+    return this.request<DocumentContent>(`/spaces/${spaceId}/documents/${path}`);
+  }
+
+  async createDocument(spaceId: string, path: string, content: string, title?: string): Promise<DocumentContent> {
+    return this.request<DocumentContent>(`/spaces/${spaceId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify({ path, content, title }),
+    });
+  }
+
+  async patchDocument(
+    spaceId: string,
+    path: string,
+    operations: PatchOperation[],
+    options?: { contentHash?: string; autoCommit?: boolean; commitMessage?: string }
+  ): Promise<PatchResult> {
+    return this.request<PatchResult>(`/spaces/${spaceId}/documents/${path}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        operations,
+        contentHash: options?.contentHash,
+        autoCommit: options?.autoCommit ?? false,
+        commitMessage: options?.commitMessage,
+      }),
+    });
   }
 
   async searchKeyword(query: string, limit: number = 20): Promise<SearchResult[]> {

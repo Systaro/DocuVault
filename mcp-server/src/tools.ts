@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DocuVaultClient } from './client.js';
-import type { Space } from './types.js';
+import type { PatchOperation, Space } from './types.js';
 
 function buildSpaceCatalog(spaces: Space[]): string {
   const repoSpaces = spaces.filter(s => s.type === 'REPOSITORY');
@@ -94,7 +94,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
 
   server.tool(
     'read_document',
-    'Read the full content of a specific document from DocuVault.',
+    'Read the full content of a specific document from DocuVault. Returns the content along with a contentHash (SHA-256) that you should pass to edit_document or insert_in_document to prevent conflicts.',
     {
       spaceId: z.string().describe('The space ID containing the document'),
       path: z.string().describe('The file path within the space (e.g., "docs/getting-started.md")'),
@@ -106,7 +106,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
         const doc = await client.readDocument(resolvedId, path);
-        const header = `# ${doc.title}\nPath: ${doc.path}\n\n`;
+        const header = `# ${doc.title}\nPath: ${doc.path}\ncontentHash: ${doc.contentHash}\n\n`;
         return { content: [{ type: 'text', text: header + doc.content }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `Failed to read document: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
@@ -164,6 +164,149 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
         return { content: [{ type: 'text', text: formatted }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `Failed to list documents: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  // --- Write tools ---
+
+  server.tool(
+    'create_document',
+    'Create a new document in a DocuVault space. Use this for entirely new pages. The file will be created in the space\'s Git repository.',
+    {
+      spaceId: z.string().describe('The space ID to create the document in'),
+      path: z.string().describe('File path within the space (e.g., "docs/setup-guide.md")'),
+      content: z.string().describe('The full document content (Markdown, HTML, or plain text)'),
+      title: z.string().optional().describe('Optional title. If omitted, extracted from first heading or filename.'),
+    },
+    async ({ spaceId, path, content, title }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        const doc = await client.createDocument(resolvedId, path, content, title);
+        return {
+          content: [{
+            type: 'text',
+            text: `Document created successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nHash: ${doc.contentHash}\n\nNote: Document is saved locally. Use autoCommit on edit_document or push via the UI to publish to Git.`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to create document: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'edit_document',
+    `Edit an existing document using surgical find-and-replace. Only the matched text is changed — all other content, formatting, and whitespace is preserved byte-for-byte.
+
+WORKFLOW: You MUST call read_document first to (1) see the current content and (2) get the contentHash. Pass that contentHash here to prevent conflicts.
+
+RULES:
+- old_text must be an EXACT character-for-character match (including whitespace, newlines, indentation)
+- old_text must appear exactly once in the document, unless replace_all is true
+- If old_text is not found or is ambiguous, the edit is rejected and nothing is changed
+- Copy old_text directly from the read_document output — do not retype or reformat it`,
+    {
+      spaceId: z.string().describe('The space ID containing the document'),
+      path: z.string().describe('The file path within the space (e.g., "docs/getting-started.md")'),
+      old_text: z.string().describe('The exact text to find in the document. Must be unique unless replace_all is true. Include enough surrounding context to ensure uniqueness.'),
+      new_text: z.string().describe('The replacement text. Must differ from old_text.'),
+      replace_all: z.boolean().optional().default(false).describe('If true, replace all occurrences. Default: false (requires unique match).'),
+      content_hash: z.string().optional().describe('SHA-256 hash from read_document. If provided, the edit is rejected if the document was modified since you read it (optimistic locking).'),
+      auto_commit: z.boolean().optional().default(false).describe('If true, commit and push to Git after editing.'),
+      commit_message: z.string().optional().describe('Git commit message. Used only when auto_commit is true.'),
+    },
+    async ({ spaceId, path, old_text, new_text, replace_all, content_hash, auto_commit, commit_message }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        const operation: PatchOperation = {
+          op: 'replace',
+          oldText: old_text,
+          newText: new_text,
+          replaceAll: replace_all,
+        };
+
+        const result = await client.patchDocument(resolvedId, path, [operation], {
+          contentHash: content_hash,
+          autoCommit: auto_commit,
+          commitMessage: commit_message,
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Document edited successfully.\nPath: ${result.path}\nNew hash: ${result.contentHash}${auto_commit ? '\nChanges committed and pushed to Git.' : ''}`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Edit failed: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'insert_in_document',
+    `Insert new content into an existing document at a specific location without modifying any existing content.
+
+WORKFLOW: You MUST call read_document first to (1) find the exact anchor text and (2) get the contentHash.
+
+RULES:
+- For "after" or "before" positions, the anchor must be an exact match from the document
+- Use "end" to append to the document, "start" to prepend
+- The anchor text is not modified — new content is placed adjacent to it
+- If the anchor text is not found, the insert is rejected and nothing is changed`,
+    {
+      spaceId: z.string().describe('The space ID containing the document'),
+      path: z.string().describe('The file path within the space'),
+      content: z.string().describe('The content to insert'),
+      position: z.enum(['after', 'before', 'start', 'end']).describe('Where to insert relative to the anchor text. Use "start" or "end" for document boundaries.'),
+      anchor: z.string().optional().describe('The exact text to insert before/after. Required when position is "after" or "before". Not used for "start"/"end".'),
+      content_hash: z.string().optional().describe('SHA-256 hash from read_document for optimistic locking.'),
+      auto_commit: z.boolean().optional().default(false).describe('If true, commit and push to Git after inserting.'),
+      commit_message: z.string().optional().describe('Git commit message. Used only when auto_commit is true.'),
+    },
+    async ({ spaceId, path, content: insertContent, position, anchor, content_hash, auto_commit, commit_message }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        if ((position === 'after' || position === 'before') && !anchor) {
+          return { content: [{ type: 'text', text: `Anchor text is required when position is "${position}".` }], isError: true };
+        }
+
+        const operation: PatchOperation = {
+          op: 'insert',
+          content: insertContent,
+          ...(position === 'start' && { after: 'START' }),
+          ...(position === 'end' && { after: 'END' }),
+          ...(position === 'after' && { after: anchor }),
+          ...(position === 'before' && { before: anchor }),
+        };
+
+        const result = await client.patchDocument(resolvedId, path, [operation], {
+          contentHash: content_hash,
+          autoCommit: auto_commit,
+          commitMessage: commit_message,
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Content inserted successfully.\nPath: ${result.path}\nNew hash: ${result.contentHash}${auto_commit ? '\nChanges committed and pushed to Git.' : ''}`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Insert failed: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
