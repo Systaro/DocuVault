@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DocuVaultClient } from './client.js';
@@ -172,25 +173,37 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
 
   server.tool(
     'create_document',
-    'Create a new document in a DocuVault space. Use this for entirely new pages. The file will be created in the space\'s Git repository.',
+    `Create a new document in a DocuVault space. Use this for entirely new pages. The file will be created in the space's Git repository.
+
+Provide EITHER filePath (to upload a local file — fast, no token overhead) OR content (inline). If both are given, filePath wins.`,
     {
       spaceId: z.string().describe('The space ID to create the document in'),
       path: z.string().describe('File path within the space (e.g., "docs/setup-guide.md")'),
-      content: z.string().describe('The full document content (Markdown, HTML, or plain text)'),
+      content: z.string().optional().describe('The full document content (Markdown, HTML, or plain text). Ignored if filePath is provided.'),
+      filePath: z.string().optional().describe('Absolute path to a local file to upload. The MCP server reads the file directly — much faster than passing content inline for large files.'),
       title: z.string().optional().describe('Optional title. If omitted, extracted from first heading or filename.'),
     },
-    async ({ spaceId, path, content, title }) => {
+    async ({ spaceId, path, content, filePath, title }) => {
       try {
         const resolvedId = resolveSpaceId(spaces, spaceId);
         if (!resolvedId) {
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
 
-        const doc = await client.createDocument(resolvedId, path, content, title);
+        let documentContent: string;
+        if (filePath) {
+          documentContent = await readFile(filePath, 'utf-8');
+        } else if (content) {
+          documentContent = content;
+        } else {
+          return { content: [{ type: 'text', text: 'Either "content" or "filePath" must be provided.' }], isError: true };
+        }
+
+        const doc = await client.createDocument(resolvedId, path, documentContent, title);
         return {
           content: [{
             type: 'text',
-            text: `Document created successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nHash: ${doc.contentHash}\n\nNote: Document is saved locally. Use autoCommit on edit_document or push via the UI to publish to Git.`,
+            text: `Document created successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nHash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}\n\nNote: Document is saved locally. Use autoCommit on edit_document or push via the UI to publish to Git.`,
           }],
         };
       } catch (error) {
