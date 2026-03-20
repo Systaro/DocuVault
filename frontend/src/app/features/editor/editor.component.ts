@@ -62,6 +62,12 @@ import { marked } from 'marked';
                     </svg>
                     Create a public share
                   </button>
+                  <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Export as PDF
+                  </button>
                   @if (getGitUrl()) {
                     <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,6 +110,12 @@ import { marked } from 'marked';
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
                       </svg>
                       Create a public share
+                    </button>
+                    <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      Export as PDF
                     </button>
                     @if (getGitUrl()) {
                       <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
@@ -373,6 +385,60 @@ export class EditorComponent implements OnInit, OnDestroy {
     navigator.clipboard.writeText(url);
     this.gitLinkCopied.set(true);
     setTimeout(() => this.gitLinkCopied.set(false), 2000);
+  }
+
+  exportAsPdf(): void {
+    const title = this.documentTitle || this.documentPath.split('/').pop() || 'Document';
+
+    let bodyContent = '';
+    if (this.isPreviewFile()) {
+      if (this.previewType() === 'image') {
+        bodyContent = `<img src="${window.location.origin}${this.previewUrl()}" style="max-width:100%;height:auto;" />`;
+      } else {
+        bodyContent = `<iframe src="${window.location.origin}${this.previewUrl()}" style="width:100%;height:100vh;border:none;"></iframe>`;
+      }
+    } else if (this.editor) {
+      bodyContent = `<h1>${this.escapeHtml(title)}</h1>${this.editor.getHTML()}`;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>${this.escapeHtml(title)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 24px; color: #1a1a1a; line-height: 1.6; }
+  h1 { font-size: 1.8em; margin-bottom: 0.5em; }
+  h2 { font-size: 1.4em; margin-top: 1.5em; }
+  h3 { font-size: 1.2em; margin-top: 1.2em; }
+  pre { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
+  code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #555; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  img { max-width: 100%; height: auto; }
+  ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+  ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
+  ul[data-type="taskList"] li::before { content: "☐"; }
+  ul[data-type="taskList"] li[data-checked="true"]::before { content: "☑"; }
+  a { color: #2563eb; }
+  @media print { body { padding: 0; } }
+</style>
+</head><body>${bodyContent}</body></html>`);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   ngOnInit(): void {
