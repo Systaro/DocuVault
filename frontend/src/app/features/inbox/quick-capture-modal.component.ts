@@ -1,0 +1,387 @@
+import { Component, OnInit, Output, EventEmitter, signal, HostListener } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { SpacesService, Space } from '../../core/api/spaces.service';
+import { InboxService } from '../../core/api/inbox.service';
+import { ToastService } from '../../shared/services/toast.service';
+
+@Component({
+  selector: 'app-quick-capture-modal',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <div class="capture-overlay" (click)="closeIfOutside($event)">
+      <div class="capture-modal" #modal>
+        <!-- Header -->
+        <div class="capture-header">
+          <div class="capture-icon">
+            <span class="material-icons">add</span>
+          </div>
+          <h2>New Note</h2>
+          <span class="shortcut">⌘ K</span>
+          <button class="icon-btn" (click)="close.emit()">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+
+        <!-- Space selector -->
+        <div class="space-selector">
+          <label>Space</label>
+          <div class="space-select-wrapper">
+            <select class="space-select" [(ngModel)]="selectedSpaceId" [disabled]="spaces().length === 0">
+              @if (spaces().length === 0) {
+                <option value="">Loading spaces...</option>
+              }
+              @for (space of spaces(); track space.id) {
+                <option [value]="space.id">{{ space.name }}</option>
+              }
+            </select>
+            <span class="material-icons select-arrow">unfold_more</span>
+          </div>
+        </div>
+
+        <!-- Mini toolbar -->
+        <div class="capture-toolbar">
+          <button class="t-btn" (click)="formatText('bold')" title="Bold">
+            <span class="material-icons">format_bold</span>
+          </button>
+          <button class="t-btn" (click)="formatText('italic')" title="Italic">
+            <span class="material-icons">format_italic</span>
+          </button>
+          <div class="t-divider"></div>
+          <button class="t-btn" (click)="formatText('insertUnorderedList')" title="Bullet list">
+            <span class="material-icons">format_list_bulleted</span>
+          </button>
+          <button class="t-btn" (click)="formatText('insertOrderedList')" title="Numbered list">
+            <span class="material-icons">format_list_numbered</span>
+          </button>
+          <div class="t-divider"></div>
+          <button class="t-btn" (click)="wrapInCode()" title="Inline code">
+            <span class="material-icons">code</span>
+          </button>
+        </div>
+
+        <!-- Editor -->
+        <div class="capture-editor">
+          <div
+            #editor
+            class="editor-content"
+            contenteditable="true"
+            [attr.data-placeholder]="'Start typing your note... (Shift+Enter for new line)'"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+          ></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="capture-footer">
+          <div class="capture-hint">
+            <span class="material-icons">auto_awesome</span>
+            AI will suggest where to file this
+          </div>
+          <div class="capture-actions">
+            <button class="btn btn-secondary" (click)="close.emit()">Cancel</button>
+            <button
+              class="btn btn-primary"
+              [disabled]="!canSubmit() || submitting()"
+              (click)="submit()"
+            >
+              <span class="material-icons">send</span>
+              {{ submitting() ? 'Adding...' : 'Add to Inbox' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .capture-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 80px;
+      z-index: 200;
+    }
+
+    .capture-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl, 12px);
+      box-shadow: var(--shadow-xl, 0 20px 60px rgba(0,0,0,0.3));
+      width: 640px;
+      max-width: 95vw;
+      display: flex;
+      flex-direction: column;
+      animation: captureIn 0.2s ease;
+      overflow: hidden;
+    }
+
+    @keyframes captureIn {
+      from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .capture-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid var(--border);
+
+      h2 {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        flex: 1;
+        margin: 0;
+      }
+    }
+
+    .capture-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--primary-dark, #388087), var(--primary, #6FB3B8));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      flex-shrink: 0;
+
+      .material-icons { font-size: 16px; }
+    }
+
+    .shortcut {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: 'Monaco','Menlo',monospace;
+    }
+
+    .space-selector {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+    }
+
+    .space-select-wrapper {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .select-arrow {
+        position: absolute;
+        right: 8px;
+        font-size: 16px;
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+    }
+
+    .space-select {
+      width: 100%;
+      appearance: none;
+      background: var(--surface-raised, var(--background));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md, 6px);
+      padding: 7px 32px 7px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color var(--transition);
+
+      &:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(111, 179, 184, 0.12);
+      }
+    }
+
+    .capture-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.02);
+    }
+
+    .t-btn {
+      width: 28px;
+      height: 26px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition);
+
+      &:hover { background: rgba(111,179,184,0.1); color: var(--text-primary); }
+      .material-icons { font-size: 15px; }
+    }
+
+    .t-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .capture-editor {
+      padding: 0;
+      flex: 1;
+    }
+
+    .editor-content {
+      padding: 16px 18px;
+      min-height: 180px;
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.7;
+      outline: none;
+      font-family: inherit;
+
+      &:empty::before {
+        content: attr(data-placeholder);
+        color: var(--text-muted);
+        pointer-events: none;
+      }
+    }
+
+    .capture-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      background: var(--background);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .capture-hint {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+
+      .material-icons { font-size: 14px; color: var(--primary); }
+    }
+
+    .capture-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  `]
+})
+export class QuickCaptureModalComponent implements OnInit {
+  @Output() close = new EventEmitter<void>();
+  @Output() noteCreated = new EventEmitter<void>();
+
+  spaces = signal<Space[]>([]);
+  selectedSpaceId = '';
+  content = '';
+  submitting = signal(false);
+
+  canSubmit = signal(false);
+
+  constructor(
+    private spacesService: SpacesService,
+    private inboxService: InboxService,
+    private toastService: ToastService
+  ) {}
+
+  ngOnInit(): void {
+    this.spacesService.getSpaces().subscribe({
+      next: (spaces) => {
+        // Only show repositories (not groups) that can have inboxes
+        const repos = spaces.filter(s => s.type === 'REPOSITORY');
+        this.spaces.set(repos);
+        if (repos.length > 0) {
+          this.selectedSpaceId = repos[0].id;
+        }
+      }
+    });
+  }
+
+  onInput(event: Event): void {
+    const el = event.target as HTMLElement;
+    this.content = el.innerHTML;
+    this.canSubmit.set(el.innerText.trim().length > 0 && !!this.selectedSpaceId);
+  }
+
+  onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      this.close.emit();
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault();
+      if (this.canSubmit()) this.submit();
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.close.emit();
+  }
+
+  closeIfOutside(event: MouseEvent): void {
+    if ((event.target as HTMLElement).classList.contains('capture-overlay')) {
+      this.close.emit();
+    }
+  }
+
+  formatText(command: string): void {
+    document.execCommand(command, false);
+  }
+
+  wrapInCode(): void {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const code = document.createElement('code');
+      range.surroundContents(code);
+    }
+  }
+
+  submit(): void {
+    if (!this.content.trim() || !this.selectedSpaceId) return;
+    this.submitting.set(true);
+
+    this.inboxService.createNote(this.selectedSpaceId, this.content).subscribe({
+      next: () => {
+        this.toastService.success('Added to Inbox', 'Your note has been added to the space inbox.');
+        this.submitting.set(false);
+        this.noteCreated.emit();
+        this.close.emit();
+      },
+      error: () => {
+        this.toastService.error('Error', 'Failed to add note to inbox.');
+        this.submitting.set(false);
+      }
+    });
+  }
+}

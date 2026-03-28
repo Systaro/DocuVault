@@ -66,6 +66,10 @@ export const routes: Routes = [
           {
             path: 'chat',
             loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+          },
+          {
+            path: 'inbox',
+            loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
           }
         ]
       },
@@ -88,6 +92,10 @@ export const routes: Routes = [
           {
             path: 'chat',
             loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+          },
+          {
+            path: 'inbox',
+            loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
           }
         ]
       },
@@ -110,6 +118,10 @@ export const routes: Routes = [
           {
             path: 'chat',
             loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+          },
+          {
+            path: 'inbox',
+            loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
           }
         ]
       }

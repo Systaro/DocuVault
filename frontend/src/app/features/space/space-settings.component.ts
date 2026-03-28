@@ -7,6 +7,7 @@ import { UsersService } from '../../core/api/users.service';
 import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { ToastService } from '../../shared/services/toast.service';
+import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/inbox.service';
 
 @Component({
   selector: 'app-space-settings',
@@ -226,6 +227,90 @@ import { ToastService } from '../../shared/services/toast.service';
             </div>
           </div>
 
+          <!-- Auto-filing Rules -->
+          @if (space()?.type === 'REPOSITORY') {
+            <div class="card p-6 mb-6">
+              <h2 class="font-semibold text-gray-900 mb-1">Auto-filing Rules</h2>
+              <p class="text-sm text-gray-500 mb-4">Rules automatically route matching inbox notes to the right document.</p>
+
+              @if (rules().length === 0) {
+                <p class="text-sm text-gray-500 mb-4">No rules yet.</p>
+              } @else {
+                <div class="divide-y divide-gray-100 mb-4">
+                  @for (rule of rules(); track rule.id) {
+                    <div class="flex items-center justify-between py-3 gap-3">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="rule-type-badge">{{ rule.type }}</span>
+                          <code class="rule-condition">{{ rule.condition }}</code>
+                        </div>
+                        <div class="text-xs text-gray-500">
+                          → {{ rule.targetDocumentPath || rule.targetGroupPath || 'new document' }}
+                          @if (rule.description) { · {{ rule.description }} }
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-3 flex-shrink-0">
+                        <label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            [checked]="rule.autoFile"
+                            (change)="toggleAutoFile(rule, $event)"
+                          />
+                          Auto-file
+                        </label>
+                        <button class="icon-btn" (click)="deleteRule(rule.id)" title="Delete rule">
+                          <span class="material-icons" style="font-size:16px">delete_outline</span>
+                        </button>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- Add rule form -->
+              <details class="add-rule-details">
+                <summary class="text-sm font-medium text-gray-700 cursor-pointer mb-3">+ Add rule</summary>
+                <div class="add-rule-form">
+                  <div class="flex gap-2 flex-wrap">
+                    <select [(ngModel)]="newRule.type" class="input input-sm">
+                      <option value="CATEGORY">Category</option>
+                      <option value="PATTERN">Pattern</option>
+                    </select>
+                    <input
+                      type="text"
+                      [(ngModel)]="newRule.condition"
+                      class="input input-sm flex-1"
+                      placeholder="e.g. meeting notes or #incident"
+                    />
+                    <select [(ngModel)]="newRule.actionType" class="input input-sm">
+                      <option value="APPEND_TO_DOCUMENT">Append to doc</option>
+                      <option value="CREATE_DOCUMENT">Create new doc</option>
+                    </select>
+                  </div>
+                  <div class="flex gap-2 flex-wrap mt-2">
+                    <input
+                      type="text"
+                      [(ngModel)]="newRule.targetDocumentPath"
+                      class="input input-sm flex-1"
+                      placeholder="Target document path (e.g. docs/meetings.md)"
+                    />
+                    <label class="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                      <input type="checkbox" [(ngModel)]="newRule.autoFile" />
+                      Auto-file (no prompt)
+                    </label>
+                    <button
+                      class="btn btn-primary btn-sm"
+                      [disabled]="!newRule.condition"
+                      (click)="addRule()"
+                    >
+                      Add Rule
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </div>
+          }
+
           <!-- Danger Zone -->
           <div class="card p-6 border-red-200">
             <h2 class="font-semibold text-red-600 mb-4">Danger Zone</h2>
@@ -247,16 +332,51 @@ import { ToastService } from '../../shared/services/toast.service';
         }
       </div>
     </div>
-  `
+  `,
+  styles: [`
+    .rule-type-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(111, 179, 184, 0.15);
+      color: var(--primary-dark);
+    }
+    .rule-condition {
+      font-size: 12px;
+      background: var(--background);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: 'Monaco','Menlo',monospace;
+      color: var(--text-primary);
+    }
+    .add-rule-details summary { list-style: none; }
+    .add-rule-details summary::-webkit-details-marker { display: none; }
+    .add-rule-form { margin-top: 10px; }
+    .input-sm { padding: 5px 8px; font-size: 13px; }
+    .icon-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; padding: 4px; border-radius: 4px; transition: color 0.15s; }
+    .icon-btn:hover { color: #dc2626; }
+  `]
 })
 export class SpaceSettingsComponent implements OnInit {
   space = signal<Space | null>(null);
   permissions = signal<SpacePermission[]>([]);
   availableUsers = signal<User[]>([]);
   availableGroups = signal<Space[]>([]);
+  rules = signal<RoutingRule[]>([]);
   saving = signal(false);
   moving = signal(false);
   selectedParentId = '';
+
+  newRule = {
+    type: 'CATEGORY' as RuleType,
+    condition: '',
+    actionType: 'APPEND_TO_DOCUMENT' as RuleAction,
+    targetDocumentPath: '',
+    autoFile: false
+  };
 
   settings = {
     name: '',
@@ -279,7 +399,8 @@ export class SpaceSettingsComponent implements OnInit {
     private router: Router,
     private spacesService: SpacesService,
     private usersService: UsersService,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private inboxService: InboxService
   ) {}
 
   ngOnInit(): void {
@@ -311,7 +432,60 @@ export class SpaceSettingsComponent implements OnInit {
           syncIntervalMinutes: space.syncIntervalMinutes
         };
         this.loadPermissions(space.id);
+        if (space.type === 'REPOSITORY') {
+          this.loadRules(space.id);
+        }
       }
+    });
+  }
+
+  loadRules(spaceId: string): void {
+    this.inboxService.getRules(spaceId).subscribe({
+      next: (rules) => this.rules.set(rules),
+      error: () => this.rules.set([])
+    });
+  }
+
+  addRule(): void {
+    const space = this.space();
+    if (!space || !this.newRule.condition) return;
+
+    this.inboxService.createRule(space.id, {
+      type: this.newRule.type,
+      condition: this.newRule.condition,
+      actionType: this.newRule.actionType,
+      targetDocumentPath: this.newRule.targetDocumentPath || undefined,
+      autoFile: this.newRule.autoFile
+    }).subscribe({
+      next: (rule) => {
+        this.rules.update(rules => [...rules, rule]);
+        this.newRule = { type: 'CATEGORY', condition: '', actionType: 'APPEND_TO_DOCUMENT', targetDocumentPath: '', autoFile: false };
+        this.toastService.success('Rule added', 'Routing rule saved successfully.');
+      },
+      error: () => this.toastService.error('Error', 'Failed to add rule')
+    });
+  }
+
+  toggleAutoFile(rule: RoutingRule, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.inboxService.updateRule(rule.spaceId, rule.id, { autoFile: checked }).subscribe({
+      next: (updated) => {
+        this.rules.update(rules => rules.map(r => r.id === updated.id ? updated : r));
+      },
+      error: () => this.toastService.error('Error', 'Failed to update rule')
+    });
+  }
+
+  deleteRule(ruleId: string): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.inboxService.deleteRule(space.id, ruleId).subscribe({
+      next: () => {
+        this.rules.update(rules => rules.filter(r => r.id !== ruleId));
+        this.toastService.success('Rule deleted', 'The routing rule has been removed.');
+      },
+      error: () => this.toastService.error('Error', 'Failed to delete rule')
     });
   }
 

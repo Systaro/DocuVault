@@ -6,6 +6,7 @@ import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
+import { InboxService } from '../../core/api/inbox.service';
 
 @Component({
   selector: 'app-space',
@@ -92,6 +93,17 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
                 >
                   <span class="material-icons">auto_awesome</span>
                   AI Chat
+                </a>
+                <a
+                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'inbox']"
+                  routerLinkActive="active"
+                  class="nav-item"
+                >
+                  <span class="material-icons">move_to_inbox</span>
+                  Inbox
+                  @if (unsortedCount() > 0) {
+                    <span class="inbox-badge">{{ unsortedCount() }}</span>
+                  }
                 </a>
                 <a
                   [routerLink]="['/spaces', spaceSignal()?.fullPath, 'settings']"
@@ -430,6 +442,17 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
       }
     }
 
+    .inbox-badge {
+      margin-left: auto;
+      background: var(--primary);
+      color: white;
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.6;
+    }
+
     .folder-tree {
       flex: 1;
       overflow-y: auto;
@@ -636,6 +659,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   spaceSignal = signal<Space | null>(null);
   fileTree = signal<FileNode[]>([]);
+  unsortedCount = signal(0);
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
   currentDocPath = signal<string | null>(null);
@@ -656,7 +680,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private router: Router,
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
-    private sharedLinksService: SharedLinksService
+    private sharedLinksService: SharedLinksService,
+    private inboxService: InboxService
   ) {}
 
   ngOnInit(): void {
@@ -676,6 +701,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.loadFileTree(this.space.id);
       this.loadSharedLinks(this.space.id);
       this.buildPathBreadcrumbs();
+      this.loadInboxCount(this.space.id);
     }
   }
 
@@ -723,6 +749,13 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   loadFileTree(spaceId: string): void {
     this.documentsService.getFileTree(spaceId).subscribe({
       next: (tree) => this.fileTree.set(tree)
+    });
+  }
+
+  loadInboxCount(spaceId: string): void {
+    this.inboxService.getUnsortedCount(spaceId).subscribe({
+      next: (res) => this.unsortedCount.set(res.count),
+      error: () => this.unsortedCount.set(0)
     });
   }
 

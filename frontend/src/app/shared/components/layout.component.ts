@@ -4,11 +4,12 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { GlobalSearchComponent } from './global-search.component';
+import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-modal.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, QuickCaptureModalComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
@@ -40,6 +41,10 @@ import { GlobalSearchComponent } from './global-search.component';
         </nav>
 
         <div class="header-actions">
+          <button class="quick-note-btn" title="Quick Note (⌘K)" (click)="showCapture.set(true)">
+            <span class="material-icons">add</span>
+            Quick Note
+          </button>
           <button class="icon-btn" title="Search (Ctrl+K)" (click)="showSearch.set(true)">
             <span class="material-icons">search</span>
           </button>
@@ -84,6 +89,10 @@ import { GlobalSearchComponent } from './global-search.component';
 
       @if (showSearch()) {
         <app-global-search (close)="showSearch.set(false)" />
+      }
+
+      @if (showCapture()) {
+        <app-quick-capture-modal (close)="showCapture.set(false)" />
       }
     </div>
   `,
@@ -162,6 +171,26 @@ import { GlobalSearchComponent } from './global-search.component';
       gap: var(--spacing-sm);
     }
 
+    .quick-note-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 14px 6px 10px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+      font-family: inherit;
+
+      .material-icons { font-size: 16px; }
+
+      &:hover { background: var(--primary-dark); }
+    }
+
     .header-user {
       display: flex;
       align-items: center;
@@ -232,6 +261,7 @@ import { GlobalSearchComponent } from './global-search.component';
 })
 export class LayoutComponent {
   showSearch = signal(false);
+  showCapture = signal(false);
 
   constructor(public authService: AuthService, public themeService: ThemeService) {}
 
@@ -239,7 +269,11 @@ export class LayoutComponent {
   onKeydown(event: KeyboardEvent): void {
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
-      this.showSearch.set(true);
+      if (this.showCapture()) {
+        this.showCapture.set(false);
+      } else {
+        this.showCapture.set(true);
+      }
     }
   }
 
