@@ -770,7 +770,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   createNewDocument(): void {
-    // Will navigate to editor with empty path for new document
+    this.router.navigate(['/spaces', this.fullPath, 'doc']);
   }
 
   openShareDialog(filePath: string, isDirectory = false): void {
