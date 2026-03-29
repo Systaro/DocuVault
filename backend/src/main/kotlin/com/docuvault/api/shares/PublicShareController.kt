@@ -131,9 +131,7 @@ class PublicShareController(
         }
 
         if (isHtml) {
-            val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
-            val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
-            val baseHref = "$scheme://$host/api/shared/${link.token}/files/"
+            val baseHref = "/api/shared/${link.token}/files/"
             val html = Files.readString(resolved)
             val injected = injectBaseTag(html, baseHref)
             return ResponseEntity.ok()
