@@ -120,8 +120,9 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
-        val bytes = Files.readAllBytes(resolved)
+        val contentType = probeContentType(resolved)
+        val extension = resolved.fileName.toString().substringAfterLast('.', "").lowercase()
+        val isHtml = contentType.startsWith("text/html") || extension == "html" || extension == "htm"
 
         val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
             CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
@@ -129,6 +130,19 @@ class PublicShareController(
             CacheControl.noCache()
         }
 
+        if (isHtml) {
+            val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
+            val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
+            val baseHref = "$scheme://$host/api/shared/${link.token}/files/"
+            val html = Files.readString(resolved)
+            val injected = injectBaseTag(html, baseHref)
+            return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .cacheControl(cachePolicy)
+                .body(injected.toByteArray(Charsets.UTF_8))
+        }
+
+        val bytes = Files.readAllBytes(resolved)
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
             .cacheControl(cachePolicy)
@@ -169,19 +183,23 @@ class PublicShareController(
             return ResponseEntity.badRequest().build()
         }
 
-        // For folder shares, also ensure we stay within the shared folder
-        if (link.shareType == ShareType.FOLDER && link.filePath.isNotBlank()) {
-            val folderRoot = repoPath.resolve(link.filePath).normalize()
-            if (!resolved.startsWith(folderRoot)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-            }
+        // For folder shares, restrict to the shared folder subtree.
+        // For file shares, restrict to the same directory as the shared file —
+        // companion assets (JS, CSS, images) inherit access but parent/sibling dirs don't.
+        val allowedRoot = if (link.shareType == ShareType.FOLDER) {
+            if (link.filePath.isNotBlank()) repoPath.resolve(link.filePath).normalize() else repoPath.normalize()
+        } else {
+            (repoPath.resolve(link.filePath).parent ?: repoPath).normalize()
+        }
+        if (!resolved.startsWith(allowedRoot)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         if (!Files.exists(resolved) || !Files.isRegularFile(resolved)) {
             return ResponseEntity.notFound().build()
         }
 
-        val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
+        val contentType = probeContentType(resolved)
         val bytes = Files.readAllBytes(resolved)
 
         val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
@@ -288,7 +306,7 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
+        val contentType = probeContentType(resolved)
         val bytes = Files.readAllBytes(resolved)
 
         val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
@@ -375,6 +393,17 @@ class PublicShareController(
         }
     }
 
+    private fun injectBaseTag(html: String, baseHref: String): String {
+        val baseTag = "<base href=\"$baseHref\">"
+        val headIndex = html.indexOf("<head>", ignoreCase = true)
+        if (headIndex >= 0) {
+            val insertAt = headIndex + "<head>".length
+            return html.substring(0, insertAt) + baseTag + html.substring(insertAt)
+        }
+        // No <head> tag — prepend base tag
+        return baseTag + html
+    }
+
     private fun getContentType(extension: String): String = when (extension.lowercase()) {
         "md" -> "text/markdown"
         "html", "htm" -> "text/html"
@@ -384,6 +413,21 @@ class PublicShareController(
         "gif" -> "image/gif"
         "svg" -> "image/svg+xml"
         "webp" -> "image/webp"
+        "js", "mjs" -> "application/javascript"
+        "css" -> "text/css"
+        "json" -> "application/json"
+        "txt" -> "text/plain"
+        "xml" -> "application/xml"
+        "woff" -> "font/woff"
+        "woff2" -> "font/woff2"
+        "ttf" -> "font/ttf"
         else -> "application/octet-stream"
+    }
+
+    private fun probeContentType(path: Path): String {
+        val extension = path.fileName.toString().substringAfterLast('.', "")
+        val byExtension = getContentType(extension)
+        if (byExtension != "application/octet-stream") return byExtension
+        return Files.probeContentType(path) ?: "application/octet-stream"
     }
 }
