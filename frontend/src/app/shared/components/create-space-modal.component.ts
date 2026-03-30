@@ -15,13 +15,26 @@ import { ToastService } from '../services/toast.service';
     <div class="modal-overlay" (click)="close.emit()">
       <div class="modal" (click)="$event.stopPropagation()">
         <div class="modal-header">
-          <h2>Create New {{ type === 'GROUP' ? 'Group' : 'Repository' }}</h2>
+          <h2>New {{ type === 'GROUP' ? 'Group' : 'Space' }}</h2>
           <button class="icon-btn" (click)="close.emit()">
             <span class="material-icons">close</span>
           </button>
         </div>
 
         <form (ngSubmit)="createSpace()" class="modal-body">
+          @if (type === 'REPOSITORY') {
+            <div class="mode-tabs">
+              <button type="button" class="mode-tab" [class.active]="spaceMode() === 'standalone'" (click)="setMode('standalone')">
+                <span class="material-icons">folder_open</span>
+                Standalone
+              </button>
+              <button type="button" class="mode-tab" [class.active]="spaceMode() === 'git'" (click)="setMode('git')">
+                <span class="material-icons">cloud_sync</span>
+                Git-backed
+              </button>
+            </div>
+          }
+
           <div class="form-group">
             <label class="form-label">Logo</label>
             <app-logo-upload
@@ -77,7 +90,7 @@ import { ToastService } from '../services/toast.service';
             </div>
           </div>
 
-          @if (type === 'REPOSITORY') {
+          @if (type === 'REPOSITORY' && spaceMode() === 'git') {
             @if (gitConnected()) {
               <div class="form-group">
                 <label class="form-label">GitLab Project</label>
@@ -142,7 +155,7 @@ import { ToastService } from '../services/toast.service';
                 Creating...
               } @else {
                 <span class="material-icons">{{ type === 'GROUP' ? 'create_new_folder' : 'add' }}</span>
-                Create {{ type === 'GROUP' ? 'Group' : 'Repository' }}
+                Create {{ type === 'GROUP' ? 'Group' : 'Space' }}
               }
             </button>
           </div>
@@ -204,6 +217,48 @@ import { ToastService } from '../services/toast.service';
       color: var(--text-muted);
       margin-top: var(--spacing-xs);
     }
+
+    .mode-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .mode-tab {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+
+      .material-icons {
+        font-size: 1rem;
+      }
+
+      &:hover:not(.active) {
+        background: var(--surface);
+        color: var(--text-primary);
+      }
+
+      &.active {
+        background: var(--surface);
+        color: var(--primary, #0d9488);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+    }
   `]
 })
 export class CreateSpaceModalComponent implements OnInit {
@@ -216,6 +271,7 @@ export class CreateSpaceModalComponent implements OnInit {
   createError = signal<string | null>(null);
   gitConnected = signal(false);
   gitlabProjects = signal<GitLabProject[]>([]);
+  spaceMode = signal<'standalone' | 'git'>('standalone');
 
   pendingLogoFile: File | null = null;
   slugManuallyEdited = false;
@@ -249,6 +305,17 @@ export class CreateSpaceModalComponent implements OnInit {
     }
   }
 
+  setMode(mode: 'standalone' | 'git'): void {
+    this.spaceMode.set(mode);
+    if (mode === 'standalone') {
+      this.newSpace.gitlabProjectId = undefined;
+      this.newSpace.gitlabUrl = undefined;
+      this.newSpace.syncEnabled = false;
+    } else {
+      this.newSpace.syncEnabled = true;
+    }
+  }
+
   onNameChange(name: string): void {
     if (!this.slugManuallyEdited) {
       this.newSpace.slug = this.generateSlug(name);
@@ -257,6 +324,12 @@ export class CreateSpaceModalComponent implements OnInit {
 
   createSpace(): void {
     if (!this.newSpace.name || !this.newSpace.slug) return;
+
+    if (this.type === 'REPOSITORY' && this.spaceMode() === 'standalone') {
+      this.newSpace.gitlabProjectId = undefined;
+      this.newSpace.gitlabUrl = undefined;
+      this.newSpace.syncEnabled = false;
+    }
 
     this.creating.set(true);
     this.createError.set(null);
