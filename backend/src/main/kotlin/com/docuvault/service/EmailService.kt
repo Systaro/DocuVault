@@ -14,7 +14,7 @@ class EmailService(
     private val logger = LoggerFactory.getLogger(EmailService::class.java)
 
     companion object {
-        const val FROM_ADDRESS = "noreply@systaro.de"
+        const val FROM_ADDRESS = "noreply@docuvault.systaro.de"
         const val FROM_NAME = "DocuVault"
     }
 
