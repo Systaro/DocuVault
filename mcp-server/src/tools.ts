@@ -1,10 +1,29 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, extname } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DocuVaultClient } from './client.js';
 import type { PatchOperation, Space } from './types.js';
+
+const ALLOWED_EXTENSIONS = new Set([
+  '.md', '.markdown',
+  '.html', '.htm',
+  '.css',
+  '.js', '.mjs',
+  '.json',
+  '.xml',
+  '.yaml', '.yml',
+  '.svg',
+  '.txt',
+]);
+
+function validateExtension(filePath: string): string | null {
+  const ext = extname(filePath).toLowerCase();
+  if (!ext) return `File has no extension. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`;
+  if (!ALLOWED_EXTENSIONS.has(ext)) return `File type "${ext}" is not allowed. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`;
+  return null;
+}
 
 function buildSpaceCatalog(spaces: Space[]): string {
   const repoSpaces = spaces.filter(s => s.type === 'REPOSITORY');
@@ -189,6 +208,9 @@ WORKFLOW: Use this to get a local copy of a document, edit it with any tool, the
         if (!resolvedId) {
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
+        const extError = validateExtension(saveTo);
+        if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
+
         const doc = await client.readDocument(resolvedId, path);
         await mkdir(dirname(saveTo), { recursive: true });
         await writeFile(saveTo, doc.content, 'utf-8');
@@ -230,6 +252,8 @@ Provide EITHER filePath (reads local file — ideal after download_document) OR 
 
         let documentContent: string;
         if (filePath) {
+          const extError = validateExtension(filePath);
+          if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
           documentContent = await readFile(filePath, 'utf-8');
         } else if (content) {
           documentContent = content;
@@ -315,6 +339,8 @@ Provide EITHER filePath (to upload a local file — fast, no token overhead) OR 
 
         let documentContent: string;
         if (filePath) {
+          const extError = validateExtension(filePath);
+          if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
           documentContent = await readFile(filePath, 'utf-8');
         } else if (content) {
           documentContent = content;
