@@ -177,6 +177,20 @@ class GitService(
         }
     }
 
+    fun writeBinaryFile(space: Space, path: String, bytes: ByteArray): Boolean {
+        val repoDir = getRepoPath(space.id!!)
+        val filePath = validatePath(repoDir, path)
+
+        return try {
+            Files.createDirectories(filePath.parent)
+            Files.write(filePath, bytes)
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to write binary file for space '${space.name}': ${e.message}", e)
+            false
+        }
+    }
+
     fun deleteFile(space: Space, path: String): Boolean {
         val repoDir = getRepoPath(space.id!!)
         val filePath = validatePath(repoDir, path)

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
@@ -12,6 +12,18 @@ import { AuthService } from '../../core/auth/auth.service';
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
+    @if (isDragOver()) {
+      <div class="drop-overlay">
+        <div class="drop-overlay-inner">
+          <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <p class="text-lg font-semibold">Drop files to upload</p>
+          <p class="text-sm opacity-75 mt-1">Files will be added to this space</p>
+        </div>
+      </div>
+    }
+
     <div class="p-8">
       <div class="max-w-4xl mx-auto">
         <!-- Header -->
@@ -80,9 +92,22 @@ import { AuthService } from '../../core/auth/auth.service';
 
         <!-- Recent Documents -->
         <div class="card">
-          <div class="p-4 overview-section-header">
+          <div class="p-4 overview-section-header flex items-center justify-between">
             <h2 class="font-semibold overview-text-primary">Recent Documents</h2>
+            <label class="upload-btn" title="Upload files">
+              <input type="file" multiple (change)="onFileInputChange($event)" class="sr-only" />
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+              Upload
+            </label>
           </div>
+          @if (uploading()) {
+            <div class="upload-progress-bar">
+              <div class="upload-progress-fill"></div>
+            </div>
+          }
+
           @if (documents().length === 0) {
             <div class="p-8 text-center">
               <svg class="w-12 h-12 mx-auto overview-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -197,12 +222,111 @@ import { AuthService } from '../../core/auth/auth.service';
     .mb-6 {
       margin-bottom: 24px;
     }
+
+    .drop-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 148, 136, 0.12);
+      border: 3px dashed var(--primary, #0d9488);
+      border-radius: 12px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      margin: 8px;
+    }
+
+    .drop-overlay-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: var(--primary, #0d9488);
+      text-align: center;
+    }
+
+    .upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+
+    .upload-progress-bar {
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+
+    .upload-progress-fill {
+      height: 100%;
+      background: var(--primary, #0d9488);
+      width: 100%;
+      animation: progress-slide 1.2s ease-in-out infinite;
+      transform-origin: left;
+    }
+
+    @keyframes progress-slide {
+      0% { transform: scaleX(0) translateX(0); }
+      50% { transform: scaleX(0.6) translateX(60%); }
+      100% { transform: scaleX(0) translateX(200%); }
+    }
   `]
 })
 export class SpaceOverviewComponent implements OnInit {
   space = signal<Space | null>(null);
   documents = signal<Document[]>([]);
   syncing = signal(false);
+  isDragOver = signal(false);
+  uploading = signal(false);
+
+  private dragCounter = 0;
+
+  @HostListener('dragenter', ['$event'])
+  onDragEnter(event: DragEvent): void {
+    event.preventDefault();
+    this.dragCounter++;
+    if (event.dataTransfer?.types.includes('Files')) {
+      this.isDragOver.set(true);
+    }
+  }
+
+  @HostListener('dragleave', ['$event'])
+  onDragLeave(event: DragEvent): void {
+    this.dragCounter--;
+    if (this.dragCounter === 0) {
+      this.isDragOver.set(false);
+    }
+  }
+
+  @HostListener('dragover', ['$event'])
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+  }
+
+  @HostListener('drop', ['$event'])
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.isDragOver.set(false);
+    this.dragCounter = 0;
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length > 0) {
+      this.uploadFiles(files);
+    }
+  }
 
   constructor(
     private route: ActivatedRoute,
@@ -321,6 +445,37 @@ export class SpaceOverviewComponent implements OnInit {
       default:
         return 'Sync Error';
     }
+  }
+
+  onFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (files.length > 0) {
+      this.uploadFiles(files);
+    }
+    input.value = '';
+  }
+
+  private uploadFiles(files: File[]): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.uploading.set(true);
+    this.documentsService.uploadFiles(space.id, files).subscribe({
+      next: (uploaded) => {
+        this.uploading.set(false);
+        const names = uploaded.map(f => f.name).join(', ');
+        this.toastService.success(
+          `${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`,
+          names
+        );
+        this.loadDocuments(space.id);
+      },
+      error: (error) => {
+        this.uploading.set(false);
+        this.toastService.error('Upload failed', error.error?.message || 'Could not upload files');
+      }
+    });
   }
 
   formatDate(dateString: string): string {

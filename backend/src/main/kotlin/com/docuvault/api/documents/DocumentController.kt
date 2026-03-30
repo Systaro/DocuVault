@@ -14,7 +14,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.*
@@ -104,6 +106,69 @@ class DocumentController(
                 lastSyncedAt = document?.lastSyncedAt
             )
         )
+    }
+
+    @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun uploadFiles(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam("files") files: List<MultipartFile>,
+        @RequestParam("folder", required = false) folder: String?
+    ): ResponseEntity<List<UploadedFileDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val prefix = folder?.trim('/')?.let { "$it/" } ?: ""
+        val uploaded = mutableListOf<UploadedFileDto>()
+
+        for (file in files) {
+            // Extract only the basename — browsers on some OS send full local path (e.g. C:\Users\...\file.md)
+            val originalName = file.originalFilename
+                ?.substringAfterLast('/')
+                ?.substringAfterLast('\\')
+                ?.ifBlank { null }
+                ?: continue
+            val path = "$prefix$originalName"
+            val bytes = file.bytes
+
+            val success = gitService.writeBinaryFile(space, path, bytes)
+            if (!success) continue
+
+            // Register markdown files as documents in the DB
+            if (originalName.endsWith(".md", ignoreCase = true)) {
+                val content = String(bytes)
+                val contentHash = hashContent(content)
+                val now = java.time.Instant.now()
+                var document = documentRepository.findBySpaceIdAndPath(spaceId, path)
+                if (document != null) {
+                    document.title = extractTitle(content, path)
+                    document.contentHash = contentHash
+                    document.lastSyncedAt = now
+                    document.updatedAt = now
+                } else {
+                    document = com.docuvault.domain.space.Document(
+                        space = space,
+                        path = path,
+                        title = extractTitle(content, path),
+                        contentHash = contentHash,
+                        lastSyncedAt = now
+                    )
+                }
+                val saved = documentRepository.save(document)
+                embeddingService.processDocument(saved.id!!, content)
+            }
+
+            uploaded.add(UploadedFileDto(path = path, name = originalName))
+        }
+
+        return ResponseEntity.ok(uploaded)
     }
 
     @PostMapping
@@ -550,6 +615,11 @@ data class PatchOperation(
     val after: String? = null,
     val before: String? = null,
     val replaceAll: Boolean? = false
+)
+
+data class UploadedFileDto(
+    val path: String,
+    val name: String
 )
 
 fun Document.toDto() = DocumentDto(

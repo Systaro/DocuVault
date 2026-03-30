@@ -37,6 +37,11 @@ spring:
           starttls:
             enable: false
 
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
 server:
   address: 0.0.0.0
   port: 7030
@@ -48,7 +53,8 @@ server:
         path: /api
         http-only: true
         same-site: strict
-      timeout: 24h
+        max-age: 30d
+      timeout: 30d
 
 # Encryption key for sensitive settings stored in database
 encryption:
