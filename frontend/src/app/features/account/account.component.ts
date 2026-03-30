@@ -263,15 +263,18 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                     <li><strong>search_documentation</strong> &mdash; semantic search across all docs</li>
                     <li><strong>search_by_keyword</strong> &mdash; find docs by title or path</li>
                     <li><strong>read_document</strong> &mdash; read the full content of any page</li>
+                    <li><strong>download_document</strong> &mdash; save a document to a local file for editing</li>
                     <li><strong>list_spaces</strong> / <strong>list_documents</strong> &mdash; browse the doc tree</li>
                   </ul>
                 </div>
                 <div class="capability-group">
                   <h4><span class="material-icons">edit_note</span> Write &amp; Edit</h4>
                   <ul>
-                    <li><strong>create_document</strong> &mdash; create new pages</li>
+                    <li><strong>create_document</strong> &mdash; create new pages (inline or from a local file)</li>
+                    <li><strong>update_document</strong> &mdash; fully replace a document's content</li>
                     <li><strong>edit_document</strong> &mdash; surgical find-and-replace that preserves all formatting</li>
                     <li><strong>insert_in_document</strong> &mdash; add content at a specific location</li>
+                    <li><strong>delete_document</strong> &mdash; remove a document from the space</li>
                   </ul>
                 </div>
               </div>
@@ -883,7 +886,7 @@ export class AccountComponent implements OnInit {
       mcpServers: {
         docuvault: {
           command: 'npx',
-          args: ['-y', '@docuvault/mcp-server'],
+          args: ['-y', '@systaro/docuvault-mcp'],
           env: {
             DOCUVAULT_URL: origin,
             DOCUVAULT_TOKEN: '<paste-your-token-here>'

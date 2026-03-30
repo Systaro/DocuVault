@@ -71,6 +71,28 @@ export class DocuVaultClient {
     });
   }
 
+  async updateDocument(
+    spaceId: string,
+    path: string,
+    content: string,
+    title?: string,
+    options?: { autoCommit?: boolean; commitMessage?: string }
+  ): Promise<DocumentContent> {
+    return this.request<DocumentContent>(`/spaces/${spaceId}/documents/${path}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        content,
+        title,
+        autoCommit: options?.autoCommit ?? false,
+        commitMessage: options?.commitMessage,
+      }),
+    });
+  }
+
+  async deleteDocument(spaceId: string, path: string): Promise<void> {
+    await this.request<void>(`/spaces/${spaceId}/documents/${path}`, { method: 'DELETE' });
+  }
+
   async searchKeyword(query: string, limit: number = 20): Promise<SearchResult[]> {
     return this.request<SearchResult[]>(`/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   }

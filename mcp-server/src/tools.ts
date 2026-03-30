@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DocuVaultClient } from './client.js';
@@ -170,6 +172,127 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
   );
 
   // --- Write tools ---
+
+  server.tool(
+    'download_document',
+    `Download a document from DocuVault and save it to a local file for editing. Returns the content hash needed to reupload after editing.
+
+WORKFLOW: Use this to get a local copy of a document, edit it with any tool, then call update_document with the same filePath to reupload.`,
+    {
+      spaceId: z.string().describe('The space ID containing the document'),
+      path: z.string().describe('The file path within the space (e.g., "docs/getting-started.md")'),
+      saveTo: z.string().describe('Absolute local file path to save the content to (e.g., "/tmp/getting-started.md")'),
+    },
+    async ({ spaceId, path, saveTo }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        const doc = await client.readDocument(resolvedId, path);
+        await mkdir(dirname(saveTo), { recursive: true });
+        await writeFile(saveTo, doc.content, 'utf-8');
+        return {
+          content: [{
+            type: 'text',
+            text: `Downloaded successfully.\nSpace path: ${doc.path}\nTitle: ${doc.title}\nSaved to: ${saveTo}\ncontentHash: ${doc.contentHash}\n\nEdit the file locally, then call update_document with filePath="${saveTo}" and content_hash="${doc.contentHash}" to reupload.`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Download failed: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'update_document',
+    `Fully replace an existing document's content. Use this after editing a file locally (downloaded via download_document) or to overwrite a document entirely.
+
+For surgical edits (change a paragraph, fix a line), use edit_document or insert_in_document instead — they are safer and preserve untouched content byte-for-byte.
+
+Provide EITHER filePath (reads local file — ideal after download_document) OR content (inline). If both are given, filePath wins.`,
+    {
+      spaceId: z.string().describe('The space ID containing the document'),
+      path: z.string().describe('The file path within the space (e.g., "docs/setup-guide.md")'),
+      content: z.string().optional().describe('The full replacement content. Ignored if filePath is provided.'),
+      filePath: z.string().optional().describe('Absolute path to a local file to upload as the new content. Ideal for files edited after download_document.'),
+      title: z.string().optional().describe('Optional new title. If omitted, extracted from first heading or filename.'),
+      content_hash: z.string().optional().describe('SHA-256 hash from read_document or download_document. If provided, the update is rejected if the document was modified since you read it (optimistic locking).'),
+      auto_commit: z.boolean().optional().default(false).describe('If true, commit and push to Git after updating.'),
+      commit_message: z.string().optional().describe('Git commit message. Used only when auto_commit is true.'),
+    },
+    async ({ spaceId, path, content, filePath, title, content_hash, auto_commit, commit_message }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        let documentContent: string;
+        if (filePath) {
+          documentContent = await readFile(filePath, 'utf-8');
+        } else if (content) {
+          documentContent = content;
+        } else {
+          return { content: [{ type: 'text', text: 'Either "content" or "filePath" must be provided.' }], isError: true };
+        }
+
+        // Optimistic locking: read current hash and compare before sending
+        if (content_hash) {
+          const current = await client.readDocument(resolvedId, path);
+          if (current.contentHash !== content_hash) {
+            return {
+              content: [{
+                type: 'text',
+                text: `Conflict: document was modified since you last read it.\nCurrent hash: ${current.contentHash}\nYour hash:    ${content_hash}\n\nRe-download the document and reapply your changes.`,
+              }],
+              isError: true,
+            };
+          }
+        }
+
+        const doc = await client.updateDocument(resolvedId, path, documentContent, title, {
+          autoCommit: auto_commit,
+          commitMessage: commit_message,
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Document updated successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nNew hash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}${auto_commit ? '\nChanges committed and pushed to Git.' : ''}`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Update failed: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'delete_document',
+    'Delete a document from a DocuVault space. This removes the file from the Git repository and the search index. This action cannot be undone via MCP — use Git history to recover if needed.',
+    {
+      spaceId: z.string().describe('The space ID containing the document'),
+      path: z.string().describe('The file path within the space (e.g., "docs/old-page.md")'),
+    },
+    async ({ spaceId, path }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        await client.deleteDocument(resolvedId, path);
+        return {
+          content: [{
+            type: 'text',
+            text: `Document deleted: ${path}`,
+          }],
+        };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Delete failed: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
 
   server.tool(
     'create_document',
