@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, signal, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -23,6 +23,7 @@ import { AiService } from '../../core/api/ai.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { GitService } from '../../core/api/git.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
+import { ToastService } from '../../shared/services/toast.service';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
@@ -76,6 +77,13 @@ import { marked } from 'marked';
                       {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
                     </button>
                   }
+                  <div class="action-menu-divider"></div>
+                  <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete document
+                  </button>
                 </div>
               }
             </div>
@@ -125,6 +133,13 @@ import { marked } from 'marked';
                         {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
                       </button>
                     }
+                    <div class="action-menu-divider"></div>
+                    <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                      Delete document
+                    </button>
                   </div>
                 }
               </div>
@@ -183,6 +198,39 @@ import { marked } from 'marked';
           [filePath]="documentPath"
           (close)="showShareDialog.set(false)"
         />
+      }
+
+      @if (showDeleteConfirm()) {
+        <div class="modal-overlay" (click)="showDeleteConfirm.set(false)">
+          <div class="delete-modal" (click)="$event.stopPropagation()">
+            <div class="delete-modal-header">
+              <h2>Delete document</h2>
+              <button class="editor-icon-btn" (click)="showDeleteConfirm.set(false)">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="delete-modal-body">
+              <p>Are you sure you want to delete <strong>{{ documentPath.split('/').pop() }}</strong>?</p>
+              <p class="delete-modal-hint">This action cannot be undone.</p>
+            </div>
+            <div class="delete-modal-footer">
+              <button type="button" (click)="showDeleteConfirm.set(false)" class="btn-secondary">Cancel</button>
+              <button type="button" (click)="deleteDocument()" [disabled]="deleting()" class="btn-danger">
+                @if (deleting()) {
+                  <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  Deleting...
+                } @else {
+                  Delete
+                }
+              </button>
+            </div>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -313,6 +361,115 @@ import { marked } from 'marked';
     .action-menu-item:hover {
       background: var(--background);
     }
+
+    .action-menu-item--danger {
+      color: var(--error, #dc2626);
+    }
+
+    .action-menu-item--danger:hover {
+      background: rgba(220, 38, 38, 0.08);
+    }
+
+    .action-menu-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 1.5rem;
+    }
+
+    .delete-modal {
+      background: var(--surface);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .delete-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+
+      h2 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+    }
+
+    .delete-modal-body {
+      padding: 1.25rem 1.5rem;
+
+      p {
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+        line-height: 1.5;
+      }
+    }
+
+    .delete-modal-hint {
+      color: var(--text-muted) !important;
+      font-size: 0.8125rem !important;
+      margin-top: 0.5rem;
+    }
+
+    .delete-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-secondary {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--background);
+      }
+    }
+
+    .btn-danger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #dc2626;
+      color: white;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: #b91c1c;
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
   `]
 })
 export class EditorComponent implements OnInit, OnDestroy {
@@ -344,6 +501,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   showChat = signal(false);
   showShareDialog = signal(false);
   showActionMenu = signal(false);
+  showDeleteConfirm = signal(false);
+  deleting = signal(false);
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html'>('image');
@@ -352,12 +511,14 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   constructor(
     private route: ActivatedRoute,
+    private router: Router,
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
     private aiService: AiService,
     private gitService: GitService,
     private authService: AuthService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private toastService: ToastService
   ) {
     // TODO: Once the markdown saving is fixed, re-enable auto-save and editing
     // Auto-save setup (disabled — saving currently destroys markdown)
@@ -385,6 +546,29 @@ export class EditorComponent implements OnInit, OnDestroy {
     navigator.clipboard.writeText(url);
     this.gitLinkCopied.set(true);
     setTimeout(() => this.gitLinkCopied.set(false), 2000);
+  }
+
+  confirmDeleteDocument(): void {
+    this.showDeleteConfirm.set(true);
+  }
+
+  deleteDocument(): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+
+    this.deleting.set(true);
+    this.documentsService.deleteDocument(space.id, this.documentPath).subscribe({
+      next: () => {
+        this.deleting.set(false);
+        this.showDeleteConfirm.set(false);
+        this.toastService.success('Document Deleted', `"${this.documentPath.split('/').pop()}" has been deleted.`);
+        this.router.navigate(['..'], { relativeTo: this.route });
+      },
+      error: (error) => {
+        this.deleting.set(false);
+        this.toastService.error('Delete Failed', error.error?.message || 'Failed to delete document');
+      }
+    });
   }
 
   exportAsPdf(): void {
