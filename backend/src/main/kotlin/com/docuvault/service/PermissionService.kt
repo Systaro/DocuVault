@@ -6,6 +6,7 @@ import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
 @Service
@@ -81,6 +82,7 @@ class PermissionService(
      * Gets all spaces a user can access, considering hierarchy.
      * Returns spaces where the user has direct permission or inherited permission.
      */
+    @Transactional(readOnly = true)
     fun getAccessibleSpaces(userId: UUID, userRole: UserRole): List<Space> {
         if (userRole == UserRole.SUPER_ADMIN) {
             return spaceRepository.findAll()
