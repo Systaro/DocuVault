@@ -52,10 +52,12 @@ class PermissionService(
     /**
      * Checks if a user has access to a space (any permission level).
      * Super admins always have access.
+     * For groups, also returns true if the user has access to any descendant space.
      */
+    @Transactional(readOnly = true)
     fun hasAccess(userId: UUID, spaceId: UUID, userRole: UserRole): Boolean {
         if (userRole == UserRole.SUPER_ADMIN) return true
-        return getEffectivePermission(userId, spaceId) != null
+        return getAccessibleSpaces(userId, userRole).any { it.id == spaceId }
     }
 
     /**
