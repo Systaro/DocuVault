@@ -166,6 +166,9 @@ import { InboxService } from '../../core/api/inbox.service';
 
             <!-- Main Content -->
             <main class="content-area">
+              @if (isResizing()) {
+                <div class="resize-overlay"></div>
+              }
               <router-outlet></router-outlet>
             </main>
           </div>
@@ -745,6 +748,14 @@ import { InboxService } from '../../core/api/inbox.service';
       flex: 1;
       overflow-y: auto;
       background: var(--background-darker);
+      position: relative;
+    }
+
+    .resize-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 1000;
+      cursor: col-resize;
     }
 
     @media (max-width: 768px) {
@@ -786,6 +797,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
   );
+  isResizing = signal(false);
   private resizing = false;
   private boundOnMouseMove = this.onResizeMove.bind(this);
   private boundOnMouseUp = this.onResizeEnd.bind(this);
@@ -918,6 +930,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   onResizeStart(event: MouseEvent): void {
     event.preventDefault();
     this.resizing = true;
+    this.isResizing.set(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', this.boundOnMouseMove);
@@ -938,6 +951,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   private onResizeEnd(): void {
     if (!this.resizing) return;
     this.resizing = false;
+    this.isResizing.set(false);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     document.removeEventListener('mousemove', this.boundOnMouseMove);
