@@ -189,7 +189,7 @@ import { marked } from 'marked';
           @if (previewType() === 'html') {
             <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
           } @else {
-            <div class="image-zoom-container" (wheel)="onImageWheel($event)">
+            <div class="image-zoom-container">
               <img
                 [src]="previewUrl()"
                 [alt]="documentPath.split('/').pop()"

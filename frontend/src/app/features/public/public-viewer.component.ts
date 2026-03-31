@@ -122,7 +122,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" (wheel)="onImageWheel($event)">
+            <div class="image-container">
               <img
                 [src]="rawUrl()"
                 [alt]="currentFileName()"
@@ -176,7 +176,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" (wheel)="onImageWheel($event)">
+            <div class="image-container">
               <img
                 [src]="rawUrl()"
                 [alt]="metadata()?.fileName"
