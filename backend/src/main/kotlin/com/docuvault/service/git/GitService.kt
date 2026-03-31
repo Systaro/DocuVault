@@ -242,6 +242,31 @@ class GitService(
         }
     }
 
+    fun createFolder(space: Space, path: String): Boolean {
+        return writeFile(space, "$path/.gitkeep", "")
+    }
+
+    fun renameItem(space: Space, oldPath: String, newPath: String): Boolean {
+        val repoDir = getRepoPath(space.id!!)
+        val sourcePath = validatePath(repoDir, oldPath)
+        val targetPath = validatePath(repoDir, newPath)
+
+        return try {
+            Files.createDirectories(targetPath.parent)
+            Files.move(sourcePath, targetPath)
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to rename '$oldPath' to '$newPath' for space '${space.name}': ${e.message}", e)
+            false
+        }
+    }
+
+    fun isDirectory(space: Space, path: String): Boolean {
+        val repoDir = getRepoPath(space.id!!)
+        val filePath = validatePath(repoDir, path)
+        return Files.isDirectory(filePath)
+    }
+
     fun deleteRepository(spaceId: UUID): Boolean {
         val repoDir = getRepoPath(spaceId).toFile()
         return try {

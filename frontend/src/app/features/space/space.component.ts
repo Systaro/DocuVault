@@ -1,5 +1,6 @@
 import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
@@ -11,7 +12,7 @@ import { InboxService } from '../../core/api/inbox.service';
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -67,6 +68,13 @@ import { InboxService } from '../../core/api/inbox.service';
                   <span class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
                 }
                 <button
+                  class="sidebar-action-btn"
+                  title="New root folder"
+                  (click)="startCreateFolder('')"
+                >
+                  <span class="material-icons">create_new_folder</span>
+                </button>
+                <button
                   class="sidebar-share-btn"
                   title="Share entire repository"
                   (click)="openShareDialog('', true)"
@@ -74,6 +82,19 @@ import { InboxService } from '../../core/api/inbox.service';
                   <span class="material-icons">share</span>
                 </button>
               </div>
+              @if (creatingFolderUnder() === '') {
+                <div class="tree-new-folder-row" [style.padding-left.px]="12">
+                  <span class="material-icons folder-icon">folder</span>
+                  <input
+                    class="new-folder-input"
+                    [(ngModel)]="newFolderName"
+                    placeholder="Folder name"
+                    (keydown.enter)="submitCreateFolder()"
+                    (keydown.escape)="cancelCreateFolder()"
+                    (blur)="cancelCreateFolder()"
+                  />
+                </div>
+              }
 
               <!-- Navigation -->
               <nav class="sidebar-nav">
@@ -176,21 +197,61 @@ import { InboxService } from '../../core/api/inbox.service';
                   <span class="material-icons folder-icon">
                     {{ expandedFolders().has(node.path) ? 'folder_open' : 'folder' }}
                   </span>
-                  <span class="tree-name">{{ node.name }}</span>
-                  @if (sharedFilePaths().has(node.path)) {
-                    <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                  @if (renamingPath() === node.path) {
+                    <input
+                      class="rename-input"
+                      [(ngModel)]="renamingValue"
+                      (keydown.enter)="submitRename(node); $event.stopPropagation()"
+                      (keydown.escape)="cancelRename(); $event.stopPropagation()"
+                      (blur)="cancelRename()"
+                      (click)="$event.stopPropagation()"
+                    />
+                  } @else {
+                    <span class="tree-name">{{ node.name }}</span>
+                    @if (sharedFilePaths().has(node.path)) {
+                      <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                    }
                   }
                 </button>
-                <button
-                  class="tree-share-btn"
-                  title="Share folder"
-                  (click)="openShareDialog(node.path, true); $event.stopPropagation(); $event.preventDefault()"
-                >
-                  <span class="material-icons">share</span>
-                </button>
+                <div class="tree-row-actions">
+                  <button
+                    class="tree-action-btn"
+                    title="New subfolder"
+                    (click)="startCreateFolder(node.path); $event.stopPropagation()"
+                  >
+                    <span class="material-icons">create_new_folder</span>
+                  </button>
+                  <button
+                    class="tree-action-btn"
+                    title="Rename"
+                    (click)="startRename(node.path, node.name); $event.stopPropagation()"
+                  >
+                    <span class="material-icons">drive_file_rename_outline</span>
+                  </button>
+                  <button
+                    class="tree-share-btn"
+                    title="Share folder"
+                    (click)="openShareDialog(node.path, true); $event.stopPropagation(); $event.preventDefault()"
+                  >
+                    <span class="material-icons">share</span>
+                  </button>
+                </div>
               </div>
               @if (expandedFolders().has(node.path) && node.children) {
                 <div class="tree-children">
+                  @if (creatingFolderUnder() === node.path) {
+                    <div class="tree-new-folder-row" [style.padding-left.px]="12 + (level + 1) * 16">
+                      <span class="material-icons folder-icon">folder</span>
+                      <input
+                        class="new-folder-input"
+                        [(ngModel)]="newFolderName"
+                        placeholder="Folder name"
+                        (keydown.enter)="submitCreateFolder()"
+                        (keydown.escape)="cancelCreateFolder()"
+                        (blur)="cancelCreateFolder()"
+                      />
+                    </div>
+                  }
                   <ng-container *ngTemplateOutlet="fileTreeTemplate; context: { nodes: node.children, level: level + 1 }"></ng-container>
                 </div>
               }
@@ -203,18 +264,38 @@ import { InboxService } from '../../core/api/inbox.service';
                   [style.padding-left.px]="32 + level * 16"
                 >
                   <span class="material-icons file-icon">description</span>
-                  <span class="tree-name">{{ node.name }}</span>
-                  @if (sharedFilePaths().has(node.path)) {
-                    <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                  @if (renamingPath() === node.path) {
+                    <input
+                      class="rename-input"
+                      [(ngModel)]="renamingValue"
+                      (keydown.enter)="submitRename(node); $event.stopPropagation()"
+                      (keydown.escape)="cancelRename(); $event.stopPropagation()"
+                      (blur)="cancelRename()"
+                      (click)="$event.stopPropagation()"
+                    />
+                  } @else {
+                    <span class="tree-name">{{ node.name }}</span>
+                    @if (sharedFilePaths().has(node.path)) {
+                      <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                    }
                   }
                 </a>
-                <button
-                  class="tree-share-btn"
-                  title="Share file"
-                  (click)="openShareDialog(node.path, false); $event.stopPropagation(); $event.preventDefault()"
-                >
-                  <span class="material-icons">share</span>
-                </button>
+                <div class="tree-row-actions">
+                  <button
+                    class="tree-action-btn"
+                    title="Rename"
+                    (click)="startRename(node.path, node.name); $event.stopPropagation()"
+                  >
+                    <span class="material-icons">drive_file_rename_outline</span>
+                  </button>
+                  <button
+                    class="tree-share-btn"
+                    title="Share file"
+                    (click)="openShareDialog(node.path, false); $event.stopPropagation(); $event.preventDefault()"
+                  >
+                    <span class="material-icons">share</span>
+                  </button>
+                </div>
               </div>
             }
           </div>
@@ -378,8 +459,25 @@ import { InboxService } from '../../core/api/inbox.service';
       }
     }
 
+    .sidebar-action-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      opacity: 0;
+      transition: opacity var(--transition), color var(--transition);
+
+      .material-icons { font-size: 18px; }
+      &:hover { color: var(--primary); }
+    }
+
+    .sidebar-header:hover .sidebar-action-btn { opacity: 1; }
+
     .sidebar-share-btn {
-      margin-left: auto;
       background: none;
       border: none;
       cursor: pointer;
@@ -532,19 +630,15 @@ import { InboxService } from '../../core/api/inbox.service';
       }
     }
 
-    .tree-folder-row {
-      position: relative;
+    .tree-row-actions {
       display: flex;
       align-items: center;
+      gap: 1px;
+      opacity: 0;
+      transition: opacity var(--transition);
+      flex-shrink: 0;
 
-      .tree-item {
-        flex: 1;
-      }
-
-      .tree-share-btn {
-        position: absolute;
-        right: 4px;
-        opacity: 0;
+      .tree-action-btn, .tree-share-btn {
         background: none;
         border: none;
         cursor: pointer;
@@ -553,18 +647,57 @@ import { InboxService } from '../../core/api/inbox.service';
         color: var(--text-muted);
         display: flex;
         align-items: center;
-        transition: opacity var(--transition), color var(--transition);
+        transition: color var(--transition);
 
-        .material-icons {
-          font-size: 16px;
-        }
+        .material-icons { font-size: 16px; }
+        &:hover { color: var(--primary); }
+      }
+    }
 
-        &:hover {
-          color: var(--primary);
-        }
+    .rename-input {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      background: var(--surface);
+      border: 1px solid var(--primary);
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: var(--text-primary);
+      outline: none;
+    }
+
+    .tree-new-folder-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+
+      .folder-icon { font-size: 16px; color: var(--text-muted); }
+
+      .new-folder-input {
+        flex: 1;
+        min-width: 0;
+        font-size: 13px;
+        background: var(--surface);
+        border: 1px solid var(--primary);
+        border-radius: 4px;
+        padding: 1px 4px;
+        color: var(--text-primary);
+        outline: none;
+      }
+    }
+
+    .tree-folder-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .tree-item {
+        flex: 1;
+        min-width: 0;
       }
 
-      &:hover .tree-share-btn {
+      &:hover .tree-row-actions {
         opacity: 1;
       }
 
@@ -580,32 +713,10 @@ import { InboxService } from '../../core/api/inbox.service';
 
       .tree-item {
         flex: 1;
+        min-width: 0;
       }
 
-      .tree-share-btn {
-        position: absolute;
-        right: 4px;
-        opacity: 0;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        border-radius: var(--radius-sm);
-        color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        transition: opacity var(--transition), color var(--transition);
-
-        .material-icons {
-          font-size: 16px;
-        }
-
-        &:hover {
-          color: var(--primary);
-        }
-      }
-
-      &:hover .tree-share-btn {
+      &:hover .tree-row-actions {
         opacity: 1;
       }
 
@@ -663,6 +774,10 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
   currentDocPath = signal<string | null>(null);
+  renamingPath = signal<string | null>(null);
+  renamingValue = '';
+  creatingFolderUnder = signal<string | null>(null);
+  newFolderName = '';
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
   shareFilePath = signal<string | null>(null);
@@ -833,6 +948,70 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   resetSidebarWidth(): void {
     this.sidebarWidth.set(SpaceComponent.DEFAULT_WIDTH);
     localStorage.removeItem(SpaceComponent.SIDEBAR_WIDTH_KEY);
+  }
+
+  startRename(path: string, name: string): void {
+    this.renamingPath.set(path);
+    this.renamingValue = name;
+    this.creatingFolderUnder.set(null);
+  }
+
+  submitRename(node: FileNode): void {
+    const newName = this.renamingValue.trim();
+    if (!newName || newName === node.name) { this.cancelRename(); return; }
+    const space = this.spaceSignal();
+    if (!space) return;
+
+    const parentPrefix = node.path.includes('/')
+      ? node.path.substring(0, node.path.lastIndexOf('/') + 1)
+      : '';
+    const newPath = parentPrefix + newName;
+
+    this.documentsService.rename(space.id, node.path, newPath).subscribe({
+      next: () => { this.cancelRename(); this.loadFileTree(space.id); },
+      error: () => this.cancelRename()
+    });
+  }
+
+  cancelRename(): void {
+    this.renamingPath.set(null);
+    this.renamingValue = '';
+  }
+
+  startCreateFolder(parentPath: string): void {
+    this.creatingFolderUnder.set(parentPath);
+    this.newFolderName = '';
+    this.renamingPath.set(null);
+    // Expand the parent folder so the inline input is visible
+    if (parentPath) {
+      const expanded = new Set(this.expandedFolders());
+      expanded.add(parentPath);
+      this.expandedFolders.set(expanded);
+    }
+    // Focus input after render
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('.new-folder-input');
+      input?.focus();
+    }, 50);
+  }
+
+  submitCreateFolder(): void {
+    const name = this.newFolderName.trim();
+    const parent = this.creatingFolderUnder();
+    if (!name || parent === null) { this.cancelCreateFolder(); return; }
+    const space = this.spaceSignal();
+    if (!space) return;
+
+    const fullPath = parent ? `${parent}/${name}` : name;
+    this.documentsService.createFolder(space.id, fullPath).subscribe({
+      next: () => { this.cancelCreateFolder(); this.loadFileTree(space.id); },
+      error: () => this.cancelCreateFolder()
+    });
+  }
+
+  cancelCreateFolder(): void {
+    this.creatingFolderUnder.set(null);
+    this.newFolderName = '';
   }
 
   ngOnDestroy(): void {

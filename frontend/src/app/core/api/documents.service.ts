@@ -65,6 +65,14 @@ export class DocumentsService {
     return this.http.delete<void>(`/api/spaces/${spaceId}/documents/${path}`);
   }
 
+  createFolder(spaceId: string, path: string): Observable<void> {
+    return this.http.post<void>(`/api/spaces/${spaceId}/documents/folder`, { path });
+  }
+
+  rename(spaceId: string, oldPath: string, newPath: string): Observable<void> {
+    return this.http.post<void>(`/api/spaces/${spaceId}/documents/rename`, { oldPath, newPath });
+  }
+
   uploadFiles(spaceId: string, files: File[], folder?: string): Observable<{ path: string; name: string }[]> {
     const formData = new FormData();
     for (const file of files) {

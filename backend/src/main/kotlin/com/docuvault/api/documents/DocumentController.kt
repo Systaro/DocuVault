@@ -546,6 +546,66 @@ class DocumentController(
         return ResponseEntity.noContent().build()
     }
 
+    @PostMapping("/folder")
+    fun createFolder(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestBody request: CreateFolderRequest
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (!gitService.createFolder(space, request.path)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+
+        return ResponseEntity.ok().build()
+    }
+
+    @PostMapping("/rename")
+    fun renameItem(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestBody request: RenameRequest
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val isDir = gitService.isDirectory(space, request.oldPath)
+
+        if (!gitService.renameItem(space, request.oldPath, request.newPath)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+
+        // Update database records
+        if (isDir) {
+            val prefix = request.oldPath + "/"
+            val docs = documentRepository.findBySpaceId(spaceId)
+            docs.filter { it.path.startsWith(prefix) }.forEach { doc ->
+                documentRepository.save(doc.copy(path = request.newPath + "/" + doc.path.removePrefix(prefix)))
+            }
+        } else {
+            val doc = documentRepository.findBySpaceIdAndPath(spaceId, request.oldPath)
+            doc?.let { documentRepository.save(it.copy(path = request.newPath)) }
+        }
+
+        return ResponseEntity.ok().build()
+    }
+
     private fun extractTitle(content: String, path: String): String {
         // Try to extract title from markdown heading
         val headingMatch = Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)
@@ -620,6 +680,18 @@ data class PatchOperation(
 data class UploadedFileDto(
     val path: String,
     val name: String
+)
+
+data class CreateFolderRequest(
+    @field:NotBlank(message = "Path is required")
+    val path: String
+)
+
+data class RenameRequest(
+    @field:NotBlank(message = "Old path is required")
+    val oldPath: String,
+    @field:NotBlank(message = "New path is required")
+    val newPath: String
 )
 
 fun Document.toDto() = DocumentDto(
