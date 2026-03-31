@@ -189,7 +189,7 @@ import { marked } from 'marked';
           @if (previewType() === 'html') {
             <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
           } @else {
-            <div class="image-zoom-container">
+            <div class="image-zoom-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
               <img
                 [src]="previewUrl()"
                 [alt]="documentPath.split('/').pop()"
@@ -414,6 +414,10 @@ import { marked } from 'marked';
       min-height: 0;
       display: flex;
       align-items: center;
+      cursor: grab;
+      user-select: none;
+
+      &.dragging { cursor: grabbing; }
     }
 
     .preview-image {
@@ -661,11 +665,40 @@ export class EditorComponent implements OnInit, OnDestroy {
   previewUrl = signal('');
   safePreviewUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
+  isDraggingImage = signal(false);
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
+
+  private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
+  private boundImageDragMove = this.onImageDragMove.bind(this);
+  private boundImageDragEnd = this.onImageDragEnd.bind(this);
 
   zoomIn(): void { this.imageZoom.update(z => Math.min(z + 0.25, 4)); }
   zoomOut(): void { this.imageZoom.update(z => Math.max(z - 0.25, 0.25)); }
   resetZoom(): void { this.imageZoom.set(1); }
+
+  onImageDragStart(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    const el = event.currentTarget as HTMLElement;
+    event.preventDefault();
+    this.isDraggingImage.set(true);
+    this.imageDragState = { x: event.clientX, y: event.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop, el };
+    document.addEventListener('mousemove', this.boundImageDragMove);
+    document.addEventListener('mouseup', this.boundImageDragEnd);
+  }
+
+  private onImageDragMove(event: MouseEvent): void {
+    if (!this.imageDragState) return;
+    const { el, x, y, scrollLeft, scrollTop } = this.imageDragState;
+    if (el.scrollWidth > el.clientWidth) el.scrollLeft = scrollLeft - (event.clientX - x);
+    if (el.scrollHeight > el.clientHeight) el.scrollTop = scrollTop - (event.clientY - y);
+  }
+
+  private onImageDragEnd(): void {
+    this.isDraggingImage.set(false);
+    this.imageDragState = null;
+    document.removeEventListener('mousemove', this.boundImageDragMove);
+    document.removeEventListener('mouseup', this.boundImageDragEnd);
+  }
   onImageWheel(event: WheelEvent): void {
     event.preventDefault();
     if (event.deltaY < 0) this.zoomIn(); else this.zoomOut();
@@ -842,6 +875,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     this.editor?.destroy();
+    document.removeEventListener('mousemove', this.boundImageDragMove);
+    document.removeEventListener('mouseup', this.boundImageDragEnd);
   }
 
   loadSpace(fullPath: string): void {

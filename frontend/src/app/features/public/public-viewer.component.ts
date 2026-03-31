@@ -122,7 +122,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container">
+            <div class="image-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="currentFileName()"
@@ -176,7 +176,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container">
+            <div class="image-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="metadata()?.fileName"
@@ -784,6 +784,10 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
       overflow: auto;
       flex: 1;
       width: 100%;
+      cursor: grab;
+      user-select: none;
+
+      &.dragging { cursor: grabbing; }
     }
 
     .preview-image {
@@ -852,12 +856,37 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   safeRawUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
 
+  isDraggingImage = signal(false);
+  private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
+  private boundImageDragMove = this.onImageDragMove.bind(this);
+  private boundImageDragEnd = this.onImageDragEnd.bind(this);
+
   zoomIn(): void { this.imageZoom.update(z => Math.min(z + 0.25, 4)); }
   zoomOut(): void { this.imageZoom.update(z => Math.max(z - 0.25, 0.25)); }
   resetZoom(): void { this.imageZoom.set(1); }
-  onImageWheel(event: WheelEvent): void {
+
+  onImageDragStart(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    const el = event.currentTarget as HTMLElement;
     event.preventDefault();
-    if (event.deltaY < 0) this.zoomIn(); else this.zoomOut();
+    this.isDraggingImage.set(true);
+    this.imageDragState = { x: event.clientX, y: event.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop, el };
+    document.addEventListener('mousemove', this.boundImageDragMove);
+    document.addEventListener('mouseup', this.boundImageDragEnd);
+  }
+
+  private onImageDragMove(event: MouseEvent): void {
+    if (!this.imageDragState) return;
+    const { el, x, y, scrollLeft, scrollTop } = this.imageDragState;
+    if (el.scrollWidth > el.clientWidth) el.scrollLeft = scrollLeft - (event.clientX - x);
+    if (el.scrollHeight > el.clientHeight) el.scrollTop = scrollTop - (event.clientY - y);
+  }
+
+  private onImageDragEnd(): void {
+    this.isDraggingImage.set(false);
+    this.imageDragState = null;
+    document.removeEventListener('mousemove', this.boundImageDragMove);
+    document.removeEventListener('mouseup', this.boundImageDragEnd);
   }
 
   // Password protection
@@ -960,6 +989,8 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.metaService.removeTag('name="twitter:description"');
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
+    document.removeEventListener('mousemove', this.boundImageDragMove);
+    document.removeEventListener('mouseup', this.boundImageDragEnd);
   }
 
   submitPassword(event: Event): void {
