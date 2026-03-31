@@ -2,20 +2,20 @@
  * DocuVault State Library
  *
  * Allows static HTML files hosted in DocuVault to read and persist state
- * via the DocuVault API, committed back to Git as a companion JSON file.
+ * via the DocuVault Space State API (database-backed, no Git commits).
  *
  * Usage:
  *   <script src="/assets/docuvault-state.js"></script>
  *   <script>
  *     DocuVaultState.init({
  *       spaceId: 'a4100e58-e5ec-4cb3-a304-5d04d963dc47',
- *       stateFile: 'my-module/my-form.json'
+ *       key: 'my-form'        // arbitrary identifier for this state bucket
  *     });
  *   </script>
  *
  *   const state = await DocuVaultState.ready();
- *   state.get('key');
- *   state.set('key', 'value');
+ *   state.get('assignee');
+ *   state.set('assignee', 'Anna');
  *   await state.save();
  */
 (function (global) {
@@ -27,7 +27,6 @@
   var _config = null;
   var _readyPromise = null;
   var _data = {};
-  var _contentHash = null;
 
   // --- Auth helpers ---
 
@@ -61,26 +60,16 @@
     return promptForToken();
   }
 
-  // --- URL helpers ---
+  // --- URL helper ---
 
-  function encodePath(path) {
-    return path.split('/').map(encodeURIComponent).join('/');
-  }
-
-  function documentUrl(spaceId, stateFile) {
-    return API_BASE + '/spaces/' + spaceId + '/documents/' + encodePath(stateFile);
-  }
-
-  function documentsUrl(spaceId) {
-    return API_BASE + '/spaces/' + spaceId + '/documents';
+  function stateUrl() {
+    return API_BASE + '/spaces/' + _config.spaceId + '/state/' + encodeURIComponent(_config.key);
   }
 
   // --- Load ---
 
   function load() {
-    var spaceId = _config.spaceId;
-    var stateFile = _config.stateFile;
-    var url = documentUrl(spaceId, stateFile);
+    var url = stateUrl();
     var headers = { 'Accept': 'application/json' };
     var token = getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
@@ -89,23 +78,19 @@
       .then(function (res) {
         if (res.status === 404) {
           _data = {};
-          _contentHash = null;
           return;
         }
         if (res.status === 401 || res.status === 403) {
-          // Auth failure on read — clear bad token but start with empty state
           clearToken();
           _data = {};
-          _contentHash = null;
           return;
         }
         if (!res.ok) {
           throw new Error('DocuVaultState: failed to load state (' + res.status + ' ' + res.statusText + ')');
         }
-        return res.json().then(function (doc) {
-          _contentHash = doc.contentHash || null;
+        return res.json().then(function (entry) {
           try {
-            _data = JSON.parse(doc.content);
+            _data = JSON.parse(entry.value);
             if (typeof _data !== 'object' || _data === null || Array.isArray(_data)) {
               _data = {};
             }
@@ -115,47 +100,36 @@
         });
       })
       .catch(function (err) {
-        // Network error or unexpected failure — start with empty state so the page still works
         console.warn('DocuVaultState: could not load state, starting empty.', err);
         _data = {};
-        _contentHash = null;
       });
   }
 
   // --- State handle ---
 
   var stateHandle = {
-    /**
-     * Returns the current in-memory value for key.
-     */
+    /** Returns the current in-memory value for key. */
     get: function (key) {
       return _data[key];
     },
 
-    /**
-     * Returns a shallow copy of the full state object.
-     */
+    /** Returns a shallow copy of the full state object. */
     getAll: function () {
       return Object.assign({}, _data);
     },
 
-    /**
-     * Sets key to value in memory. Does not persist until save() is called.
-     */
+    /** Sets key to value in memory. Does not persist until save() is called. */
     set: function (key, value) {
       _data[key] = value;
     },
 
-    /**
-     * Removes key from memory. Does not persist until save() is called.
-     */
+    /** Removes key from memory. Does not persist until save() is called. */
     remove: function (key) {
       delete _data[key];
     },
 
     /**
-     * PUTs the full state JSON to DocuVault with autoCommit: true.
-     * Creates the companion JSON file if it does not exist yet.
+     * Persists the current state to DocuVault via the Space State API.
      * Prompts for an API token on first call if none is stored.
      * @returns {Promise<void>}
      */
@@ -164,48 +138,25 @@
         return Promise.reject(new Error('DocuVaultState not initialized. Call init() first.'));
       }
 
-      var spaceId = _config.spaceId;
-      var stateFile = _config.stateFile;
-      var content = JSON.stringify(_data, null, 2);
-
       return ensureToken().then(function (token) {
-        var authHeader = 'Bearer ' + token;
-
-        // Try PUT (update existing)
-        return fetch(documentUrl(spaceId, stateFile), {
+        return fetch(stateUrl(), {
           method: 'PUT',
           headers: {
-            'Authorization': authHeader,
+            'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ content: content, autoCommit: true })
-        }).then(function (res) {
-          if (res.status === 404) {
-            // File doesn't exist yet — create it
-            return fetch(documentsUrl(spaceId), {
-              method: 'POST',
-              headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ path: stateFile, content: content, autoCommit: true })
-            });
-          }
-          return res;
-        }).then(function (res) {
-          if (res.status === 401 || res.status === 403) {
-            clearToken();
-            throw new Error('Invalid or expired API token. Please try saving again.');
-          }
-          if (!res.ok) {
-            return res.text().then(function (body) {
-              throw new Error('DocuVaultState: save failed (' + res.status + '): ' + body);
-            });
-          }
-          return res.json().then(function (doc) {
-            _contentHash = doc.contentHash || null;
-          });
+          body: JSON.stringify({ value: JSON.stringify(_data) })
         });
+      }).then(function (res) {
+        if (res.status === 401 || res.status === 403) {
+          clearToken();
+          throw new Error('Invalid or expired API token. Please try saving again.');
+        }
+        if (!res.ok) {
+          return res.text().then(function (body) {
+            throw new Error('DocuVaultState: save failed (' + res.status + '): ' + body);
+          });
+        }
       });
     }
   };
@@ -215,12 +166,12 @@
   var DocuVaultState = {
     /**
      * Must be called once before ready(). Config:
-     *   spaceId   {string} — DocuVault space UUID
-     *   stateFile {string} — path to the companion JSON within the space
+     *   spaceId {string} — DocuVault space UUID
+     *   key     {string} — identifier for this state bucket (e.g. 'my-form')
      */
     init: function (config) {
       if (!config || !config.spaceId) throw new Error('DocuVaultState.init: spaceId is required');
-      if (!config.stateFile) throw new Error('DocuVaultState.init: stateFile is required');
+      if (!config.key) throw new Error('DocuVaultState.init: key is required');
       _config = config;
       _readyPromise = load();
     },
@@ -237,9 +188,7 @@
       return _readyPromise.then(function () { return stateHandle; });
     },
 
-    /**
-     * Clears the stored API token. The next save() call will re-prompt.
-     */
+    /** Clears the stored API token. The next save() call will re-prompt. */
     clearToken: clearToken
   };
 
