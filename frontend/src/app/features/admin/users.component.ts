@@ -341,7 +341,9 @@ import { AuthService, User } from '../../core/auth/auth.service';
                 } @else {
                   <div class="permissions-list">
                     @for (space of allSpaces(); track space.id) {
-                      <div class="permission-row" [class.has-permission]="getSpacePermission(space.id)"
+                      <div class="permission-row"
+                           [class.has-permission]="space.type === 'GROUP' ? getGroupAccessStatus(space) !== 'none' : !!getSpacePermission(space.id)"
+                           [class.is-group]="space.type === 'GROUP'"
                            [style.padding-left.px]="getSpaceIndent(space)">
                         <div class="permission-space">
                           <span class="material-icons space-icon">
@@ -351,16 +353,26 @@ import { AuthService, User } from '../../core/auth/auth.service';
                           <span class="space-path">{{ space.fullPath }}</span>
                         </div>
                         <div class="permission-control">
-                          <select
-                            [ngModel]="getSpacePermission(space.id)"
-                            (ngModelChange)="setSpacePermission(space.id, $event)"
-                            class="permission-select"
-                          >
-                            <option value="">No access</option>
-                            <option value="VIEW">View</option>
-                            <option value="EDIT">Edit</option>
-                            <option value="ADMIN">Admin</option>
-                          </select>
+                          @if (space.type === 'GROUP') {
+                            <div class="group-access-control">
+                              <span class="group-access-badge badge-{{ getGroupAccessStatus(space) }}">
+                                {{ getGroupAccessStatus(space) === 'all' ? 'All' : getGroupAccessStatus(space) === 'partial' ? 'Partial' : '—' }}
+                              </span>
+                              <button type="button" class="btn-bulk btn-bulk-edit" (click)="setAllChildren(space, 'EDIT')">Edit all</button>
+                              <button type="button" class="btn-bulk btn-bulk-clear" (click)="setAllChildren(space, '')">Clear</button>
+                            </div>
+                          } @else {
+                            <select
+                              [ngModel]="getSpacePermission(space.id)"
+                              (ngModelChange)="setSpacePermission(space.id, $event)"
+                              class="permission-select"
+                            >
+                              <option value="">No access</option>
+                              <option value="VIEW">View</option>
+                              <option value="EDIT">Edit</option>
+                              <option value="ADMIN">Admin</option>
+                            </select>
+                          }
                         </div>
                       </div>
                     } @empty {
@@ -957,6 +969,72 @@ import { AuthService, User } from '../../core/auth/auth.service';
       }
     }
 
+    .is-group {
+      background: var(--surface-raised, rgba(0, 0, 0, 0.02));
+    }
+
+    .group-access-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .group-access-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      min-width: 54px;
+      text-align: center;
+
+      &.badge-none {
+        background: var(--surface-raised, #f0f0f0);
+        color: var(--text-muted);
+      }
+
+      &.badge-partial {
+        background: #fff3cd;
+        color: #7a5c00;
+      }
+
+      &.badge-all {
+        background: #d4edda;
+        color: #155724;
+      }
+    }
+
+    .btn-bulk {
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--text-secondary);
+
+      &:hover {
+        background: var(--surface-raised);
+      }
+    }
+
+    .btn-bulk-edit {
+      color: var(--primary);
+      border-color: var(--primary);
+
+      &:hover {
+        background: rgba(var(--primary-rgb, 0, 120, 212), 0.06);
+      }
+    }
+
+    .btn-bulk-clear {
+      color: var(--text-muted);
+
+      &:hover {
+        color: var(--danger, #dc3545);
+        border-color: var(--danger, #dc3545);
+      }
+    }
+
     .no-spaces {
       padding: var(--spacing-lg);
       text-align: center;
@@ -1155,6 +1233,39 @@ export class UsersComponent implements OnInit {
   getSpaceIndent(space: Space): number {
     const depth = (space.fullPath.match(/\//g) || []).length;
     return 12 + depth * 20;
+  }
+
+  getGroupAccessStatus(group: Space): 'all' | 'partial' | 'none' {
+    const repos = this.getDescendantRepos(group);
+    if (repos.length === 0) return 'none';
+    const withAccess = repos.filter(r => !!this.editPermissions[r.id]);
+    if (withAccess.length === 0) return 'none';
+    if (withAccess.length === repos.length) return 'all';
+    return 'partial';
+  }
+
+  private getDescendantRepos(group: Space): Space[] {
+    const result: Space[] = [];
+    const children = this.allSpaces().filter(s => s.parentId === group.id);
+    for (const child of children) {
+      if (child.type === 'GROUP') {
+        result.push(...this.getDescendantRepos(child));
+      } else {
+        result.push(child);
+      }
+    }
+    return result;
+  }
+
+  setAllChildren(group: Space, level: string): void {
+    const repos = this.getDescendantRepos(group);
+    for (const repo of repos) {
+      if (level) {
+        this.editPermissions[repo.id] = level;
+      } else {
+        delete this.editPermissions[repo.id];
+      }
+    }
   }
 
   saveUser(): void {
