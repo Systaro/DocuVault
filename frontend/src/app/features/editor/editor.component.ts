@@ -133,84 +133,86 @@ import { marked } from 'marked';
       }
 
       @if (isPreviewFile()) {
-        <!-- File Preview -->
-        <div class="flex-1 overflow-y-auto editor-bg">
-          <div class="preview-container">
-            <div class="preview-header">
-              <div class="preview-filename">{{ documentPath.split('/').pop() }}</div>
-              <div class="relative">
-                <button
-                  (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
-                  class="editor-icon-btn"
-                  title="Actions"
-                >
-                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="5" r="2"/>
-                    <circle cx="12" cy="12" r="2"/>
-                    <circle cx="12" cy="19" r="2"/>
+        <!-- Preview topbar — fixed row, not scrollable -->
+        <div class="preview-topbar">
+          <div class="preview-filename">
+            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : 'image' }}</span>
+            {{ documentPath.split('/').pop() }}
+          </div>
+          <div class="relative">
+            <button
+              (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
+              class="editor-icon-btn"
+              title="Actions"
+            >
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="2"/>
+                <circle cx="12" cy="12" r="2"/>
+                <circle cx="12" cy="19" r="2"/>
+              </svg>
+            </button>
+            @if (showActionMenu()) {
+              <div class="action-menu">
+                <button class="action-menu-item" (click)="showShareDialog.set(true); showActionMenu.set(false)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
                   </svg>
+                  Create a public share
                 </button>
-                @if (showActionMenu()) {
-                  <div class="action-menu">
-                    <button class="action-menu-item" (click)="showShareDialog.set(true); showActionMenu.set(false)">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
-                      </svg>
-                      Create a public share
-                    </button>
-                    <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                      </svg>
-                      Export as PDF
-                    </button>
-                    @if (getGitUrl()) {
-                      <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                        </svg>
-                        {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
-                      </button>
-                    }
-                    <div class="action-menu-divider"></div>
-                    <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                      </svg>
-                      Delete document
-                    </button>
-                  </div>
+                <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  Export as PDF
+                </button>
+                @if (getGitUrl()) {
+                  <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
+                  </button>
                 }
-              </div>
-            </div>
-            @if (previewType() === 'html') {
-              <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
-            } @else {
-              <div class="image-zoom-container" (wheel)="onImageWheel($event)">
-                <img
-                  [src]="previewUrl()"
-                  [alt]="documentPath.split('/').pop()"
-                  class="preview-image"
-                  [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
-                />
-              </div>
-              <div class="zoom-toolbar">
-                <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+                <div class="action-menu-divider"></div>
+                <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                   </svg>
-                </button>
-                <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
-                  {{ (imageZoom() * 100).toFixed(0) }}%
-                </button>
-                <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                  </svg>
+                  Delete document
                 </button>
               </div>
             }
           </div>
+        </div>
+        <!-- Scrollable preview content -->
+        <div class="flex-1 overflow-y-auto editor-bg">
+          @if (previewType() === 'html') {
+            <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+          } @else {
+            <div class="image-zoom-container" (wheel)="onImageWheel($event)">
+              <img
+                [src]="previewUrl()"
+                [alt]="documentPath.split('/').pop()"
+                class="preview-image"
+                [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
+              />
+            </div>
+            <div class="zoom-toolbar">
+              <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                </svg>
+              </button>
+              <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
+                {{ (imageZoom() * 100).toFixed(0) }}%
+              </button>
+              <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+              </button>
+            </div>
+          }
         </div>
       } @else {
         <!-- Editor Area -->
@@ -380,24 +382,29 @@ import { marked } from 'marked';
       box-shadow: var(--shadow-sm);
     }
 
-    .preview-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 2rem;
-      gap: 1rem;
-    }
-
-    .preview-header {
+    .preview-topbar {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      justify-content: space-between;
+      padding: 0 16px;
+      height: 44px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
     }
 
     .preview-filename {
+      display: flex;
+      align-items: center;
+      gap: 6px;
       font-size: 0.875rem;
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-weight: 500;
+    }
+
+    .preview-file-icon {
+      font-size: 16px;
+      color: var(--text-muted);
     }
 
     .image-zoom-container {
@@ -463,12 +470,11 @@ import { marked } from 'marked';
 
     .preview-iframe {
       width: 100%;
-      flex: 1;
-      min-height: calc(100vh - 160px);
+      height: 100%;
+      min-height: calc(100vh - 104px);
       border: none;
-      border-radius: 4px;
       background: var(--surface);
-      box-shadow: var(--shadow-sm);
+      display: block;
     }
 
     .action-menu {
