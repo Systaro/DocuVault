@@ -60,7 +60,8 @@ class SpaceController(
                 if (user.role == UserRole.SUPER_ADMIN) {
                     spaceRepository.findByParentIdIsNull()
                 } else {
-                    spaceRepository.findTopLevelByUserId(user.id!!)
+                    permissionService.getAccessibleSpaces(user.id!!, user.role)
+                        .filter { it.parent == null }
                 }
             }
             parentId != null -> {
@@ -92,11 +93,15 @@ class SpaceController(
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        if (!permissionService.hasAccess(user.id!!, parentId, user.role)) {
+        val accessibleIds = if (user.role == UserRole.SUPER_ADMIN) null
+            else permissionService.getAccessibleSpaces(user.id!!, user.role).mapTo(mutableSetOf()) { it.id }
+
+        if (accessibleIds != null && parentId !in accessibleIds) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
         val children = spaceRepository.findByParentId(parentId)
+            .filter { accessibleIds == null || it.id in accessibleIds }
         return ResponseEntity.ok(children.map { it.toDto(
             documentCount = if (it.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(it.id!!) else 0,
             childCount = spaceRepository.countChildren(it.id!!)

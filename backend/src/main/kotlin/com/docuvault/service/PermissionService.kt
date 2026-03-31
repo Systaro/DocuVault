@@ -89,11 +89,13 @@ class PermissionService(
         // Get spaces with direct permissions
         val directAccessSpaces = spaceRepository.findAllByUserId(userId)
 
-        // Also include all children of spaces user has access to
         val allAccessible = mutableSetOf<Space>()
         directAccessSpaces.forEach { space ->
+            // Include the space itself and all its children
             allAccessible.add(space)
             addChildrenRecursively(space, allAccessible)
+            // Include all ancestor groups so they appear as containers in the dashboard
+            addAncestorsRecursively(space, allAccessible)
         }
 
         return allAccessible.toList()
@@ -104,5 +106,11 @@ class PermissionService(
             collection.add(child)
             addChildrenRecursively(child, collection)
         }
+    }
+
+    private fun addAncestorsRecursively(space: Space, collection: MutableSet<Space>) {
+        val parent = space.parent ?: return
+        collection.add(parent)
+        addAncestorsRecursively(parent, collection)
     }
 }
