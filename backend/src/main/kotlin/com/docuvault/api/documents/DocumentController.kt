@@ -207,6 +207,16 @@ class DocumentController(
         // Generate embeddings asynchronously
         embeddingService.processDocument(saved.id!!, request.content)
 
+        // Commit and push if autoCommit is requested
+        if (request.autoCommit == true) {
+            gitService.commitAndPush(
+                space = space,
+                message = request.commitMessage ?: "Add ${request.path}",
+                authorName = user.name,
+                authorEmail = user.email
+            )
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(
             DocumentContentDto(
                 id = saved.id,
@@ -631,7 +641,10 @@ data class CreateDocumentRequest(
     val title: String? = null,
 
     @field:NotBlank(message = "Content is required")
-    val content: String
+    val content: String,
+
+    val autoCommit: Boolean? = false,
+    val commitMessage: String? = null
 )
 
 data class UpdateDocumentRequest(

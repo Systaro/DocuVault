@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DocuVault State Library — Integration Test</title>
+  <style>
+    body { font-family: monospace; padding: 2rem; background: #0f0f0f; color: #e0e0e0; max-width: 700px; margin: 0 auto; }
+    h1 { font-size: 1rem; color: #888; margin-bottom: 1.5rem; }
+    .suite { margin-bottom: 2rem; }
+    .suite-title { font-size: 0.85rem; color: #888; margin-bottom: 0.5rem; }
+    .result { padding: 0.4rem 0.6rem; margin: 0.2rem 0; border-radius: 3px; font-size: 0.85rem; }
+    .pass { background: #0d2b0d; color: #4caf50; }
+    .fail { background: #2b0d0d; color: #f44336; }
+    .info { background: #1a1a2e; color: #90caf9; }
+    .pending { background: #1a1a1a; color: #888; }
+    summary { font-size: 0.85rem; color: #aaa; margin-bottom: 0.75rem; cursor: default; }
+    #setup { background: #1a1a1a; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; }
+    #setup label { display: block; font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; }
+    #setup input { width: 100%; box-sizing: border-box; background: #0f0f0f; border: 1px solid #333;
+                   color: #e0e0e0; padding: 0.4rem; border-radius: 3px; font-family: monospace;
+                   font-size: 0.85rem; margin-bottom: 0.75rem; }
+    button { background: #1565c0; color: #fff; border: none; padding: 0.5rem 1.2rem;
+             border-radius: 3px; font-family: monospace; cursor: pointer; font-size: 0.85rem; }
+    button:hover { background: #1976d2; }
+    button:disabled { background: #333; color: #666; cursor: default; }
+    #totals { margin-top: 1.5rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+<h1>docuvault-state.js — integration test</h1>
+
+<div id="setup">
+  <label>Space ID</label>
+  <input id="spaceId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+  <label>State file path (will be created / overwritten)</label>
+  <input id="stateFile" value="_test/docuvault-state-test.json" />
+  <button id="runBtn" onclick="runTests()">Run tests</button>
+</div>
+
+<div id="output"></div>
+<div id="totals"></div>
+
+<script src="/assets/docuvault-state.js"></script>
+<script>
+(function () {
+  var passed = 0, failed = 0;
+
+  function log(type, text) {
+    var el = document.createElement('div');
+    el.className = 'result ' + type;
+    el.textContent = text;
+    document.getElementById('output').appendChild(el);
+    if (type === 'pass') passed++;
+    if (type === 'fail') failed++;
+  }
+
+  function suite(title) {
+    var el = document.createElement('div');
+    el.className = 'suite-title';
+    el.textContent = '── ' + title;
+    document.getElementById('output').appendChild(el);
+  }
+
+  function assert(condition, label) {
+    if (condition) {
+      log('pass', '✓ ' + label);
+    } else {
+      log('fail', '✗ ' + label);
+    }
+  }
+
+  function assertEq(actual, expected, label) {
+    var ok = JSON.stringify(actual) === JSON.stringify(expected);
+    if (ok) {
+      log('pass', '✓ ' + label);
+    } else {
+      log('fail', '✗ ' + label + ' — expected ' + JSON.stringify(expected) + ', got ' + JSON.stringify(actual));
+    }
+  }
+
+  window.runTests = async function () {
+    document.getElementById('output').innerHTML = '';
+    document.getElementById('totals').textContent = '';
+    passed = 0; failed = 0;
+
+    var spaceId = document.getElementById('spaceId').value.trim();
+    var stateFile = document.getElementById('stateFile').value.trim();
+
+    if (!spaceId) { alert('Space ID is required.'); return; }
+    if (!stateFile) { alert('State file path is required.'); return; }
+
+    document.getElementById('runBtn').disabled = true;
+
+    // Reset internal state between runs by reinitialising
+    try {
+
+      // ── 1. Init & ready ──────────────────────────────────────────────────
+
+      suite('1. init + ready');
+
+      try {
+        DocuVaultState.init({ spaceId: spaceId, stateFile: stateFile });
+        var state = await DocuVaultState.ready();
+        assert(state !== null && typeof state === 'object', 'ready() resolves to a state handle');
+        assert(typeof state.get === 'function', 'state.get is a function');
+        assert(typeof state.set === 'function', 'state.set is a function');
+        assert(typeof state.save === 'function', 'state.save is a function');
+      } catch (e) {
+        log('fail', '✗ init/ready threw: ' + e.message);
+        finish();
+        return;
+      }
+
+      // ── 2. In-memory operations ──────────────────────────────────────────
+
+      suite('2. in-memory get / set / remove');
+
+      state.set('name', 'Alice');
+      state.set('count', 42);
+      state.set('active', true);
+
+      assertEq(state.get('name'), 'Alice', 'get returns set string value');
+      assertEq(state.get('count'), 42, 'get returns set number value');
+      assertEq(state.get('active'), true, 'get returns set boolean value');
+      assertEq(state.get('missing'), undefined, 'get returns undefined for missing key');
+
+      state.remove('active');
+      assertEq(state.get('active'), undefined, 'remove deletes a key');
+
+      var all = state.getAll();
+      assert(typeof all === 'object' && !Array.isArray(all), 'getAll returns a plain object');
+      assertEq(all.name, 'Alice', 'getAll contains set values');
+      assert(!('active' in all), 'getAll omits removed keys');
+
+      // ── 3. Save ──────────────────────────────────────────────────────────
+
+      suite('3. save (requires valid API token)');
+
+      log('info', 'ℹ  Saving to ' + stateFile + ' in space ' + spaceId + '…');
+
+      try {
+        await state.save();
+        log('pass', '✓ save() resolved without error');
+      } catch (e) {
+        log('fail', '✗ save() rejected: ' + e.message);
+        finish();
+        return;
+      }
+
+      // ── 4. Reload & verify ───────────────────────────────────────────────
+
+      suite('4. reload — values survive a round-trip');
+
+      log('info', 'ℹ  Re-initialising and loading from API…');
+
+      try {
+        // Re-init to force a fresh load
+        DocuVaultState.init({ spaceId: spaceId, stateFile: stateFile });
+        var state2 = await DocuVaultState.ready();
+
+        assertEq(state2.get('name'), 'Alice', 'name survived round-trip');
+        assertEq(state2.get('count'), 42, 'count survived round-trip');
+        assertEq(state2.get('active'), undefined, 'removed key not present after round-trip');
+      } catch (e) {
+        log('fail', '✗ reload threw: ' + e.message);
+      }
+
+      // ── 5. Update existing file ──────────────────────────────────────────
+
+      suite('5. update existing file');
+
+      try {
+        state2.set('name', 'Bob');
+        await state2.save();
+        log('pass', '✓ second save() resolved (PUT on existing file)');
+
+        DocuVaultState.init({ spaceId: spaceId, stateFile: stateFile });
+        var state3 = await DocuVaultState.ready();
+        assertEq(state3.get('name'), 'Bob', 'updated value persisted');
+        assertEq(state3.get('count'), 42, 'unchanged value still present');
+      } catch (e) {
+        log('fail', '✗ update step threw: ' + e.message);
+      }
+
+      // ── 6. Error: missing init ────────────────────────────────────────────
+
+      suite('6. error handling');
+
+      try {
+        // Temporarily break _readyPromise by calling ready() on a fresh scope
+        var threw = false;
+        try { DocuVaultState.ready.call({}); } catch (e) { threw = true; }
+        // ready() doesn't throw synchronously in all cases, so just test init validation
+        threw = false;
+        try { DocuVaultState.init({}); } catch (e) { threw = true; }
+        assert(threw, 'init({}) throws when spaceId missing');
+        threw = false;
+        try { DocuVaultState.init({ spaceId: 'x' }); } catch (e) { threw = true; }
+        assert(threw, 'init({ spaceId }) throws when stateFile missing');
+      } catch (e) {
+        log('fail', '✗ error handling test threw unexpectedly: ' + e.message);
+      }
+
+    } catch (e) {
+      log('fail', '✗ Unexpected top-level error: ' + e.message);
+    }
+
+    finish();
+  };
+
+  function finish() {
+    var total = passed + failed;
+    var totals = document.getElementById('totals');
+    totals.textContent = total + ' tests — ' + passed + ' passed, ' + failed + ' failed';
+    totals.style.color = failed === 0 ? '#4caf50' : '#f44336';
+    document.getElementById('runBtn').disabled = false;
+  }
+
+}());
+</script>
+</body>
+</html>
