@@ -25,6 +25,23 @@ class SpaceStateController(
     private val permissionService: PermissionService
 ) {
 
+    /** Returns true if the principal is a space token that matches the requested spaceId. */
+    private fun isSpaceTokenForSpace(userDetails: UserDetails, spaceId: UUID): Boolean =
+        userDetails.username == "space:$spaceId" &&
+        userDetails.authorities.any { it.authority == "ROLE_SPACE_STATE" }
+
+    private fun canRead(userDetails: UserDetails, spaceId: UUID): Boolean {
+        if (isSpaceTokenForSpace(userDetails, spaceId)) return true
+        val user = userRepository.findByEmail(userDetails.username) ?: return false
+        return permissionService.hasAccess(user.id!!, spaceId, user.role)
+    }
+
+    private fun canWrite(userDetails: UserDetails, spaceId: UUID): Boolean {
+        if (isSpaceTokenForSpace(userDetails, spaceId)) return true
+        val user = userRepository.findByEmail(userDetails.username) ?: return false
+        return permissionService.hasEditAccess(user.id!!, spaceId, user.role)
+    }
+
     @GetMapping("/{key}")
     @Transactional(readOnly = true)
     fun getState(
@@ -32,12 +49,7 @@ class SpaceStateController(
         @PathVariable key: String,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<SpaceStateDto> {
-        val user = userRepository.findByEmail(userDetails.username)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
+        if (!canRead(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
 
         val state = spaceStateRepository.findBySpaceIdAndKey(spaceId, key)
             ?: return ResponseEntity.notFound().build()
@@ -53,12 +65,7 @@ class SpaceStateController(
         @Valid @RequestBody request: PutStateRequest,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<SpaceStateDto> {
-        val user = userRepository.findByEmail(userDetails.username)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        if (!permissionService.hasEditAccess(user.id!!, spaceId, user.role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
+        if (!canWrite(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
 
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
@@ -86,12 +93,7 @@ class SpaceStateController(
         @PathVariable key: String,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<Void> {
-        val user = userRepository.findByEmail(userDetails.username)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        if (!permissionService.hasEditAccess(user.id!!, spaceId, user.role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
+        if (!canWrite(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
 
         spaceStateRepository.deleteBySpaceIdAndKey(spaceId, key)
         return ResponseEntity.noContent().build()

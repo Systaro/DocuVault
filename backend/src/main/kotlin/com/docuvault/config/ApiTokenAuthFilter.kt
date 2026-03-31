@@ -1,6 +1,7 @@
 package com.docuvault.config
 
 import com.docuvault.service.ApiTokenService
+import com.docuvault.service.SpaceTokenService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -12,7 +13,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
 class ApiTokenAuthFilter(
-    private val apiTokenService: ApiTokenService
+    private val apiTokenService: ApiTokenService,
+    private val spaceTokenService: SpaceTokenService
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -27,22 +29,42 @@ class ApiTokenAuthFilter(
         }
 
         val authHeader = request.getHeader("Authorization")
-        if (authHeader != null && authHeader.startsWith("Bearer dv_")) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
             val token = authHeader.removePrefix("Bearer ")
-            val user = apiTokenService.authenticateToken(token)
 
-            if (user != null) {
-                val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.role.name}"))
-                val authentication = UsernamePasswordAuthenticationToken(
-                    org.springframework.security.core.userdetails.User(
-                        user.email,
-                        "",
-                        authorities
-                    ),
-                    null,
-                    authorities
-                )
-                SecurityContextHolder.getContext().authentication = authentication
+            when {
+                token.startsWith(SpaceTokenService.TOKEN_PREFIX) -> {
+                    val spaceId = spaceTokenService.authenticateToken(token)
+                    if (spaceId != null) {
+                        val authorities = listOf(SimpleGrantedAuthority("ROLE_SPACE_STATE"))
+                        val authentication = UsernamePasswordAuthenticationToken(
+                            org.springframework.security.core.userdetails.User(
+                                "space:$spaceId",
+                                "",
+                                authorities
+                            ),
+                            null,
+                            authorities
+                        )
+                        SecurityContextHolder.getContext().authentication = authentication
+                    }
+                }
+                token.startsWith("dv_") -> {
+                    val user = apiTokenService.authenticateToken(token)
+                    if (user != null) {
+                        val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.role.name}"))
+                        val authentication = UsernamePasswordAuthenticationToken(
+                            org.springframework.security.core.userdetails.User(
+                                user.email,
+                                "",
+                                authorities
+                            ),
+                            null,
+                            authorities
+                        )
+                        SecurityContextHolder.getContext().authentication = authentication
+                    }
+                }
             }
         }
 

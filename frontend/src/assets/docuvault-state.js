@@ -24,7 +24,7 @@
   var STORAGE_KEY = 'docuvault_api_token';
   var API_BASE = '/api';
 
-  var _config = null;
+  var _config = null;   // { spaceId, key, token? }
   var _readyPromise = null;
   var _data = {};
 
@@ -55,6 +55,8 @@
   }
 
   function ensureToken() {
+    // Space token baked into config takes priority — no localStorage, no prompt
+    if (_config && _config.token) return Promise.resolve(_config.token);
     var token = getToken();
     if (token) return Promise.resolve(token);
     return promptForToken();
@@ -71,7 +73,7 @@
   function load() {
     var url = stateUrl();
     var headers = { 'Accept': 'application/json' };
-    var token = getToken();
+    var token = (_config && _config.token) || getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
     return fetch(url, { headers: headers })
@@ -171,7 +173,7 @@
      */
     init: function (config) {
       if (!config || !config.spaceId) throw new Error('DocuVaultState.init: spaceId is required');
-      if (!config.key) throw new Error('DocuVaultState.init: key is required');
+    if (!config.key) throw new Error('DocuVaultState.init: key is required');
       _config = config;
       _readyPromise = load();
     },

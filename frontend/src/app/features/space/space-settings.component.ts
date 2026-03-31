@@ -2,12 +2,22 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { SpacesService, Space, SpacePermission } from '../../core/api/spaces.service';
 import { UsersService } from '../../core/api/users.service';
 import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/inbox.service';
+
+interface SpaceTokenDto {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
 
 @Component({
   selector: 'app-space-settings',
@@ -326,6 +336,104 @@ import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/
             </div>
           }
 
+          <!-- State Script -->
+          @if (space()?.type === 'REPOSITORY') {
+            <div class="card p-6 mb-6">
+              <h2 class="font-semibold text-gray-900 mb-1">State Script</h2>
+              <p class="text-sm text-gray-500 mb-4">
+                Add persistent, cross-device state to any interactive HTML file hosted in this space.
+                Create a space token, enter a key for the state bucket, then paste the snippet into your HTML.
+              </p>
+
+              <!-- Token list -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-sm font-medium text-gray-700">Space Tokens</label>
+                  @if (!creatingToken()) {
+                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" (click)="startCreateToken()">
+                      + New token
+                    </button>
+                  }
+                </div>
+
+                @if (creatingToken()) {
+                  <div class="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      [(ngModel)]="newTokenName"
+                      name="newTokenName"
+                      class="input text-sm flex-1"
+                      placeholder="Token name (e.g. Pilot Form)"
+                      (keydown.enter)="createToken()"
+                      (keydown.escape)="cancelCreateToken()"
+                    />
+                    <button class="btn btn-primary" style="padding:4px 12px;font-size:12px" (click)="createToken()" [disabled]="!newTokenName.trim()">Create</button>
+                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" (click)="cancelCreateToken()">Cancel</button>
+                  </div>
+                }
+
+                @if (newTokenValue()) {
+                  <div class="new-token-banner">
+                    <div class="text-xs text-yellow-200 mb-1 font-medium">Token created — copy it now, it won't be shown again.</div>
+                    <div class="flex gap-2 items-center">
+                      <code class="flex-1 text-xs break-all">{{ newTokenValue() }}</code>
+                      <button class="snippet-copy-btn" style="position:static" (click)="copyNewToken()">
+                        {{ newTokenCopied() ? 'Copied!' : 'Copy' }}
+                      </button>
+                    </div>
+                  </div>
+                }
+
+                @if (spaceTokens().length === 0 && !creatingToken()) {
+                  <p class="text-sm text-gray-400">No tokens yet.</p>
+                } @else {
+                  <div class="divide-y divide-gray-100">
+                    @for (t of spaceTokens(); track t.id) {
+                      <div class="flex items-center justify-between py-2 text-sm">
+                        <div>
+                          <span class="font-medium text-gray-800">{{ t.name }}</span>
+                          <span class="text-gray-400 ml-2 font-mono text-xs">{{ t.tokenPrefix }}…</span>
+                          @if (t.revokedAt) {
+                            <span class="ml-2 text-xs text-red-500">revoked</span>
+                          }
+                        </div>
+                        @if (!t.revokedAt) {
+                          <button class="icon-btn" (click)="revokeToken(t.id)" title="Revoke token">
+                            <span class="material-icons" style="font-size:16px">delete_outline</span>
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              <!-- State key + snippet -->
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1">State key</label>
+                <input
+                  type="text"
+                  [(ngModel)]="stateKey"
+                  name="stateKey"
+                  class="input font-mono text-sm"
+                  placeholder="my-form"
+                />
+              </div>
+
+              <div class="snippet-wrap">
+                <pre class="snippet-pre">{{ getStateSnippet() }}</pre>
+                <button class="snippet-copy-btn" (click)="copySnippet()">
+                  {{ snippetCopied() ? 'Copied!' : 'Copy' }}
+                </button>
+              </div>
+
+              <p class="text-xs text-gray-400 mt-3">
+                State is stored in the database — no Git commits on every save.
+                See <code>assets/docuvault-state.js</code> for the full API reference.
+              </p>
+            </div>
+          }
+
           <!-- Danger Zone -->
           <div class="card p-6 border-red-200">
             <h2 class="font-semibold text-red-600 mb-4">Danger Zone</h2>
@@ -373,6 +481,40 @@ import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/
     .input-sm { padding: 5px 8px; font-size: 13px; }
     .icon-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; padding: 4px; border-radius: 4px; transition: color 0.15s; }
     .icon-btn:hover { color: #dc2626; }
+
+    .snippet-wrap { position: relative; }
+    .snippet-pre {
+      background: #1e1f2e;
+      color: #e2e4f0;
+      border-radius: 6px;
+      padding: 16px;
+      font-family: 'SFMono-Regular', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre;
+      overflow-x: auto;
+    }
+    .snippet-copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #c9cdd4;
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .snippet-copy-btn:hover { background: rgba(255,255,255,0.18); }
+    .new-token-banner {
+      background: #2a1f00;
+      border: 1px solid #7a5c00;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
   `]
 })
 export class SpaceSettingsComponent implements OnInit {
@@ -381,10 +523,17 @@ export class SpaceSettingsComponent implements OnInit {
   availableUsers = signal<User[]>([]);
   availableGroups = signal<Space[]>([]);
   rules = signal<RoutingRule[]>([]);
+  spaceTokens = signal<SpaceTokenDto[]>([]);
   saving = signal(false);
   moving = signal(false);
   copied = signal(false);
+  snippetCopied = signal(false);
+  creatingToken = signal(false);
+  newTokenValue = signal<string | null>(null);
+  newTokenCopied = signal(false);
   selectedParentId = '';
+  stateKey = '';
+  newTokenName = '';
 
   newRule = {
     type: 'CATEGORY' as RuleType,
@@ -413,6 +562,7 @@ export class SpaceSettingsComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
+    private http: HttpClient,
     private spacesService: SpacesService,
     private usersService: UsersService,
     private toastService: ToastService,
@@ -450,6 +600,7 @@ export class SpaceSettingsComponent implements OnInit {
         this.loadPermissions(space.id);
         if (space.type === 'REPOSITORY') {
           this.loadRules(space.id);
+          this.loadSpaceTokens(space.id);
         }
       }
     });
@@ -633,6 +784,80 @@ export class SpaceSettingsComponent implements OnInit {
         next: () => this.loadPermissions(space.id)
       });
     }
+  }
+
+  loadSpaceTokens(spaceId: string): void {
+    this.http.get<SpaceTokenDto[]>(`/api/spaces/${spaceId}/tokens`).subscribe({
+      next: (tokens) => this.spaceTokens.set(tokens),
+      error: () => this.spaceTokens.set([])
+    });
+  }
+
+  startCreateToken(): void {
+    this.newTokenName = '';
+    this.creatingToken.set(true);
+  }
+
+  cancelCreateToken(): void {
+    this.creatingToken.set(false);
+    this.newTokenName = '';
+  }
+
+  createToken(): void {
+    const space = this.space();
+    if (!space || !this.newTokenName.trim()) return;
+
+    this.http.post<{ token: SpaceTokenDto; rawToken: string }>(
+      `/api/spaces/${space.id}/tokens`,
+      { name: this.newTokenName.trim() }
+    ).subscribe({
+      next: ({ token, rawToken }) => {
+        this.spaceTokens.update(ts => [token, ...ts]);
+        this.newTokenValue.set(rawToken);
+        this.creatingToken.set(false);
+        this.newTokenName = '';
+      },
+      error: () => this.toastService.error('Error', 'Failed to create token')
+    });
+  }
+
+  revokeToken(tokenId: string): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.http.delete(`/api/spaces/${space.id}/tokens/${tokenId}`).subscribe({
+      next: () => {
+        this.spaceTokens.update(ts =>
+          ts.map(t => t.id === tokenId ? { ...t, revokedAt: new Date().toISOString() } : t)
+        );
+        if (this.newTokenValue()) this.newTokenValue.set(null);
+        this.toastService.success('Token revoked', 'The space token has been revoked.');
+      },
+      error: () => this.toastService.error('Error', 'Failed to revoke token')
+    });
+  }
+
+  copyNewToken(): void {
+    const token = this.newTokenValue();
+    if (!token) return;
+    navigator.clipboard.writeText(token).then(() => {
+      this.newTokenCopied.set(true);
+      setTimeout(() => this.newTokenCopied.set(false), 2000);
+    });
+  }
+
+  getStateSnippet(): string {
+    const spaceId = this.space()?.id ?? 'YOUR_SPACE_ID';
+    const key     = this.stateKey.trim() || 'my-form';
+    const token   = this.newTokenValue() ?? (this.spaceTokens().find(t => !t.revokedAt)?.tokenPrefix + '…') ?? 'dvs_…';
+    return `<script src="/assets/docuvault-state.js"></script>\n<script>\n  DocuVaultState.init({\n    spaceId: '${spaceId}',\n    key:     '${key}',\n    token:   '${token}'\n  });\n</script>`;
+  }
+
+  copySnippet(): void {
+    navigator.clipboard.writeText(this.getStateSnippet()).then(() => {
+      this.snippetCopied.set(true);
+      setTimeout(() => this.snippetCopied.set(false), 2000);
+    });
   }
 
   copySpaceId(): void {
