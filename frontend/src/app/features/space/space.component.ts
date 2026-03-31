@@ -58,7 +58,7 @@ import { InboxService } from '../../core/api/inbox.service';
             </div>
           </div>
 
-          <div class="browser-main">
+          <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
             <!-- Sidebar -->
             <aside class="sidebar" [style.width.px]="sidebarWidth()">
               <div class="sidebar-header">

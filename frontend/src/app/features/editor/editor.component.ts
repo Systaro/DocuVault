@@ -412,6 +412,8 @@ import { marked } from 'marked';
       flex: 1;
       width: 100%;
       min-height: 0;
+      display: flex;
+      align-items: center;
     }
 
     .preview-image {
@@ -424,7 +426,7 @@ import { marked } from 'marked';
     .zoom-toolbar {
       position: fixed;
       bottom: 20px;
-      left: 20px;
+      left: calc(var(--sidebar-width, 280px) + 20px);
       display: flex;
       align-items: center;
       gap: 0.25rem;
