@@ -420,6 +420,7 @@ import { marked } from 'marked';
       width: 100%;
       height: auto;
       display: block;
+      margin: 0 auto;
       transition: width 0.15s ease;
     }
 
