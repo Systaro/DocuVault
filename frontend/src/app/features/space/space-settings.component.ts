@@ -26,6 +26,21 @@ import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/
             <h2 class="font-semibold text-gray-900 mb-4">General</h2>
             <form (ngSubmit)="saveSettings()" class="space-y-4">
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Space ID</label>
+                <div class="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    [value]="space()?.id"
+                    readonly
+                    class="input font-mono text-sm text-gray-500 bg-gray-50 cursor-default"
+                  />
+                  <button type="button" (click)="copySpaceId()" class="btn btn-secondary shrink-0">
+                    {{ copied() ? 'Copied!' : 'Copy' }}
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Logo</label>
                 <app-logo-upload
                   [currentLogoUrl]="space()?.logoUrl || null"
@@ -368,6 +383,7 @@ export class SpaceSettingsComponent implements OnInit {
   rules = signal<RoutingRule[]>([]);
   saving = signal(false);
   moving = signal(false);
+  copied = signal(false);
   selectedParentId = '';
 
   newRule = {
@@ -617,6 +633,15 @@ export class SpaceSettingsComponent implements OnInit {
         next: () => this.loadPermissions(space.id)
       });
     }
+  }
+
+  copySpaceId(): void {
+    const id = this.space()?.id;
+    if (!id) return;
+    navigator.clipboard.writeText(id).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2000);
+    });
   }
 
   onLogoSelected(file: File): void {
