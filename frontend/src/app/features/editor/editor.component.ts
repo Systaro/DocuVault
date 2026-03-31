@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, ViewChild, ElementRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -34,14 +34,53 @@ import { marked } from 'marked';
   imports: [CommonModule, FormsModule, ShareLinkDialogComponent],
   template: `
     <div class="h-full flex flex-col">
-      <!-- TODO: Once the markdown saving is fixed, re-enable the toolbar and editing -->
       @if (!isPreviewFile()) {
-      <!-- Toolbar (read-only mode) -->
       <div class="editor-toolbar">
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-amber-600 font-medium">Read-only mode — editing temporarily disabled</span>
-        </div>
-        <div class="flex items-center gap-2">
+        @if (!isGitSpace()) {
+          <!-- Editing toolbar for non-git spaces -->
+          <div class="flex items-center gap-1">
+            <button class="editor-icon-btn" [class.active]="isActive('bold')" (click)="toggleBold()" title="Bold"><b>B</b></button>
+            <button class="editor-icon-btn" [class.active]="isActive('italic')" (click)="toggleItalic()" title="Italic"><i>I</i></button>
+            <button class="editor-icon-btn" [class.active]="isActive('strike')" (click)="toggleStrike()" title="Strikethrough"><s>S</s></button>
+            <button class="editor-icon-btn" [class.active]="isActive('code')" (click)="toggleCode()" title="Inline code">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            </button>
+            <div class="toolbar-divider"></div>
+            <button class="editor-icon-btn" [class.active]="isActive('heading', {level:1})" (click)="setHeading(1)" title="Heading 1">H1</button>
+            <button class="editor-icon-btn" [class.active]="isActive('heading', {level:2})" (click)="setHeading(2)" title="Heading 2">H2</button>
+            <button class="editor-icon-btn" [class.active]="isActive('heading', {level:3})" (click)="setHeading(3)" title="Heading 3">H3</button>
+            <div class="toolbar-divider"></div>
+            <button class="editor-icon-btn" [class.active]="isActive('bulletList')" (click)="toggleBulletList()" title="Bullet list">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <button class="editor-icon-btn" [class.active]="isActive('orderedList')" (click)="toggleOrderedList()" title="Ordered list">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+            </button>
+            <button class="editor-icon-btn" [class.active]="isActive('taskList')" (click)="toggleTaskList()" title="Task list">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            </button>
+            <button class="editor-icon-btn" [class.active]="isActive('blockquote')" (click)="toggleBlockquote()" title="Blockquote">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10.5H6a2 2 0 01-2-2v-1a2 2 0 012-2h2m6 0h2a2 2 0 012 2v1a2 2 0 01-2 2h-2m-6 5h6"/></svg>
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            @if (hasChanges()) {
+              <span class="text-xs text-muted">{{ saving() ? 'Saving...' : 'Unsaved changes' }}</span>
+            } @else if (lastSaved()) {
+              <span class="text-xs text-muted">Saved</span>
+            }
+            <button class="btn-save" (click)="saveDocument()" [disabled]="saving() || !hasChanges()" title="Save">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+              Save
+            </button>
+          </div>
+        } @else {
+          <!-- Read-only banner for git spaces -->
+          <div class="flex items-center gap-2">
+            <span class="text-sm text-amber-600 font-medium">Read-only — synced from Git</span>
+          </div>
+        }
+        <div class="flex items-center gap-2" [class.ml-auto]="isGitSpace()">
           @if (documentPath) {
             <div class="relative">
               <button
@@ -147,7 +186,29 @@ import { marked } from 'marked';
             @if (previewType() === 'html') {
               <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
             } @else {
-              <img [src]="previewUrl()" [alt]="documentPath.split('/').pop()" class="preview-image" />
+              <div class="image-zoom-container" (wheel)="onImageWheel($event)">
+                <img
+                  [src]="previewUrl()"
+                  [alt]="documentPath.split('/').pop()"
+                  class="preview-image"
+                  [style.transform]="'scale(' + imageZoom() + ')'"
+                />
+              </div>
+              <div class="zoom-toolbar">
+                <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                  </svg>
+                </button>
+                <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
+                  {{ (imageZoom() * 100).toFixed(0) }}%
+                </button>
+                <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                  </svg>
+                </button>
+              </div>
             }
           </div>
         </div>
@@ -163,12 +224,11 @@ import { marked } from 'marked';
                 </svg>
               </div>
             } @else {
-              <!-- Document Title (read-only until markdown saving is fixed) -->
               <input
                 type="text"
                 [(ngModel)]="documentTitle"
                 placeholder="Untitled"
-                readonly
+                [readonly]="isGitSpace()"
                 class="editor-title"
               />
 
@@ -255,7 +315,7 @@ import { marked } from 'marked';
     }
 
     .editor-icon-btn {
-      padding: 8px;
+      padding: 6px 8px;
       border-radius: 6px;
       border: none;
       background: none;
@@ -263,11 +323,40 @@ import { marked } from 'marked';
       cursor: pointer;
       display: flex;
       align-items: center;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1;
 
-      &:hover {
-        background: var(--background);
-      }
+      &:hover { background: var(--background); }
+      &.active { background: var(--background); color: var(--primary); }
     }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .btn-save {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      background: var(--primary);
+      color: white;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover:not(:disabled) { background: var(--primary-dark, #2563eb); }
+      &:disabled { opacity: 0.5; cursor: not-allowed; }
+    }
+
+    .text-muted { color: var(--text-muted); }
 
     .editor-title {
       width: 100%;
@@ -278,7 +367,8 @@ import { marked } from 'marked';
       outline: none;
       margin-bottom: 24px;
       background: transparent;
-      cursor: default;
+
+      &[readonly] { cursor: default; }
     }
 
     .paper {
@@ -310,12 +400,64 @@ import { marked } from 'marked';
       font-weight: 500;
     }
 
+    .image-zoom-container {
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      min-height: 0;
+    }
+
     .preview-image {
       max-width: 100%;
-      max-height: calc(100vh - 160px);
+      max-height: calc(100vh - 200px);
       object-fit: contain;
       border-radius: 4px;
       box-shadow: var(--shadow-sm);
+      transform-origin: center center;
+      transition: transform 0.15s ease;
+    }
+
+    .zoom-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .zoom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover:not(:disabled) { background: var(--surface-hover); }
+      &:disabled { opacity: 0.4; cursor: not-allowed; }
+    }
+
+    .zoom-level {
+      min-width: 52px;
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover { background: var(--surface-hover); }
     }
 
     .preview-iframe {
@@ -508,6 +650,16 @@ export class EditorComponent implements OnInit, OnDestroy {
   previewType = signal<'image' | 'html'>('image');
   previewUrl = signal('');
   safePreviewUrl = signal<SafeResourceUrl>('');
+  imageZoom = signal(1);
+  isGitSpace = computed(() => !!this.space()?.gitlabUrl);
+
+  zoomIn(): void { this.imageZoom.update(z => Math.min(z + 0.25, 4)); }
+  zoomOut(): void { this.imageZoom.update(z => Math.max(z - 0.25, 0.25)); }
+  resetZoom(): void { this.imageZoom.set(1); }
+  onImageWheel(event: WheelEvent): void {
+    event.preventDefault();
+    if (event.deltaY < 0) this.zoomIn(); else this.zoomOut();
+  }
 
   constructor(
     private route: ActivatedRoute,
@@ -520,12 +672,12 @@ export class EditorComponent implements OnInit, OnDestroy {
     private sanitizer: DomSanitizer,
     private toastService: ToastService
   ) {
-    // TODO: Once the markdown saving is fixed, re-enable auto-save and editing
-    // Auto-save setup (disabled — saving currently destroys markdown)
-    // this.autoSave$.pipe(
-    //   debounceTime(2000),
-    //   takeUntil(this.destroy$)
-    // ).subscribe(() => this.saveDocument());
+    this.autoSave$.pipe(
+      debounceTime(2000),
+      takeUntil(this.destroy$)
+    ).subscribe(() => {
+      if (!this.isGitSpace()) this.saveDocument();
+    });
   }
 
   @HostListener('document:click')
@@ -647,6 +799,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
           this.isPreviewFile.set(true);
           this.previewType.set('image');
+          this.imageZoom.set(1);
           this.loading.set(false);
           const space = this.space();
           if (space) {
@@ -753,10 +906,9 @@ export class EditorComponent implements OnInit, OnDestroy {
     const el = this.editorElement?.nativeElement;
     if (!el) return;
 
-    // TODO: Once the markdown saving is fixed, set editable back to true
     this.editor = new Editor({
       element: el,
-      editable: false,
+      editable: !this.isGitSpace(),
       extensions: [
         StarterKit.configure({
           codeBlock: false
@@ -784,12 +936,13 @@ export class EditorComponent implements OnInit, OnDestroy {
         })
       ],
       content: htmlContent,
-      // TODO: Once the markdown saving is fixed, re-enable onUpdate
-      // onUpdate: () => {
-      //   this.hasChanges.set(true);
-      //   this.lastSaved.set(false);
-      //   this.autoSave$.next();
-      // }
+      onUpdate: () => {
+        if (!this.isGitSpace()) {
+          this.hasChanges.set(true);
+          this.lastSaved.set(false);
+          this.autoSave$.next();
+        }
+      }
     });
   }
 

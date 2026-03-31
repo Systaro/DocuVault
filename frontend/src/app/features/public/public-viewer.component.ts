@@ -122,8 +122,28 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container">
-              <img [src]="rawUrl()" [alt]="currentFileName()" class="preview-image" />
+            <div class="image-container" (wheel)="onImageWheel($event)">
+              <img
+                [src]="rawUrl()"
+                [alt]="currentFileName()"
+                class="preview-image"
+                [style.transform]="'scale(' + imageZoom() + ')'"
+              />
+            </div>
+            <div class="zoom-toolbar">
+              <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                </svg>
+              </button>
+              <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
+                {{ (imageZoom() * 100).toFixed(0) }}%
+              </button>
+              <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+              </button>
             </div>
           } @else if (renderMode() === 'pdf') {
             <div class="pdf-container">
@@ -156,8 +176,28 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container">
-              <img [src]="rawUrl()" [alt]="metadata()?.fileName" class="preview-image" />
+            <div class="image-container" (wheel)="onImageWheel($event)">
+              <img
+                [src]="rawUrl()"
+                [alt]="metadata()?.fileName"
+                class="preview-image"
+                [style.transform]="'scale(' + imageZoom() + ')'"
+              />
+            </div>
+            <div class="zoom-toolbar">
+              <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+                </svg>
+              </button>
+              <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
+                {{ (imageZoom() * 100).toFixed(0) }}%
+              </button>
+              <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+              </button>
             </div>
           } @else if (renderMode() === 'pdf') {
             <div class="pdf-container">
@@ -746,14 +786,58 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
       justify-content: center;
       padding: 24px;
       flex: 1;
+      overflow: auto;
     }
 
     .preview-image {
       max-width: 100%;
-      max-height: calc(100vh - 120px);
+      max-height: calc(100vh - 160px);
       object-fit: contain;
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transform-origin: center center;
+      transition: transform 0.15s ease;
+    }
+
+    .zoom-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 0.5rem;
+      border-top: 1px solid var(--border, #e5e7eb);
+    }
+
+    .zoom-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--border, #e5e7eb);
+      background: var(--surface, #fff);
+      color: var(--text-primary, #111);
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover:not(:disabled) { background: var(--surface-hover, #f3f4f6); }
+      &:disabled { opacity: 0.4; cursor: not-allowed; }
+    }
+
+    .zoom-level {
+      min-width: 56px;
+      height: 32px;
+      border-radius: 6px;
+      border: 1px solid var(--border, #e5e7eb);
+      background: var(--surface, #fff);
+      color: var(--text-primary, #111);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+
+      &:hover { background: var(--surface-hover, #f3f4f6); }
     }
   `]
 })
@@ -766,6 +850,15 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   renderedHtml = signal<SafeHtml>('');
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
+  imageZoom = signal(1);
+
+  zoomIn(): void { this.imageZoom.update(z => Math.min(z + 0.25, 4)); }
+  zoomOut(): void { this.imageZoom.update(z => Math.max(z - 0.25, 0.25)); }
+  resetZoom(): void { this.imageZoom.set(1); }
+  onImageWheel(event: WheelEvent): void {
+    event.preventDefault();
+    if (event.deltaY < 0) this.zoomIn(); else this.zoomOut();
+  }
 
   // Password protection
   requiresPassword = signal(false);
