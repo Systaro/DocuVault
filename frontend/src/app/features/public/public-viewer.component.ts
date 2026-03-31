@@ -127,7 +127,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
                 [src]="rawUrl()"
                 [alt]="currentFileName()"
                 class="preview-image"
-                [style.transform]="'scale(' + imageZoom() + ')'"
+                [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
               />
             </div>
             <div class="zoom-toolbar">
@@ -181,7 +181,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
                 [src]="rawUrl()"
                 [alt]="metadata()?.fileName"
                 class="preview-image"
-                [style.transform]="'scale(' + imageZoom() + ')'"
+                [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
               />
             </div>
             <div class="zoom-toolbar">
@@ -781,31 +781,31 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
     }
 
     .image-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      flex: 1;
       overflow: auto;
+      flex: 1;
+      width: 100%;
     }
 
     .preview-image {
-      max-width: 100%;
-      max-height: calc(100vh - 160px);
-      object-fit: contain;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      transform-origin: center center;
-      transition: transform 0.15s ease;
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: width 0.15s ease;
     }
 
     .zoom-toolbar {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
       display: flex;
       align-items: center;
-      justify-content: center;
       gap: 0.25rem;
-      padding: 0.5rem;
-      border-top: 1px solid var(--border, #e5e7eb);
+      padding: 6px 8px;
+      background: var(--surface, #fff);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      z-index: 200;
     }
 
     .zoom-btn {
@@ -815,8 +815,8 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
       width: 32px;
       height: 32px;
       border-radius: 6px;
-      border: 1px solid var(--border, #e5e7eb);
-      background: var(--surface, #fff);
+      border: none;
+      background: none;
       color: var(--text-primary, #111);
       cursor: pointer;
       transition: background 0.15s;
@@ -826,11 +826,11 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
     }
 
     .zoom-level {
-      min-width: 56px;
+      min-width: 52px;
       height: 32px;
       border-radius: 6px;
-      border: 1px solid var(--border, #e5e7eb);
-      background: var(--surface, #fff);
+      border: none;
+      background: none;
       color: var(--text-primary, #111);
       font-size: 0.8125rem;
       font-weight: 500;

@@ -191,7 +191,7 @@ import { marked } from 'marked';
                   [src]="previewUrl()"
                   [alt]="documentPath.split('/').pop()"
                   class="preview-image"
-                  [style.transform]="'scale(' + imageZoom() + ')'"
+                  [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
                 />
               </div>
               <div class="zoom-toolbar">
@@ -402,30 +402,31 @@ import { marked } from 'marked';
 
     .image-zoom-container {
       overflow: auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       flex: 1;
+      width: 100%;
       min-height: 0;
     }
 
     .preview-image {
-      max-width: 100%;
-      max-height: calc(100vh - 200px);
-      object-fit: contain;
-      border-radius: 4px;
-      box-shadow: var(--shadow-sm);
-      transform-origin: center center;
-      transition: transform 0.15s ease;
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: width 0.15s ease;
     }
 
     .zoom-toolbar {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
       display: flex;
       align-items: center;
-      justify-content: center;
       gap: 0.25rem;
-      padding: 0.5rem;
-      border-top: 1px solid var(--border);
+      padding: 6px 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      z-index: 200;
     }
 
     .zoom-btn {
@@ -435,8 +436,8 @@ import { marked } from 'marked';
       width: 28px;
       height: 28px;
       border-radius: 4px;
-      border: 1px solid var(--border);
-      background: var(--surface);
+      border: none;
+      background: none;
       color: var(--text-primary);
       cursor: pointer;
       transition: background 0.15s;
@@ -446,11 +447,11 @@ import { marked } from 'marked';
     }
 
     .zoom-level {
-      min-width: 52px;
+      min-width: 48px;
       height: 28px;
       border-radius: 4px;
-      border: 1px solid var(--border);
-      background: var(--surface);
+      border: none;
+      background: none;
       color: var(--text-primary);
       font-size: 0.75rem;
       font-weight: 500;
