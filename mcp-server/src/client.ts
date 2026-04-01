@@ -1,4 +1,6 @@
-import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult } from './types.js';
+import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult, ShareLink } from './types.js';
 
 export class DocuVaultClient {
   private baseUrl: string;
@@ -7,6 +9,10 @@ export class DocuVaultClient {
   constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.token = token;
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -93,6 +99,19 @@ export class DocuVaultClient {
     await this.request<void>(`/spaces/${spaceId}/documents/${path}`, { method: 'DELETE' });
   }
 
+  async createShareLink(
+    spaceId: string,
+    filePath: string,
+    shareType: 'FILE' | 'FOLDER' = 'FILE',
+    password?: string,
+    expiresInDays?: number
+  ): Promise<ShareLink> {
+    return this.request<ShareLink>(`/spaces/${spaceId}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ filePath, shareType, password, expiresInDays }),
+    });
+  }
+
   async searchKeyword(query: string, limit: number = 20): Promise<SearchResult[]> {
     return this.request<SearchResult[]>(`/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   }
@@ -102,5 +121,33 @@ export class DocuVaultClient {
       method: 'POST',
       body: JSON.stringify({ query, spaceId, limit }),
     });
+  }
+
+  async uploadFile(spaceId: string, localPath: string, folder?: string): Promise<{ path: string; name: string }[]> {
+    const url = `${this.baseUrl}/api/spaces/${spaceId}/documents/upload`;
+    const fileBuffer = await readFile(localPath);
+    const fileName = basename(localPath);
+    const blob = new Blob([fileBuffer]);
+
+    const formData = new FormData();
+    formData.append('files', blob, fileName);
+    if (folder) {
+      formData.append('folder', folder);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`DocuVault API error ${response.status}: ${response.statusText}${body ? ` - ${body}` : ''}`);
+    }
+
+    return response.json() as Promise<{ path: string; name: string }[]>;
   }
 }

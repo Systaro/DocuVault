@@ -16,6 +16,12 @@ const ALLOWED_EXTENSIONS = new Set([
   '.yaml', '.yml',
   '.svg',
   '.txt',
+  // Images
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
+]);
+
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
 ]);
 
 function validateExtension(filePath: string): string | null {
@@ -166,7 +172,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
 
   server.tool(
     'list_documents',
-    'List all documents in a documentation space as a file tree.',
+    'List all documents in a documentation space as a full recursive file tree.',
     {
       spaceId: z.string().describe('The space ID to list documents for'),
     },
@@ -186,6 +192,72 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
         return { content: [{ type: 'text', text: formatted }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `Failed to list documents: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'list_directory',
+    `List the contents of a directory (or the root) in a DocuVault space. Shows files and subdirectories one level deep — like running ls on a folder.
+
+Use this to explore what's inside a space or a specific subfolder before reading or editing documents.`,
+    {
+      spaceId: z.string().describe('The space ID to browse'),
+      path: z.string().optional().describe('Directory path to list (e.g., "docs/" or "guides/api"). Omit or pass "/" for the root.'),
+    },
+    async ({ spaceId, path: dirPath }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        const tree = await client.getFileTree(resolvedId);
+        const spaceName = spaces.find(s => s.id === resolvedId)?.name ?? resolvedId;
+
+        // Normalise path: strip leading/trailing slashes, empty = root
+        const normalised = (dirPath ?? '').replace(/^\/+|\/+$/g, '');
+
+        let entries: Array<{ name: string; type: string; children?: any[] }>;
+        let displayPath: string;
+
+        if (!normalised) {
+          entries = tree;
+          displayPath = '/';
+        } else {
+          const segments = normalised.split('/');
+          const found = findSubtree(tree, segments);
+          if (!found) {
+            return { content: [{ type: 'text', text: `Directory not found: "${normalised}". Use list_directory without a path to see the root.` }], isError: true };
+          }
+          if (found.type !== 'directory') {
+            return { content: [{ type: 'text', text: `"${normalised}" is a file, not a directory. Use read_document to read its content.` }], isError: true };
+          }
+          entries = found.children ?? [];
+          displayPath = normalised + '/';
+        }
+
+        if (entries.length === 0) {
+          return { content: [{ type: 'text', text: `${displayPath} is empty.` }] };
+        }
+
+        const dirs = entries.filter(e => e.type === 'directory').sort((a, b) => a.name.localeCompare(b.name));
+        const files = entries.filter(e => e.type !== 'directory').sort((a, b) => a.name.localeCompare(b.name));
+
+        const lines: string[] = [`Contents of ${displayPath} in ${spaceName}`, ''];
+        for (const d of dirs) {
+          const childCount = d.children?.length ?? 0;
+          lines.push(`  ${d.name}/  (${childCount} item${childCount !== 1 ? 's' : ''})`);
+        }
+        for (const f of files) {
+          lines.push(`  ${f.name}`);
+        }
+        lines.push('');
+        lines.push(`${dirs.length} director${dirs.length !== 1 ? 'ies' : 'y'}, ${files.length} file${files.length !== 1 ? 's' : ''}`);
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to list directory: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
       }
     }
   );
@@ -248,6 +320,28 @@ Provide EITHER filePath (reads local file — ideal after download_document) OR 
         const resolvedId = resolveSpaceId(spaces, spaceId);
         if (!resolvedId) {
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        // Binary files (images) use the multipart upload endpoint
+        const ext = extname(filePath || path).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) {
+          if (!filePath) {
+            return { content: [{ type: 'text', text: 'Binary files (images) require filePath — inline content is not supported.' }], isError: true };
+          }
+          const extError = validateExtension(filePath);
+          if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
+
+          const folder = dirname(path);
+          const uploaded = await client.uploadFile(resolvedId, filePath, folder === '.' ? undefined : folder);
+          if (uploaded.length === 0) {
+            return { content: [{ type: 'text', text: 'Upload failed — no files were accepted by the server.' }], isError: true };
+          }
+          return {
+            content: [{
+              type: 'text',
+              text: `File uploaded (replaced) successfully.\nPath: ${uploaded[0].path}\nName: ${uploaded[0].name}\nSource: ${filePath}`,
+            }],
+          };
         }
 
         let documentContent: string;
@@ -319,6 +413,48 @@ Provide EITHER filePath (reads local file — ideal after download_document) OR 
   );
 
   server.tool(
+    'share_document',
+    `Create a shareable public link for a file or folder in a DocuVault space. Returns the URL that anyone can use to access the content.
+
+OPTIONS:
+- shareType: "FILE" (default) for a single file, "FOLDER" for an entire directory tree
+- password: optional — if set, viewers must enter this password before accessing
+- expiresInDays: optional — link automatically expires after this many days`,
+    {
+      spaceId: z.string().describe('The space ID containing the file or folder'),
+      path: z.string().describe('The file or folder path within the space (e.g., "docs/setup-guide.md" or "docs/")'),
+      shareType: z.enum(['FILE', 'FOLDER']).optional().default('FILE').describe('Share a single file (FILE) or an entire folder tree (FOLDER)'),
+      password: z.string().optional().describe('Optional password to protect the share link'),
+      expiresInDays: z.number().int().positive().optional().describe('Optional number of days until the link expires'),
+    },
+    async ({ spaceId, path, shareType, password, expiresInDays }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        const link = await client.createShareLink(resolvedId, path, shareType, password, expiresInDays);
+        const shareUrl = `${client.getBaseUrl()}/share/${link.token}`;
+
+        const lines = [
+          `Share link created successfully.`,
+          ``,
+          `URL: ${shareUrl}`,
+          `Type: ${link.shareType}`,
+          `Path: ${link.filePath}`,
+          `Password protected: ${link.hasPassword ? 'Yes' : 'No'}`,
+          link.expiresAt ? `Expires: ${new Date(link.expiresAt).toLocaleString()}` : `Expires: Never`,
+        ];
+
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to create share link: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
     'create_document',
     `Create a new document in a DocuVault space. Use this for entirely new pages. The file will be created in the space's Git repository.
 
@@ -335,6 +471,28 @@ Provide EITHER filePath (to upload a local file — fast, no token overhead) OR 
         const resolvedId = resolveSpaceId(spaces, spaceId);
         if (!resolvedId) {
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+
+        // Binary files (images) use the multipart upload endpoint
+        const ext = extname(filePath || path).toLowerCase();
+        if (BINARY_EXTENSIONS.has(ext)) {
+          if (!filePath) {
+            return { content: [{ type: 'text', text: 'Binary files (images) require filePath — inline content is not supported.' }], isError: true };
+          }
+          const extError = validateExtension(filePath);
+          if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
+
+          const folder = dirname(path);
+          const uploaded = await client.uploadFile(resolvedId, filePath, folder === '.' ? undefined : folder);
+          if (uploaded.length === 0) {
+            return { content: [{ type: 'text', text: 'Upload failed — no files were accepted by the server.' }], isError: true };
+          }
+          return {
+            content: [{
+              type: 'text',
+              text: `File uploaded successfully.\nPath: ${uploaded[0].path}\nName: ${uploaded[0].name}\nSource: ${filePath}`,
+            }],
+          };
         }
 
         let documentContent: string;
@@ -472,6 +630,17 @@ RULES:
       }
     }
   );
+}
+
+function findSubtree(
+  entries: Array<{ name: string; type: string; children?: any[] }>,
+  segments: string[]
+): { name: string; type: string; children?: any[] } | null {
+  const [head, ...rest] = segments;
+  const match = entries.find(e => e.name === head);
+  if (!match) return null;
+  if (rest.length === 0) return match;
+  return findSubtree(match.children ?? [], rest);
 }
 
 function formatTree(entries: Array<{ name: string; type: string; children?: any[] }>, depth: number): string {
