@@ -75,7 +75,7 @@ class PublicShareController(
         val title = when {
             isMarkdown -> Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
             isHtml -> Regex("<h1[^>]*>(.*?)</h1>", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
-                ?.replace(Regex("<[^>]+>"), "")?.trim()
+                ?.replace(Regex("<[^>]+>"), "")?.decodeHtmlEntities()?.trim()
             else -> null
         }
 
@@ -92,11 +92,13 @@ class PublicShareController(
 
         val firstImageSrc = when {
             isMarkdown -> Regex("!\\[.*?]\\((.+?)\\)").find(content)?.groupValues?.get(1)
-            isHtml -> Regex("<img[^>]+src=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
+                ?.takeUnless { it.startsWith("data:") }
+            isHtml -> Regex("<img[^>]+src=[\"'](?!data:)([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
             else -> null
         }
         val imageUrl = firstImageSrc?.let { src ->
-            if (src.startsWith("http://") || src.startsWith("https://")) src
+            if (src.startsWith("data:")) null
+            else if (src.startsWith("http://") || src.startsWith("https://")) src
             else {
                 val resolved = if (fileDir.isNotEmpty()) "$fileDir/$src" else src
                 "$apiBase/files/${Path.of(resolved).normalize()}"
@@ -536,13 +538,41 @@ class PublicShareController(
     }
 
     private fun extractHtmlDescription(content: String): String? {
-        // Find first <p> tag content
+        // Strip everything inside <head>, <script>, <style> tags first
+        val bodyContent = content
+            .replace(Regex("<head[^>]*>.*?</head>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+
+        // Try <p> tags first, then fall back to any text-bearing element
         val match = Regex("<p[^>]*>(.*?)</p>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-            .find(content) ?: return null
-        val text = match.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
-        if (text.isEmpty()) return null
+            .find(bodyContent)
+        val text = match?.groupValues?.get(1)
+            ?.replace(Regex("<[^>]+>"), "")
+            ?.replace(Regex("\\s+"), " ")
+            ?.decodeHtmlEntities()
+            ?.trim()
+            ?.takeIf { it.length > 20 }
+            // Fall back: strip all tags and take the first meaningful chunk of text
+            ?: bodyContent.replace(Regex("<[^>]+>"), " ")
+                .replace(Regex("\\s+"), " ")
+                .decodeHtmlEntities()
+                .trim()
+                .takeIf { it.length > 20 }
+            ?: return null
+
         return if (text.length > 300) text.substring(0, 297) + "..." else text
     }
+
+    private fun String.decodeHtmlEntities(): String = this
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&mdash;", "—")
+        .replace("&ndash;", "–")
+        .replace("&nbsp;", " ")
 
     private fun escapeHtml(text: String): String = text
         .replace("&", "&amp;")
