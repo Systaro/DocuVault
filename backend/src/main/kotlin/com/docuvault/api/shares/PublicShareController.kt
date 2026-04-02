@@ -87,7 +87,7 @@ class PublicShareController(
         }
 
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
-        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.contains(".")) "https" else request.scheme
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.startsWith("localhost") || host.startsWith("127.")) "http" else "https"
         val apiBase = "$scheme://$host/api/shared/${link.token}"
 
         // Check if there's any image at all (including base64)
@@ -430,7 +430,7 @@ class PublicShareController(
 
         val spaceName = link.space.name
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
-        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.contains(".")) "https" else request.scheme
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.startsWith("localhost") || host.startsWith("127.")) "http" else "https"
         val shareUrl = "$scheme://$host/share/$token"
         val apiBase = "$scheme://$host/api/shared/$token"
 
