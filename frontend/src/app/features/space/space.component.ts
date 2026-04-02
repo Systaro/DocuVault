@@ -216,28 +216,29 @@ import { InboxService } from '../../core/api/inbox.service';
                     }
                   }
                 </button>
-                <div class="tree-row-actions">
+                <div class="tree-row-menu" (click)="$event.stopPropagation()">
                   <button
-                    class="tree-action-btn"
-                    title="New subfolder"
-                    (click)="startCreateFolder(node.path); $event.stopPropagation()"
+                    class="tree-menu-btn"
+                    (click)="toggleTreeMenu(node.path)"
                   >
-                    <span class="material-icons">create_new_folder</span>
+                    <span class="material-icons">more_vert</span>
                   </button>
-                  <button
-                    class="tree-action-btn"
-                    title="Rename"
-                    (click)="startRename(node.path, node.name); $event.stopPropagation()"
-                  >
-                    <span class="material-icons">drive_file_rename_outline</span>
-                  </button>
-                  <button
-                    class="tree-share-btn"
-                    title="Share folder"
-                    (click)="openShareDialog(node.path, true); $event.stopPropagation(); $event.preventDefault()"
-                  >
-                    <span class="material-icons">share</span>
-                  </button>
+                  @if (openMenuPath() === node.path) {
+                    <div class="tree-dropdown">
+                      <button class="tree-dropdown-item" (click)="startCreateFolder(node.path); openMenuPath.set(null)">
+                        <span class="material-icons">create_new_folder</span>
+                        New subfolder
+                      </button>
+                      <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
+                        <span class="material-icons">drive_file_rename_outline</span>
+                        Rename
+                      </button>
+                      <button class="tree-dropdown-item" (click)="openShareDialog(node.path, true)">
+                        <span class="material-icons">share</span>
+                        Share folder
+                      </button>
+                    </div>
+                  }
                 </div>
               </div>
               @if (expandedFolders().has(node.path) && node.children) {
@@ -283,21 +284,25 @@ import { InboxService } from '../../core/api/inbox.service';
                     }
                   }
                 </a>
-                <div class="tree-row-actions">
+                <div class="tree-row-menu" (click)="$event.stopPropagation(); $event.preventDefault()">
                   <button
-                    class="tree-action-btn"
-                    title="Rename"
-                    (click)="startRename(node.path, node.name); $event.stopPropagation()"
+                    class="tree-menu-btn"
+                    (click)="toggleTreeMenu(node.path)"
                   >
-                    <span class="material-icons">drive_file_rename_outline</span>
+                    <span class="material-icons">more_vert</span>
                   </button>
-                  <button
-                    class="tree-share-btn"
-                    title="Share file"
-                    (click)="openShareDialog(node.path, false); $event.stopPropagation(); $event.preventDefault()"
-                  >
-                    <span class="material-icons">share</span>
-                  </button>
+                  @if (openMenuPath() === node.path) {
+                    <div class="tree-dropdown">
+                      <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
+                        <span class="material-icons">drive_file_rename_outline</span>
+                        Rename
+                      </button>
+                      <button class="tree-dropdown-item" (click)="openShareDialog(node.path, false)">
+                        <span class="material-icons">share</span>
+                        Share file
+                      </button>
+                    </div>
+                  }
                 </div>
               </div>
             }
@@ -633,27 +638,64 @@ import { InboxService } from '../../core/api/inbox.service';
       }
     }
 
-    .tree-row-actions {
-      display: flex;
-      align-items: center;
-      gap: 1px;
+    .tree-row-menu {
+      position: relative;
+      flex-shrink: 0;
       opacity: 0;
       transition: opacity var(--transition);
-      flex-shrink: 0;
+    }
 
-      .tree-action-btn, .tree-share-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        border-radius: var(--radius-sm);
+    .tree-menu-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      transition: color var(--transition);
+
+      .material-icons { font-size: 18px; }
+      &:hover { color: var(--primary); }
+    }
+
+    .tree-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      min-width: 160px;
+      padding: var(--spacing-xs);
+      z-index: 100;
+    }
+
+    .tree-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      width: 100%;
+      padding: var(--spacing-xs) var(--spacing-sm);
+      border: none;
+      background: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-primary);
+      text-align: left;
+      white-space: nowrap;
+      transition: background var(--transition);
+
+      .material-icons {
+        font-size: 16px;
         color: var(--text-muted);
-        display: flex;
-        align-items: center;
-        transition: color var(--transition);
+      }
 
-        .material-icons { font-size: 16px; }
-        &:hover { color: var(--primary); }
+      &:hover {
+        background: var(--bg-hover, rgba(0, 0, 0, 0.05));
       }
     }
 
@@ -700,7 +742,7 @@ import { InboxService } from '../../core/api/inbox.service';
         min-width: 0;
       }
 
-      &:hover .tree-row-actions {
+      &:hover .tree-row-menu {
         opacity: 1;
       }
 
@@ -719,7 +761,7 @@ import { InboxService } from '../../core/api/inbox.service';
         min-width: 0;
       }
 
-      &:hover .tree-row-actions {
+      &:hover .tree-row-menu {
         opacity: 1;
       }
 
@@ -794,6 +836,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   shareFilePath = signal<string | null>(null);
   shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
+  openMenuPath = signal<string | null>(null);
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
   );
@@ -900,7 +943,17 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.router.navigate(['/spaces', this.fullPath, 'doc']);
   }
 
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.openMenuPath.set(null);
+  }
+
+  toggleTreeMenu(path: string): void {
+    this.openMenuPath.set(this.openMenuPath() === path ? null : path);
+  }
+
   openShareDialog(filePath: string, isDirectory = false): void {
+    this.openMenuPath.set(null);
     this.shareFilePath.set(filePath);
     this.shareIsDirectory.set(isDirectory);
   }
