@@ -8,7 +8,8 @@ data class CreateShareLinkRequest(
     val filePath: String,
     val expiresInDays: Int? = null,
     val password: String? = null,
-    val shareType: String = "FILE"
+    val shareType: String = "FILE",
+    val writableScopes: List<String> = emptyList()
 )
 
 data class SharedLinkDto(
@@ -22,7 +23,8 @@ data class SharedLinkDto(
     val lastAccessedAt: Instant?,
     val createdAt: Instant,
     val hasPassword: Boolean,
-    val shareType: String
+    val shareType: String,
+    val writableScopes: List<String>
 )
 
 data class SharedFileMetadataDto(
@@ -32,7 +34,10 @@ data class SharedFileMetadataDto(
     val spaceName: String,
     val filePath: String,
     val shareType: String,
-    val requiresPassword: Boolean
+    val requiresPassword: Boolean,
+    val ogTitle: String? = null,
+    val ogDescription: String? = null,
+    val ogImageUrl: String? = null
 )
 
 data class SharePasswordRequest(val password: String)
@@ -50,5 +55,6 @@ fun SharedLink.toDto() = SharedLinkDto(
     lastAccessedAt = this.lastAccessedAt,
     createdAt = this.createdAt,
     hasPassword = this.passwordHash != null,
-    shareType = this.shareType.name
+    shareType = this.shareType.name,
+    writableScopes = this.writableScopes
 )

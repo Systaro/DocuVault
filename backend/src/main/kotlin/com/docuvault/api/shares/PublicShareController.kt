@@ -8,6 +8,8 @@ import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.GitService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.commonmark.parser.Parser
+import org.commonmark.renderer.html.HtmlRenderer
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+
+data class WriteStateRequest(val content: String)
 
 @RestController
 @RequestMapping("/shared")
@@ -41,6 +45,11 @@ class PublicShareController(
         val contentType = if (link.shareType == ShareType.FOLDER) "inode/directory" else getContentType(extension)
         val requiresPassword = link.isPasswordProtected() && !checkAccess(link, request)
 
+        // Extract rich metadata from file content for OG tags
+        val ogMeta = if (link.shareType == ShareType.FILE && !requiresPassword) {
+            extractOgMetadata(link, request)
+        } else null
+
         return ResponseEntity.ok(SharedFileMetadataDto(
             fileName = fileName,
             extension = extension,
@@ -48,8 +57,53 @@ class PublicShareController(
             spaceName = link.space.name,
             filePath = link.filePath,
             shareType = link.shareType.name,
-            requiresPassword = requiresPassword
+            requiresPassword = requiresPassword,
+            ogTitle = ogMeta?.title,
+            ogDescription = ogMeta?.description,
+            ogImageUrl = ogMeta?.imageUrl
         ))
+    }
+
+    private data class OgMetadata(val title: String?, val description: String?, val imageUrl: String?)
+
+    private fun extractOgMetadata(link: SharedLink, request: HttpServletRequest): OgMetadata {
+        val content = gitService.readFile(link.space, link.filePath) ?: return OgMetadata(null, null, null)
+        val ext = link.filePath.substringAfterLast('.', "").lowercase()
+        val isMarkdown = ext in listOf("md", "markdown")
+        val isHtml = ext in listOf("html", "htm")
+
+        val title = when {
+            isMarkdown -> Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
+            isHtml -> Regex("<h1[^>]*>(.*?)</h1>", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
+                ?.replace(Regex("<[^>]+>"), "")?.trim()
+            else -> null
+        }
+
+        val description = when {
+            isMarkdown -> extractMarkdownDescription(content)
+            isHtml -> extractHtmlDescription(content)
+            else -> null
+        }
+
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
+        val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
+        val apiBase = "$scheme://$host/api/shared/${link.token}"
+        val fileDir = link.filePath.substringBeforeLast('/', "")
+
+        val firstImageSrc = when {
+            isMarkdown -> Regex("!\\[.*?]\\((.+?)\\)").find(content)?.groupValues?.get(1)
+            isHtml -> Regex("<img[^>]+src=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
+            else -> null
+        }
+        val imageUrl = firstImageSrc?.let { src ->
+            if (src.startsWith("http://") || src.startsWith("https://")) src
+            else {
+                val resolved = if (fileDir.isNotEmpty()) "$fileDir/$src" else src
+                "$apiBase/files/${Path.of(resolved).normalize()}"
+            }
+        }
+
+        return OgMetadata(title, description, imageUrl)
     }
 
     @PostMapping("/{token}/verify")
@@ -319,6 +373,56 @@ class PublicShareController(
             .body(bytes)
     }
 
+    @PutMapping("/{token}/state/{*path}")
+    fun writeState(
+        @PathVariable token: String,
+        @PathVariable path: String,
+        @RequestBody body: WriteStateRequest,
+        request: HttpServletRequest
+    ): ResponseEntity<Void> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (!checkAccess(link, request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val cleanPath = path.trimStart('/')
+
+        if (!cleanPath.endsWith(".json")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (link.writableScopes.none { scope -> cleanPath == scope || cleanPath.startsWith("$scope/") }) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val repoPath = gitService.getRepoPath(link.space.id!!)
+        val resolved = repoPath.resolve(cleanPath).normalize()
+
+        if (!resolved.startsWith(repoPath.normalize())) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        val written = gitService.writeFile(link.space, cleanPath, body.content)
+        if (!written) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+
+        try {
+            gitService.commitAndPush(
+                link.space,
+                "state: update ${cleanPath.substringAfterLast('/')} via share link",
+                "DocuVault State",
+                "state@docuvault"
+            )
+        } catch (_: Exception) {
+            // Write succeeded locally; commit failure is non-fatal
+        }
+
+        return ResponseEntity.noContent().build()
+    }
+
     @GetMapping("/{token}/og")
     fun getOgPreview(
         @PathVariable token: String,
@@ -329,33 +433,71 @@ class PublicShareController(
                 .contentType(MediaType.TEXT_HTML)
                 .body("<html><head><title>Link Not Available</title></head><body><p>This shared link is no longer available.</p></body></html>")
 
-        val fileName = link.filePath.substringAfterLast('/')
         val spaceName = link.space.name
-        val breadcrumb = link.filePath.replace("/", " / ")
-        val description = "$fileName - shared from $spaceName on DocuVault"
         val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
         val shareUrl = "$scheme://$host/share/$token"
+        val apiBase = "$scheme://$host/api/shared/$token"
+
+        val ogMeta = extractOgMetadata(link, request)
+        val title = ogMeta.title ?: link.filePath.substringAfterLast('/').substringBeforeLast('.')
+        val ogTitle = "$title — $spaceName"
+        val description = ogMeta.description ?: "$title - shared from $spaceName on DocuVault"
+
+        // Render content as HTML for SSR
+        val content = if (link.shareType == ShareType.FILE && !link.isPasswordProtected()) {
+            gitService.readFile(link.space, link.filePath)
+        } else null
+
+        val ext = link.filePath.substringAfterLast('.', "").lowercase()
+        val fileDir = link.filePath.substringBeforeLast('/', "")
+
+        val renderedBody = when {
+            ext in listOf("md", "markdown") && content != null -> {
+                val parser = Parser.builder().build()
+                val document = parser.parse(content)
+                var html = HtmlRenderer.builder().build().render(document)
+                html = html.replace(Regex("(<img[^>]+src=\")(?!https?://|/api/)([^\"]+)(\")", RegexOption.IGNORE_CASE)) { match ->
+                    val src = match.groupValues[2]
+                    val resolved = if (fileDir.isNotEmpty()) "$fileDir/$src" else src
+                    val normalized = Path.of(resolved).normalize().toString()
+                    "${match.groupValues[1]}$apiBase/files/$normalized${match.groupValues[3]}"
+                }
+                html
+            }
+            ext in listOf("html", "htm") && content != null -> content
+            else -> "<p><a href=\"$shareUrl\">Open in DocuVault</a></p>"
+        }
+
+        val escapedTitle = escapeHtml(ogTitle)
+        val escapedDesc = escapeHtml(description)
+        val twitterCard = if (ogMeta.imageUrl != null) "summary_large_image" else "summary"
+        val imageMetaTags = if (ogMeta.imageUrl != null) """
+                <meta property="og:image" content="${ogMeta.imageUrl}">
+                <meta name="twitter:image" content="${ogMeta.imageUrl}">
+        """.trimIndent() else ""
 
         val html = """
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="utf-8">
-                <title>$fileName - $spaceName | DocuVault</title>
-                <meta name="description" content="$description">
-                <meta property="og:title" content="$fileName - $spaceName">
-                <meta property="og:description" content="$breadcrumb">
+                <title>$escapedTitle</title>
+                <meta name="description" content="$escapedDesc">
+                <meta property="og:title" content="$escapedTitle">
+                <meta property="og:description" content="$escapedDesc">
                 <meta property="og:type" content="article">
                 <meta property="og:url" content="$shareUrl">
                 <meta property="og:site_name" content="DocuVault">
-                <meta name="twitter:card" content="summary">
-                <meta name="twitter:title" content="$fileName - $spaceName">
-                <meta name="twitter:description" content="$breadcrumb">
+                $imageMetaTags
+                <meta name="twitter:card" content="$twitterCard">
+                <meta name="twitter:title" content="$escapedTitle">
+                <meta name="twitter:description" content="$escapedDesc">
                 <meta http-equiv="refresh" content="0;url=$shareUrl">
+                <style>body{max-width:800px;margin:40px auto;padding:0 20px;font-family:system-ui,sans-serif;color:#333;line-height:1.6}img{max-width:100%;height:auto}</style>
             </head>
             <body>
-                <p>Redirecting to <a href="$shareUrl">$fileName</a>...</p>
+                $renderedBody
             </body>
             </html>
         """.trimIndent()
@@ -364,6 +506,49 @@ class PublicShareController(
             .contentType(MediaType.TEXT_HTML)
             .body(html)
     }
+
+    private fun extractMarkdownDescription(content: String): String? {
+        // Skip headings, blank lines, images, and metadata — find first text paragraph
+        val lines = content.lines()
+        val paragraph = StringBuilder()
+        var inParagraph = false
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                if (inParagraph) break
+                continue
+            }
+            if (trimmed.startsWith("#") || trimmed.startsWith("![") || trimmed.startsWith("---") || trimmed.startsWith("```")) {
+                if (inParagraph) break
+                continue
+            }
+            // Strip inline markdown formatting
+            paragraph.append(if (inParagraph) " " else "").append(trimmed)
+            inParagraph = true
+        }
+        if (paragraph.isEmpty()) return null
+        val text = paragraph.toString()
+            .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+            .replace(Regex("\\*(.+?)\\*"), "$1")
+            .replace(Regex("\\[(.+?)]\\(.+?\\)"), "$1")
+            .replace(Regex("`(.+?)`"), "$1")
+        return if (text.length > 300) text.substring(0, 297) + "..." else text
+    }
+
+    private fun extractHtmlDescription(content: String): String? {
+        // Find first <p> tag content
+        val match = Regex("<p[^>]*>(.*?)</p>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(content) ?: return null
+        val text = match.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
+        if (text.isEmpty()) return null
+        return if (text.length > 300) text.substring(0, 297) + "..." else text
+    }
+
+    private fun escapeHtml(text: String): String = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
 
     private fun checkAccess(link: SharedLink, request: HttpServletRequest): Boolean {
         if (!link.isPasswordProtected()) return true

@@ -14,6 +14,7 @@ export interface SharedLink {
   createdAt: string;
   hasPassword: boolean;
   shareType: 'FILE' | 'FOLDER';
+  writableScopes: string[];
 }
 
 export interface SharedFileMetadata {
@@ -24,6 +25,9 @@ export interface SharedFileMetadata {
   filePath: string;
   shareType: 'FILE' | 'FOLDER';
   requiresPassword: boolean;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImageUrl?: string;
 }
 
 export interface CreateShareLinkRequest {
@@ -31,6 +35,7 @@ export interface CreateShareLinkRequest {
   expiresInDays?: number | null;
   password?: string | null;
   shareType?: 'FILE' | 'FOLDER';
+  writableScopes?: string[];
 }
 
 export interface FileNode {

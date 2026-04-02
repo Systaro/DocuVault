@@ -984,9 +984,11 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.metaService.removeTag('property="og:type"');
     this.metaService.removeTag('property="og:url"');
     this.metaService.removeTag('property="og:site_name"');
+    this.metaService.removeTag('property="og:image"');
     this.metaService.removeTag('name="twitter:card"');
     this.metaService.removeTag('name="twitter:title"');
     this.metaService.removeTag('name="twitter:description"');
+    this.metaService.removeTag('name="twitter:image"');
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
     document.removeEventListener('mousemove', this.boundImageDragMove);
@@ -1165,21 +1167,28 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   }
 
   private setPageMeta(meta: SharedFileMetadata): void {
-    const pageTitle = `${meta.fileName} - ${meta.spaceName} | DocuVault`;
-    const description = `${meta.fileName} - shared from ${meta.spaceName} on DocuVault`;
-    const breadcrumb = meta.filePath.replace(/\//g, ' / ');
+    const title = meta.ogTitle
+      ? `${meta.ogTitle} — ${meta.spaceName}`
+      : `${meta.fileName} - ${meta.spaceName} | DocuVault`;
+    const description = meta.ogDescription
+      || `${meta.fileName} - shared from ${meta.spaceName} on DocuVault`;
     const shareUrl = window.location.href;
+    const twitterCard = meta.ogImageUrl ? 'summary_large_image' : 'summary';
 
-    this.titleService.setTitle(pageTitle);
+    this.titleService.setTitle(title);
     this.metaService.updateTag({ name: 'description', content: description });
-    this.metaService.updateTag({ property: 'og:title', content: `${meta.fileName} - ${meta.spaceName}` });
-    this.metaService.updateTag({ property: 'og:description', content: breadcrumb });
+    this.metaService.updateTag({ property: 'og:title', content: title });
+    this.metaService.updateTag({ property: 'og:description', content: description });
     this.metaService.updateTag({ property: 'og:type', content: 'article' });
     this.metaService.updateTag({ property: 'og:url', content: shareUrl });
     this.metaService.updateTag({ property: 'og:site_name', content: 'DocuVault' });
-    this.metaService.updateTag({ name: 'twitter:card', content: 'summary' });
-    this.metaService.updateTag({ name: 'twitter:title', content: `${meta.fileName} - ${meta.spaceName}` });
-    this.metaService.updateTag({ name: 'twitter:description', content: breadcrumb });
+    this.metaService.updateTag({ name: 'twitter:card', content: twitterCard });
+    this.metaService.updateTag({ name: 'twitter:title', content: title });
+    this.metaService.updateTag({ name: 'twitter:description', content: description });
+    if (meta.ogImageUrl) {
+      this.metaService.updateTag({ property: 'og:image', content: meta.ogImageUrl });
+      this.metaService.updateTag({ name: 'twitter:image', content: meta.ogImageUrl });
+    }
   }
 
   private determineRenderMode(ext: string): void {
