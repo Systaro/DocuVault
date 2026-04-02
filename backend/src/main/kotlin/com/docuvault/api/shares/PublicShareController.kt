@@ -16,6 +16,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.nio.file.Files
+import java.util.Base64
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -88,22 +89,14 @@ class PublicShareController(
         val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
         val apiBase = "$scheme://$host/api/shared/${link.token}"
-        val fileDir = link.filePath.substringBeforeLast('/', "")
 
-        val firstImageSrc = when {
-            isMarkdown -> Regex("!\\[.*?]\\((.+?)\\)").find(content)?.groupValues?.get(1)
-                ?.takeUnless { it.startsWith("data:") }
-            isHtml -> Regex("<img[^>]+src=[\"'](?!data:)([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
-            else -> null
+        // Check if there's any image at all (including base64)
+        val hasImage = when {
+            isMarkdown -> Regex("!\\[.*?]\\(.+?\\)").containsMatchIn(content)
+            isHtml -> Regex("<img[^>]+src=[\"'][^\"']+[\"']", RegexOption.IGNORE_CASE).containsMatchIn(content)
+            else -> false
         }
-        val imageUrl = firstImageSrc?.let { src ->
-            if (src.startsWith("data:")) null
-            else if (src.startsWith("http://") || src.startsWith("https://")) src
-            else {
-                val resolved = if (fileDir.isNotEmpty()) "$fileDir/$src" else src
-                "$apiBase/files/${Path.of(resolved).normalize()}"
-            }
-        }
+        val imageUrl = if (hasImage) "$apiBase/og-image" else null
 
         return OgMetadata(title, description, imageUrl)
     }
@@ -507,6 +500,63 @@ class PublicShareController(
         return ResponseEntity.ok()
             .contentType(MediaType.TEXT_HTML)
             .body(html)
+    }
+
+    @GetMapping("/{token}/og-image")
+    fun getOgImage(@PathVariable token: String): ResponseEntity<ByteArray> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.notFound().build()
+
+        if (link.isPasswordProtected()) return ResponseEntity.notFound().build()
+
+        val content = gitService.readFile(link.space, link.filePath)
+            ?: return ResponseEntity.notFound().build()
+
+        val ext = link.filePath.substringAfterLast('.', "").lowercase()
+        val fileDir = link.filePath.substringBeforeLast('/', "")
+
+        // Find first image src (including data: URIs)
+        val imgSrc = when (ext) {
+            "md", "markdown" -> Regex("!\\[.*?]\\((.+?)\\)").find(content)?.groupValues?.get(1)
+            "html", "htm" -> Regex("<img[^>]+src=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(content)?.groupValues?.get(1)
+            else -> null
+        } ?: return ResponseEntity.notFound().build()
+
+        // Base64 data URI — decode and serve
+        if (imgSrc.startsWith("data:")) {
+            val mimeMatch = Regex("data:([^;]+);base64,(.+)", RegexOption.DOT_MATCHES_ALL).find(imgSrc)
+                ?: return ResponseEntity.notFound().build()
+            val mimeType = mimeMatch.groupValues[1]
+            val base64Data = mimeMatch.groupValues[2].replace(Regex("\\s"), "")
+            val bytes = try { Base64.getDecoder().decode(base64Data) } catch (_: Exception) {
+                return ResponseEntity.notFound().build()
+            }
+            return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(mimeType))
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .body(bytes)
+        }
+
+        // Relative file path — serve from repo
+        if (!imgSrc.startsWith("http://") && !imgSrc.startsWith("https://")) {
+            val resolved = if (fileDir.isNotEmpty()) "$fileDir/$imgSrc" else imgSrc
+            val normalized = Path.of(resolved).normalize().toString()
+            val repoPath = gitService.getRepoPath(link.space.id!!)
+            val filePath = repoPath.resolve(normalized).normalize()
+            if (!filePath.startsWith(repoPath.normalize()) || !Files.exists(filePath)) {
+                return ResponseEntity.notFound().build()
+            }
+            val mimeType = Files.probeContentType(filePath) ?: "image/png"
+            return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(mimeType))
+                .cacheControl(CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic())
+                .body(Files.readAllBytes(filePath))
+        }
+
+        // External URL — redirect
+        return ResponseEntity.status(HttpStatus.FOUND)
+            .header("Location", imgSrc)
+            .build()
     }
 
     private fun extractMarkdownDescription(content: String): String? {
