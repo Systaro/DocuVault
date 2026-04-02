@@ -24,7 +24,8 @@ class SharedLinkService(
         createdBy: User,
         expiresAt: Instant? = null,
         password: String? = null,
-        shareType: ShareType = ShareType.FILE
+        shareType: ShareType = ShareType.FILE,
+        writableScopes: List<String> = emptyList()
     ): SharedLink {
         val token = generateToken()
         val link = SharedLink(
@@ -34,7 +35,8 @@ class SharedLinkService(
             createdBy = createdBy,
             expiresAt = expiresAt,
             passwordHash = password?.let { passwordEncoder.encode(it) },
-            shareType = shareType
+            shareType = shareType,
+            writableScopes = writableScopes
         )
         return sharedLinkRepository.save(link)
     }

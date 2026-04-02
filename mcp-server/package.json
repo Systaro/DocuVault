@@ -1,6 +1,6 @@
 {
   "name": "@systaro/docuvault-mcp",
-  "version": "1.1.4",
+  "version": "1.1.6",
   "description": "MCP server for DocuVault — Claude Code integration for reading and writing documentation",
   "main": "dist/index.js",
   "bin": {
@@ -22,7 +22,12 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
-  "keywords": ["mcp", "docuvault", "documentation", "claude-code"],
+  "keywords": [
+    "mcp",
+    "docuvault",
+    "documentation",
+    "claude-code"
+  ],
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

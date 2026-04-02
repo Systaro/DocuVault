@@ -1,5 +1,6 @@
 package com.docuvault.domain.space
 
+import com.docuvault.domain.StringListConverter
 import com.docuvault.domain.user.User
 import jakarta.persistence.*
 import java.time.Instant
@@ -48,6 +49,10 @@ data class SharedLink(
 
     @Column(name = "last_accessed_at")
     var lastAccessedAt: Instant? = null,
+
+    @Convert(converter = StringListConverter::class)
+    @Column(name = "writable_scopes", columnDefinition = "TEXT")
+    val writableScopes: List<String> = emptyList(),
 
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now()

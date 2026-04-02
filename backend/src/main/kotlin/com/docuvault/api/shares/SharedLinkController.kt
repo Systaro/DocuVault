@@ -54,7 +54,8 @@ class SharedLinkController(
             createdBy = user,
             expiresAt = expiresAt,
             password = request.password,
-            shareType = shareType
+            shareType = shareType,
+            writableScopes = request.writableScopes
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(link.toDto())
     }

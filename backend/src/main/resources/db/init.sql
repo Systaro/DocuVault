@@ -126,10 +126,12 @@ CREATE TABLE IF NOT EXISTS shared_links (
     revoked_at TIMESTAMP WITH TIME ZONE,
     password_hash VARCHAR(255),
     share_type VARCHAR(10) NOT NULL DEFAULT 'FILE',
+    writable_scopes TEXT NOT NULL DEFAULT '[]',
     access_count INTEGER NOT NULL DEFAULT 0,
     last_accessed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE shared_links ADD COLUMN IF NOT EXISTS writable_scopes TEXT NOT NULL DEFAULT '[]';
 
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

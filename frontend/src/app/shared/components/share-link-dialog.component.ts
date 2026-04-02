@@ -77,6 +77,24 @@ import { ToastService } from '../services/toast.service';
                 />
               }
             </div>
+
+            <!-- Writable scopes -->
+            <div class="writable-section">
+              <label class="toggle-label">
+                <input type="checkbox" [(ngModel)]="enableWritableScopes" />
+                <span class="material-icons toggle-icon">edit</span>
+                <span>Allow state writes (for interactive HTML)</span>
+              </label>
+              @if (enableWritableScopes) {
+                <div class="scopes-hint">JSON paths this link may write to, one per line.</div>
+                <textarea
+                  class="scopes-input"
+                  [(ngModel)]="writableScopesText"
+                  placeholder="e.g. projekt-management/pilot-verantwortlichkeiten.json"
+                  rows="3"
+                ></textarea>
+              }
+            </div>
           </div>
 
           <!-- Active links -->
@@ -107,6 +125,11 @@ import { ToastService } from '../services/toast.service';
                         </span>
                       }
                       <span class="meta-badge type-badge">{{ link.shareType === 'FOLDER' ? 'Folder' : 'File' }}</span>
+                      @if (link.writableScopes?.length) {
+                        <span class="meta-badge writable-badge">
+                          <span class="material-icons">edit</span> Writable
+                        </span>
+                      }
                       <span>{{ link.accessCount }} views</span>
                       @if (link.expiresAt) {
                         <span>Expires {{ formatDate(link.expiresAt) }}</span>
@@ -387,6 +410,35 @@ import { ToastService } from '../services/toast.service';
       color: var(--danger, #dc3545) !important;
     }
 
+    .writable-section {
+      margin-top: var(--spacing-md);
+    }
+
+    .scopes-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: var(--spacing-xs) 0 4px;
+    }
+
+    .scopes-input {
+      display: block;
+      width: 100%;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-family: monospace;
+      background: var(--surface);
+      color: var(--text-primary);
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .writable-badge {
+      background: #dcfce7;
+      color: #166534;
+    }
+
     .btn-sm {
       padding: 6px 12px;
       font-size: 13px;
@@ -414,6 +466,8 @@ export class ShareLinkDialogComponent implements OnInit {
   usePassword = false;
   sharePassword = '';
   shareAsFolder = false;
+  enableWritableScopes = false;
+  writableScopesText = '';
 
   constructor(
     private sharedLinksService: SharedLinksService,
@@ -445,11 +499,16 @@ export class ShareLinkDialogComponent implements OnInit {
 
   createLink(): void {
     this.creating.set(true);
+    const writableScopes = this.enableWritableScopes
+      ? this.writableScopesText.split('\n').map(s => s.trim()).filter(s => s.length > 0)
+      : [];
+
     this.sharedLinksService.createLink(this.spaceId(), {
       filePath: this.filePath(),
       expiresInDays: this.selectedExpiry,
       password: this.usePassword ? this.sharePassword : null,
-      shareType: this.shareAsFolder ? 'FOLDER' : 'FILE'
+      shareType: this.shareAsFolder ? 'FOLDER' : 'FILE',
+      writableScopes
     }).subscribe({
       next: (link) => {
         this.links.update(links => [link, ...links]);
@@ -458,6 +517,8 @@ export class ShareLinkDialogComponent implements OnInit {
         this.toastService.success('Link Created', 'Share link copied to clipboard.');
         this.usePassword = false;
         this.sharePassword = '';
+        this.enableWritableScopes = false;
+        this.writableScopesText = '';
       },
       error: () => {
         this.creating.set(false);

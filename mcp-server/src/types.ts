@@ -74,3 +74,17 @@ export interface PatchResult {
   contentHash: string;
   lastSyncedAt?: string;
 }
+
+export interface ShareLink {
+  id: string;
+  token: string;
+  spaceId: string;
+  filePath: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  accessCount: number;
+  lastAccessedAt?: string;
+  createdAt: string;
+  hasPassword: boolean;
+  shareType: 'FILE' | 'FOLDER';
+}
