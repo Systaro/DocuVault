@@ -86,8 +86,8 @@ class PublicShareController(
             else -> null
         }
 
-        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (request.scheme == "http" && request.serverName.contains(".")) "https" else request.scheme
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.contains(".")) "https" else request.scheme
         val apiBase = "$scheme://$host/api/shared/${link.token}"
 
         // Check if there's any image at all (including base64)
@@ -429,8 +429,8 @@ class PublicShareController(
                 .body("<html><head><title>Link Not Available</title></head><body><p>This shared link is no longer available.</p></body></html>")
 
         val spaceName = link.space.name
-        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (request.scheme == "http" && request.serverName.contains(".")) "https" else request.scheme
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
+        val scheme = request.getHeader("X-Forwarded-Proto") ?: if (host.contains(".")) "https" else request.scheme
         val shareUrl = "$scheme://$host/share/$token"
         val apiBase = "$scheme://$host/api/shared/$token"
 
