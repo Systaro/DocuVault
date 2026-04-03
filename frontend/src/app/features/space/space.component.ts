@@ -174,7 +174,7 @@ import { InboxService } from '../../core/api/inbox.service';
           </div>
         </div>
 
-        @if (shareFilePath() && spaceSignal()) {
+        @if (shareFilePath() !== null && spaceSignal()) {
           <app-share-link-dialog
             [spaceId]="spaceSignal()!.id"
             [filePath]="shareFilePath()!"
