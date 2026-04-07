@@ -661,13 +661,16 @@ class PublicShareController(
 
     private fun injectBaseTag(html: String, baseHref: String): String {
         val baseTag = "<base href=\"$baseHref\">"
+        // Fix fragment-only links broken by <base> tag: intercept clicks on #anchor links
+        // and scroll within the document instead of navigating to baseHref + #anchor
+        val anchorFixScript = """<script>document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#"]');if(!a)return;var id=a.getAttribute('href').substring(1);var t=document.getElementById(id)||document.querySelector('[name="'+id+'"]');if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth'})}});</script>"""
         val headIndex = html.indexOf("<head>", ignoreCase = true)
         if (headIndex >= 0) {
             val insertAt = headIndex + "<head>".length
-            return html.substring(0, insertAt) + baseTag + html.substring(insertAt)
+            return html.substring(0, insertAt) + baseTag + html.substring(insertAt) + anchorFixScript
         }
         // No <head> tag — prepend base tag
-        return baseTag + html
+        return baseTag + html + anchorFixScript
     }
 
     private fun getContentType(extension: String): String = when (extension.lowercase()) {

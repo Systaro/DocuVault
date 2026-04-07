@@ -657,6 +657,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 
     .preview-image {
       width: 100%;
+      max-width: none;
       height: auto;
       display: block;
       transition: width 0.15s ease;
