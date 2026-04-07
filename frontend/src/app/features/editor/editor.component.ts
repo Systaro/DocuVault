@@ -102,6 +102,12 @@ import { marked } from 'marked';
                     </svg>
                     Create a public share
                   </button>
+                  <button class="action-menu-item" (click)="openFullscreenPreview(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                    </svg>
+                    Fullscreen preview
+                  </button>
                   <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -158,6 +164,12 @@ import { marked } from 'marked';
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
                   </svg>
                   Create a public share
+                </button>
+                <button class="action-menu-item" (click)="openFullscreenPreview(); showActionMenu.set(false)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+                  </svg>
+                  Fullscreen preview
                 </button>
                 <button class="action-menu-item" (click)="exportAsPdf(); showActionMenu.set(false)">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -764,6 +776,16 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.toastService.error('Delete Failed', error.error?.message || 'Failed to delete document');
       }
     });
+  }
+
+  openFullscreenPreview(): void {
+    const space = this.space();
+    if (!space) return;
+    if (this.documentPath) {
+      this.router.navigate(['/preview', space.id, this.documentPath]);
+    } else {
+      this.router.navigate(['/preview', space.id]);
+    }
   }
 
   exportAsPdf(): void {

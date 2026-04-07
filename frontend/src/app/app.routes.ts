@@ -38,6 +38,17 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'preview/:spaceId',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/preview/preview.component').then(m => m.PreviewComponent),
+    children: [
+      {
+        path: '**',
+        loadComponent: () => import('./features/preview/preview.component').then(m => m.PreviewComponent)
+      }
+    ]
+  },
+  {
     path: 'dashboard',
     canActivate: [authGuard],
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)

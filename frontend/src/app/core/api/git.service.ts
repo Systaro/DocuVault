@@ -68,6 +68,10 @@ export class GitService {
     return this.http.post<GitOperationResult>(`/api/git/spaces/${spaceId}/pull`, {});
   }
 
+  getUncommittedFiles(spaceId: string): Observable<string[]> {
+    return this.http.get<string[]>(`/api/git/spaces/${spaceId}/uncommitted`);
+  }
+
   pushChanges(spaceId: string, message: string, authorName: string, authorEmail: string): Observable<GitOperationResult> {
     return this.http.post<GitOperationResult>(`/api/git/spaces/${spaceId}/push`, {
       message,

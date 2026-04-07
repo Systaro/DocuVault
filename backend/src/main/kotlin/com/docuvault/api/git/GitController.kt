@@ -118,6 +118,22 @@ class GitController(
         }
     }
 
+    @GetMapping("/spaces/{spaceId}/uncommitted")
+    fun getUncommittedFiles(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<String>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val files = gitService.getUncommittedFiles(spaceId)
+        return ResponseEntity.ok(files)
+    }
+
     @PostMapping("/spaces/{spaceId}/push")
     fun pushChanges(
         @PathVariable spaceId: UUID,

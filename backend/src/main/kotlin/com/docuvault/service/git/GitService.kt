@@ -261,6 +261,28 @@ class GitService(
         }
     }
 
+    fun getUncommittedFiles(spaceId: UUID): List<String> {
+        val repoDir = getRepoPath(spaceId).toFile()
+        if (!repoDir.exists()) return emptyList()
+
+        return try {
+            Git.open(repoDir).use { git ->
+                val status = git.status().call()
+                val files = mutableListOf<String>()
+                files.addAll(status.untracked)
+                files.addAll(status.modified)
+                files.addAll(status.added)
+                files.addAll(status.changed)
+                files.addAll(status.removed)
+                files.addAll(status.missing)
+                files.sorted()
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to get git status for space $spaceId: ${e.message}", e)
+            emptyList()
+        }
+    }
+
     fun isDirectory(space: Space, path: String): Boolean {
         val repoDir = getRepoPath(space.id!!)
         val filePath = validatePath(repoDir, path)

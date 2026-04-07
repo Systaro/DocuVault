@@ -12,6 +12,8 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -41,11 +43,12 @@ class SpaceFileController(
         }
 
         val basePath = "/api/spaces/$spaceId/files/"
-        val filePath = if (request.requestURI.startsWith(basePath)) {
+        val rawPath = if (request.requestURI.startsWith(basePath)) {
             request.requestURI.substring(basePath.length)
         } else {
             return ResponseEntity.badRequest().build()
         }
+        val filePath = URLDecoder.decode(rawPath, StandardCharsets.UTF_8)
 
         val repoPath = gitService.getRepoPath(spaceId)
         val resolved = repoPath.resolve(filePath).normalize()

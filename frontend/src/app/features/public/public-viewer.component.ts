@@ -3,8 +3,11 @@ import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { SharedLinksService, SharedFileMetadata, FileNode } from '../../core/api/shared-links.service';
-import { marked, Renderer } from 'marked';
 import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
+import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { ImageZoomHandler } from '../../shared/utils/image-zoom';
+import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
+import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
 
 @Component({
   selector: 'app-public-viewer',
@@ -122,24 +125,24 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
+            <div class="image-container" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="currentFileName()"
                 class="preview-image"
-                [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
+                [style.width]="imgZoom.zoom() === 1 ? null : (imgZoom.zoom() * 100) + '%'"
               />
             </div>
             <div class="zoom-toolbar">
-              <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+              <button class="zoom-btn" (click)="imgZoom.zoomOut()" [disabled]="imgZoom.zoom() <= 0.25" title="Zoom out">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
                 </svg>
               </button>
-              <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
-                {{ (imageZoom() * 100).toFixed(0) }}%
+              <button class="zoom-level" (click)="imgZoom.reset()" title="Reset to 100%">
+                {{ (imgZoom.zoom() * 100).toFixed(0) }}%
               </button>
-              <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+              <button class="zoom-btn" (click)="imgZoom.zoomIn()" [disabled]="imgZoom.zoom() >= 4" title="Zoom in">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
@@ -176,24 +179,24 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
               ></iframe>
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
+            <div class="image-container" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="metadata()?.fileName"
                 class="preview-image"
-                [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
+                [style.width]="imgZoom.zoom() === 1 ? null : (imgZoom.zoom() * 100) + '%'"
               />
             </div>
             <div class="zoom-toolbar">
-              <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
+              <button class="zoom-btn" (click)="imgZoom.zoomOut()" [disabled]="imgZoom.zoom() <= 0.25" title="Zoom out">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
                 </svg>
               </button>
-              <button class="zoom-level" (click)="resetZoom()" title="Reset to 100%">
-                {{ (imageZoom() * 100).toFixed(0) }}%
+              <button class="zoom-level" (click)="imgZoom.reset()" title="Reset to 100%">
+                {{ (imgZoom.zoom() * 100).toFixed(0) }}%
               </button>
-              <button class="zoom-btn" (click)="zoomIn()" [disabled]="imageZoom() >= 4" title="Zoom in">
+              <button class="zoom-btn" (click)="imgZoom.zoomIn()" [disabled]="imgZoom.zoom() >= 4" title="Zoom in">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
@@ -236,7 +239,7 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
             [class.active]="currentSubPath() === node.path"
             (click)="navigateToFile(node)"
           >
-            <span class="material-icons tree-icon file-icon">{{ getTreeFileIcon(node.name) }}</span>
+            <span class="material-icons tree-icon file-icon">{{ getFileIcon(node.name) }}</span>
             <span class="tree-name">{{ node.name }}</span>
           </div>
         }
@@ -625,147 +628,9 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
       }
     }
 
-    .markdown-container {
-      max-width: 800px;
-      width: 100%;
-      margin: 24px auto;
-      padding: 48px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    }
-
     .folder-content .markdown-container {
       margin: 24px;
       max-width: none;
-    }
-
-    .markdown-container article {
-      color: #1f2937;
-      font-size: 16px;
-      line-height: 1.75;
-    }
-
-    .markdown-container :is(h1, h2, h3, h4, h5, h6) {
-      color: #111827;
-      font-weight: 700;
-      line-height: 1.3;
-      margin-top: 2em;
-      margin-bottom: 0.75em;
-    }
-
-    .markdown-container :is(h1, h2, h3, h4, h5, h6):first-child {
-      margin-top: 0;
-    }
-
-    .markdown-container h1 {
-      font-size: 2em;
-      padding-bottom: 0.3em;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .markdown-container h2 {
-      font-size: 1.5em;
-      padding-bottom: 0.25em;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .markdown-container h3 { font-size: 1.25em; }
-    .markdown-container h4 { font-size: 1em; }
-
-    .markdown-container p { margin: 0 0 1em; }
-
-    .markdown-container ul, .markdown-container ol {
-      margin: 0 0 1em;
-      padding-left: 2em;
-    }
-
-    .markdown-container ul { list-style-type: disc; }
-    .markdown-container ol { list-style-type: decimal; }
-    .markdown-container li { margin-bottom: 0.5em; }
-    .markdown-container li > ul, .markdown-container li > ol { margin-top: 0.5em; margin-bottom: 0; }
-
-    .markdown-container code {
-      background: #f3f4f6;
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
-      font-size: 0.875em;
-      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      color: #d6336c;
-    }
-
-    .markdown-container pre {
-      background: #1f2937;
-      color: #e5e7eb;
-      padding: 16px 20px;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin: 0 0 1em;
-      line-height: 1.6;
-    }
-
-    .markdown-container pre code {
-      background: none;
-      padding: 0;
-      border-radius: 0;
-      font-size: 0.875em;
-      color: inherit;
-    }
-
-    .markdown-container blockquote {
-      border-left: 4px solid #6fb3b8;
-      margin: 0 0 1em;
-      padding: 0.5em 1em;
-      color: #4b5563;
-      background: #f9fafb;
-      border-radius: 0 4px 4px 0;
-    }
-
-    .markdown-container blockquote p:last-child { margin-bottom: 0; }
-
-    .markdown-container table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 0 0 1em;
-      font-size: 0.9em;
-    }
-
-    .markdown-container th, .markdown-container td {
-      border: 1px solid #e5e7eb;
-      padding: 8px 12px;
-      text-align: left;
-    }
-
-    .markdown-container th {
-      background: #f9fafb;
-      font-weight: 600;
-    }
-
-    .markdown-container tr:nth-child(even) { background: #f9fafb; }
-
-    .markdown-container a {
-      color: #6fb3b8;
-      text-decoration: none;
-    }
-
-    .markdown-container a:hover { text-decoration: underline; }
-
-    .markdown-container strong {
-      font-weight: 700;
-      color: #111827;
-    }
-
-    .markdown-container em { font-style: italic; }
-
-    .markdown-container hr {
-      border: none;
-      border-top: 1px solid #e5e7eb;
-      margin: 2em 0;
-    }
-
-    .markdown-container img {
-      max-width: 100%;
-      border-radius: 6px;
     }
 
     .html-container, .pdf-container {
@@ -797,52 +662,6 @@ import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/p
       transition: width 0.15s ease;
     }
 
-    .zoom-toolbar {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 6px 8px;
-      background: var(--surface, #fff);
-      border: 1px solid var(--border, #e5e7eb);
-      border-radius: 10px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-      z-index: 200;
-    }
-
-    .zoom-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 6px;
-      border: none;
-      background: none;
-      color: var(--text-primary, #111);
-      cursor: pointer;
-      transition: background 0.15s;
-
-      &:hover:not(:disabled) { background: var(--surface-hover, #f3f4f6); }
-      &:disabled { opacity: 0.4; cursor: not-allowed; }
-    }
-
-    .zoom-level {
-      min-width: 52px;
-      height: 32px;
-      border-radius: 6px;
-      border: none;
-      background: none;
-      color: var(--text-primary, #111);
-      font-size: 0.8125rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.15s;
-
-      &:hover { background: var(--surface-hover, #f3f4f6); }
-    }
   `]
 })
 export class PublicViewerComponent implements OnInit, OnDestroy {
@@ -850,44 +669,13 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   metadata = signal<SharedFileMetadata | null>(null);
   loading = signal(true);
   error = signal<string | null>(null);
-  renderMode = signal<'markdown' | 'html' | 'image' | 'pdf' | 'download' | null>(null);
+  renderMode = signal<RenderMode | null>(null);
   renderedHtml = signal<SafeHtml>('');
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
-  imageZoom = signal(1);
 
-  isDraggingImage = signal(false);
-  private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
-  private boundImageDragMove = this.onImageDragMove.bind(this);
-  private boundImageDragEnd = this.onImageDragEnd.bind(this);
-
-  zoomIn(): void { this.imageZoom.update(z => Math.min(z + 0.25, 4)); }
-  zoomOut(): void { this.imageZoom.update(z => Math.max(z - 0.25, 0.25)); }
-  resetZoom(): void { this.imageZoom.set(1); }
-
-  onImageDragStart(event: MouseEvent): void {
-    if (event.button !== 0) return;
-    const el = event.currentTarget as HTMLElement;
-    event.preventDefault();
-    this.isDraggingImage.set(true);
-    this.imageDragState = { x: event.clientX, y: event.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop, el };
-    document.addEventListener('mousemove', this.boundImageDragMove);
-    document.addEventListener('mouseup', this.boundImageDragEnd);
-  }
-
-  private onImageDragMove(event: MouseEvent): void {
-    if (!this.imageDragState) return;
-    const { el, x, y, scrollLeft, scrollTop } = this.imageDragState;
-    if (el.scrollWidth > el.clientWidth) el.scrollLeft = scrollLeft - (event.clientX - x);
-    if (el.scrollHeight > el.clientHeight) el.scrollTop = scrollTop - (event.clientY - y);
-  }
-
-  private onImageDragEnd(): void {
-    this.isDraggingImage.set(false);
-    this.imageDragState = null;
-    document.removeEventListener('mousemove', this.boundImageDragMove);
-    document.removeEventListener('mouseup', this.boundImageDragEnd);
-  }
+  readonly imgZoom = new ImageZoomHandler();
+  readonly getFileIcon = getFileIcon;
 
   // Password protection
   requiresPassword = signal(false);
@@ -938,7 +726,8 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     private sharedLinksService: SharedLinksService,
     private sanitizer: DomSanitizer,
     private titleService: Title,
-    private metaService: Meta
+    private metaService: Meta,
+    private markdownService: MarkdownRenderService
   ) {}
 
   ngOnInit(): void {
@@ -991,8 +780,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.metaService.removeTag('name="twitter:image"');
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
-    document.removeEventListener('mousemove', this.boundImageDragMove);
-    document.removeEventListener('mouseup', this.boundImageDragEnd);
+    this.imgZoom.destroy();
   }
 
   submitPassword(event: Event): void {
@@ -1078,7 +866,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     if (ext === 'md') {
       this.sharedLinksService.getSharedFolderContent(this.token, subPath).subscribe({
         next: (content) => {
-          this.renderMarkdown(content, subPath);
+          this.renderMarkdownForSubPath(content, subPath);
           this.renderMode.set('markdown');
           this.subFileLoading.set(false);
         },
@@ -1118,16 +906,6 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.expandedFolders.set(expanded);
   }
 
-  getTreeFileIcon(name: string): string {
-    const ext = name.split('.').pop()?.toLowerCase() || '';
-    switch (ext) {
-      case 'md': return 'description';
-      case 'pdf': return 'picture_as_pdf';
-      case 'html': case 'htm': return 'code';
-      case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': return 'image';
-      default: return 'insert_drive_file';
-    }
-  }
 
   // Resize handling
   startResize(event: MouseEvent): void {
@@ -1150,20 +928,20 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   };
 
   onMarkdownClick(event: MouseEvent): void {
-    const target = event.target as HTMLElement;
-    const anchor = target.closest('a');
-    if (!anchor) return;
-
-    const href = anchor.getAttribute('href');
-    if (href && href.startsWith('#')) {
-      event.preventDefault();
-      const id = href.slice(1);
-      const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
-      history.replaceState(null, '', window.location.pathname + href);
+    if (this.shareType() !== 'FOLDER') {
+      handleMarkdownClick(event, '', () => {});
+      return;
     }
+    handleMarkdownClick(
+      event,
+      `/share/${this.token}/`,
+      (subPath) => {
+        this.currentSubPath.set(subPath);
+        this.expandTreeToPath(subPath);
+        this.loadSubPathContent(subPath);
+        this.location.replaceState(`/share/${this.token}/${subPath}`);
+      }
+    );
   }
 
   private setPageMeta(meta: SharedFileMetadata): void {
@@ -1192,35 +970,18 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   }
 
   private determineRenderMode(ext: string): void {
-    const extension = ext.toLowerCase();
-    if (extension === 'md') {
+    const mode = getRenderMode(ext);
+    if (mode === 'markdown') {
       this.renderMode.set('markdown');
       this.loadMarkdownContent();
-    } else if (extension === 'html' || extension === 'htm') {
-      this.renderMode.set('html');
-      this.loading.set(false);
-    } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'].includes(extension)) {
-      this.renderMode.set('image');
-      this.loading.set(false);
-    } else if (extension === 'pdf') {
-      this.renderMode.set('pdf');
-      this.loading.set(false);
     } else {
-      this.renderMode.set('download');
+      this.renderMode.set(mode);
       this.loading.set(false);
     }
   }
 
   private determineRenderModeForFolder(ext: string): void {
-    if (ext === 'html' || ext === 'htm') {
-      this.renderMode.set('html');
-    } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'].includes(ext)) {
-      this.renderMode.set('image');
-    } else if (ext === 'pdf') {
-      this.renderMode.set('pdf');
-    } else {
-      this.renderMode.set('download');
-    }
+    this.renderMode.set(getRenderMode(ext));
   }
 
   private loadMarkdownContent(): void {
@@ -1228,7 +989,10 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
       next: (content) => {
         const filePath = this.metadata()?.filePath || '';
         const docDir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
-        this.renderMarkdown(content, filePath, docDir);
+        const linkPrefix = this.shareType() === 'FOLDER' ? `/share/${this.token}` : null;
+        this.renderedHtml.set(this.markdownService.render(
+          content, docDir, `/api/shared/${this.token}/files`, linkPrefix
+        ));
         this.loading.set(false);
       },
       error: () => {
@@ -1238,38 +1002,10 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     });
   }
 
-  private renderMarkdown(content: string, filePath: string, docDir?: string): void {
-    const renderer = new Renderer();
-    renderer.heading = (text: string, level: number, raw: string) => {
-      const id = raw.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').trim();
-      return `<h${level} id="${id}">${text}</h${level}>\n`;
-    };
-    let html = marked.parse(content, { renderer }) as string;
-
-    // Determine the directory for resolving relative paths
-    const dir = docDir ?? filePath.substring(0, filePath.lastIndexOf('/') + 1);
-
-    // Rewrite relative image paths
-    html = html.replace(
-      /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
-      (_match, pre, src, post) => {
-        const resolved = this.resolveRelativePath(dir + src);
-        return `${pre}/api/shared/${this.token}/files/${resolved}${post}`;
-      }
-    );
-    this.renderedHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
-  }
-
-  private resolveRelativePath(path: string): string {
-    const parts = path.split('/');
-    const resolved: string[] = [];
-    for (const part of parts) {
-      if (part === '..') {
-        resolved.pop();
-      } else if (part !== '.' && part !== '') {
-        resolved.push(part);
-      }
-    }
-    return resolved.join('/');
+  private renderMarkdownForSubPath(content: string, subPath: string): void {
+    const dir = subPath.substring(0, subPath.lastIndexOf('/') + 1);
+    this.renderedHtml.set(this.markdownService.render(
+      content, dir, `/api/shared/${this.token}/files`, `/share/${this.token}`
+    ));
   }
 }

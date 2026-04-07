@@ -293,6 +293,10 @@ import { InboxService } from '../../core/api/inbox.service';
                   </button>
                   @if (openMenuPath() === node.path) {
                     <div class="tree-dropdown">
+                      <button class="tree-dropdown-item" (click)="openFullscreenPreview(node.path); openMenuPath.set(null)">
+                        <span class="material-icons">fullscreen</span>
+                        Fullscreen preview
+                      </button>
                       <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
                         <span class="material-icons">drive_file_rename_outline</span>
                         Rename
@@ -950,6 +954,12 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   toggleTreeMenu(path: string): void {
     this.openMenuPath.set(this.openMenuPath() === path ? null : path);
+  }
+
+  openFullscreenPreview(filePath: string): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.router.navigate(['/preview', space.id, filePath]);
   }
 
   openShareDialog(filePath: string, isDirectory = false): void {

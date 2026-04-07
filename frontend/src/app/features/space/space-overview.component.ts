@@ -72,6 +72,33 @@ import { AuthService } from '../../core/auth/auth.service';
           </div>
         }
 
+        <!-- Uncommitted Files Warning -->
+        @if (uncommittedFiles().length > 0) {
+          <div class="uncommitted-alert mb-6">
+            <div class="uncommitted-icon">
+              <span class="material-icons">warning_amber</span>
+            </div>
+            <div class="uncommitted-content">
+              <div class="uncommitted-title">{{ uncommittedFiles().length }} uncommitted file{{ uncommittedFiles().length > 1 ? 's' : '' }}</div>
+              <div class="uncommitted-message">
+                These files exist locally but haven't been pushed to Git:
+                <span class="uncommitted-files">{{ uncommittedFiles().join(', ') }}</span>
+              </div>
+            </div>
+            <button (click)="retryPush()" [disabled]="pushing()" class="btn btn-sm btn-secondary">
+              @if (pushing()) {
+                <svg class="animate-spin -ml-1 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Pushing...
+              } @else {
+                Retry push
+              }
+            </button>
+          </div>
+        }
+
         <!-- Stats -->
         <div class="grid grid-cols-3 gap-4 mb-8">
           <div class="card p-4">
@@ -213,6 +240,41 @@ import { AuthService } from '../../core/auth/auth.service';
       opacity: 0.85;
     }
 
+    .uncommitted-alert {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(255, 152, 0, 0.08);
+      border: 1px solid rgba(255, 152, 0, 0.25);
+      border-radius: 8px;
+      color: #e65100;
+    }
+
+    .uncommitted-icon .material-icons {
+      font-size: 24px;
+    }
+
+    .uncommitted-content {
+      flex: 1;
+    }
+
+    .uncommitted-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+
+    .uncommitted-message {
+      font-size: 13px;
+      opacity: 0.85;
+    }
+
+    .uncommitted-files {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+    }
+
     .btn-sm {
       padding: 6px 12px;
       font-size: 13px;
@@ -292,6 +354,8 @@ export class SpaceOverviewComponent implements OnInit {
   syncing = signal(false);
   isDragOver = signal(false);
   uploading = signal(false);
+  uncommittedFiles = signal<string[]>([]);
+  pushing = signal(false);
 
   private dragCounter = 0;
 
@@ -356,7 +420,17 @@ export class SpaceOverviewComponent implements OnInit {
       next: (space) => {
         this.space.set(space);
         this.loadDocuments(space.id);
+        if (space.gitlabUrl) {
+          this.checkUncommitted(space.id);
+        }
       }
+    });
+  }
+
+  private checkUncommitted(spaceId: string): void {
+    this.gitService.getUncommittedFiles(spaceId).subscribe({
+      next: (files) => this.uncommittedFiles.set(files),
+      error: () => this.uncommittedFiles.set([])
     });
   }
 
@@ -392,6 +466,37 @@ export class SpaceOverviewComponent implements OnInit {
           'Sync Failed',
           'Unable to connect to the server. Please check your connection and try again.'
         );
+      }
+    });
+  }
+
+  retryPush(): void {
+    const space = this.space();
+    if (!space) return;
+
+    const user = this.authService.user();
+    if (!user) return;
+
+    this.pushing.set(true);
+    const fileCount = this.uncommittedFiles().length;
+    this.gitService.pushChanges(
+      space.id,
+      `Sync ${fileCount} uncommitted file(s) to Git`,
+      user.name,
+      user.email
+    ).subscribe({
+      next: (result) => {
+        this.pushing.set(false);
+        if (result.success) {
+          this.uncommittedFiles.set([]);
+          this.toastService.success('Push Complete', 'All files have been committed and pushed to Git.');
+        } else {
+          this.toastService.error('Push Failed', result.userMessage || result.message || 'Failed to push changes.');
+        }
+      },
+      error: () => {
+        this.pushing.set(false);
+        this.toastService.error('Push Failed', 'Unable to connect to the server.');
       }
     });
   }

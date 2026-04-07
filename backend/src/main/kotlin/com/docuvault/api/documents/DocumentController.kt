@@ -17,6 +17,8 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.*
@@ -31,6 +33,12 @@ class DocumentController(
     private val gitService: GitService,
     private val embeddingService: EmbeddingService
 ) {
+    private fun extractDocumentPath(requestURI: String, spaceId: UUID): String? {
+        val basePath = "/api/spaces/$spaceId/documents/"
+        if (!requestURI.startsWith(basePath)) return null
+        return URLDecoder.decode(requestURI.substring(basePath.length), StandardCharsets.UTF_8)
+    }
+
     @GetMapping("/tree")
     fun getFileTree(
         @PathVariable spaceId: UUID,
@@ -83,13 +91,8 @@ class DocumentController(
         }
 
         // Extract path from URL
-        val fullPath = request.requestURI
-        val basePath = "/api/spaces/$spaceId/documents/"
-        val documentPath = if (fullPath.startsWith(basePath)) {
-            fullPath.substring(basePath.length)
-        } else {
-            return ResponseEntity.badRequest().build()
-        }
+        val documentPath = extractDocumentPath(request.requestURI, spaceId)
+            ?: return ResponseEntity.badRequest().build()
 
         val content = gitService.readFile(space, documentPath)
             ?: return ResponseEntity.notFound().build()
@@ -166,6 +169,22 @@ class DocumentController(
             }
 
             uploaded.add(UploadedFileDto(path = path, name = originalName))
+        }
+
+        // Auto-commit uploaded files for git-backed spaces
+        if (uploaded.isNotEmpty() && !space.gitlabUrl.isNullOrBlank()) {
+            try {
+                val fileNames = uploaded.joinToString(", ") { it.name }
+                gitService.commitAndPush(
+                    space = space,
+                    message = "Upload ${uploaded.size} file(s): $fileNames",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                // Files are written but commit failed — they'll show as uncommitted
+                // Don't fail the upload response, the user can retry via the sync button
+            }
         }
 
         return ResponseEntity.ok(uploaded)
@@ -247,13 +266,8 @@ class DocumentController(
         }
 
         // Extract path from URL
-        val fullPath = servletRequest.requestURI
-        val basePath = "/api/spaces/$spaceId/documents/"
-        val documentPath = if (fullPath.startsWith(basePath)) {
-            fullPath.substring(basePath.length)
-        } else {
-            return ResponseEntity.badRequest().build()
-        }
+        val documentPath = extractDocumentPath(servletRequest.requestURI, spaceId)
+            ?: return ResponseEntity.badRequest().build()
 
         // Write file to git
         if (!gitService.writeFile(space, documentPath, request.content)) {
@@ -325,13 +339,8 @@ class DocumentController(
         }
 
         // Extract path from URL
-        val fullPath = servletRequest.requestURI
-        val basePath = "/api/spaces/$spaceId/documents/"
-        val documentPath = if (fullPath.startsWith(basePath)) {
-            fullPath.substring(basePath.length)
-        } else {
-            return ResponseEntity.badRequest().build()
-        }
+        val documentPath = extractDocumentPath(servletRequest.requestURI, spaceId)
+            ?: return ResponseEntity.badRequest().build()
 
         // Read current content
         val currentContent = gitService.readFile(space, documentPath)
@@ -538,13 +547,8 @@ class DocumentController(
         }
 
         // Extract path from URL
-        val fullPath = request.requestURI
-        val basePath = "/api/spaces/$spaceId/documents/"
-        val documentPath = if (fullPath.startsWith(basePath)) {
-            fullPath.substring(basePath.length)
-        } else {
-            return ResponseEntity.badRequest().build()
-        }
+        val documentPath = extractDocumentPath(request.requestURI, spaceId)
+            ?: return ResponseEntity.badRequest().build()
 
         // Delete from git
         gitService.deleteFile(space, documentPath)

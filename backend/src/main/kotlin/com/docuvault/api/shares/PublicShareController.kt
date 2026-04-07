@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.Base64
 import java.nio.file.Path
@@ -209,11 +211,12 @@ class PublicShareController(
         }
 
         val basePath = "/api/shared/$token/files/"
-        val relativePath = if (request.requestURI.startsWith(basePath)) {
+        val rawPath = if (request.requestURI.startsWith(basePath)) {
             request.requestURI.substring(basePath.length)
         } else {
             return ResponseEntity.badRequest().build()
         }
+        val relativePath = URLDecoder.decode(rawPath, StandardCharsets.UTF_8)
 
         val repoPath = gitService.getRepoPath(link.space.id!!)
 
