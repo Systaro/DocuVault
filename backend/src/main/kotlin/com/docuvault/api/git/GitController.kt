@@ -122,7 +122,7 @@ class GitController(
     fun getUncommittedFiles(
         @PathVariable spaceId: UUID,
         @AuthenticationPrincipal userDetails: UserDetails
-    ): ResponseEntity<List<String>> {
+    ): ResponseEntity<UncommittedFilesResponse> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
@@ -130,8 +130,14 @@ class GitController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
         val files = gitService.getUncommittedFiles(spaceId)
-        return ResponseEntity.ok(files)
+        return ResponseEntity.ok(UncommittedFilesResponse(
+            files = files,
+            lastPushError = space.lastPushError
+        ))
     }
 
     @PostMapping("/spaces/{spaceId}/push")
@@ -159,6 +165,12 @@ class GitController(
                 authorEmail = user.email
             )
 
+            // Clear push error on success
+            if (space.lastPushError != null) {
+                space.lastPushError = null
+                spaceRepository.save(space)
+            }
+
             logger.info("Successfully pushed changes for space '${space.name}' (${space.id})")
             ResponseEntity.ok(
                 GitOperationResponse(
@@ -168,6 +180,8 @@ class GitController(
             )
         } catch (e: GitOperationException) {
             logger.warn("Git push failed for space '${space.name}': ${e.message}")
+            space.lastPushError = e.errorCode.toUserMessage()
+            spaceRepository.save(space)
             ResponseEntity.ok(
                 GitOperationResponse(
                     success = false,
@@ -179,6 +193,8 @@ class GitController(
             )
         } catch (e: Exception) {
             logger.error("Unexpected error during push for space '${space.name}': ${e.message}", e)
+            space.lastPushError = e.message?.take(1000) ?: "Unexpected error"
+            spaceRepository.save(space)
             ResponseEntity.ok(
                 GitOperationResponse(
                     success = false,
@@ -209,4 +225,9 @@ data class PushRequest(
     val message: String,
     val authorName: String,
     val authorEmail: String
+)
+
+data class UncommittedFilesResponse(
+    val files: List<String>,
+    val lastPushError: String? = null
 )

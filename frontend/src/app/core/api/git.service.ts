@@ -25,6 +25,11 @@ export interface GitOperationResult {
   requiresSetup?: boolean;
 }
 
+export interface UncommittedFilesResponse {
+  files: string[];
+  lastPushError?: string;
+}
+
 export type GitErrorCode =
   | 'NOT_CONFIGURED'
   | 'INVALID_URL'
@@ -68,8 +73,8 @@ export class GitService {
     return this.http.post<GitOperationResult>(`/api/git/spaces/${spaceId}/pull`, {});
   }
 
-  getUncommittedFiles(spaceId: string): Observable<string[]> {
-    return this.http.get<string[]>(`/api/git/spaces/${spaceId}/uncommitted`);
+  getUncommittedFiles(spaceId: string): Observable<UncommittedFilesResponse> {
+    return this.http.get<UncommittedFilesResponse>(`/api/git/spaces/${spaceId}/uncommitted`);
   }
 
   pushChanges(spaceId: string, message: string, authorName: string, authorEmail: string): Observable<GitOperationResult> {

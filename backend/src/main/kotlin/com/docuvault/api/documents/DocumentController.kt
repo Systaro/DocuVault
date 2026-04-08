@@ -182,8 +182,9 @@ class DocumentController(
                     authorEmail = user.email
                 )
             } catch (e: Exception) {
-                // Files are written but commit failed — they'll show as uncommitted
-                // Don't fail the upload response, the user can retry via the sync button
+                // Files are written but commit failed — store the reason so the UI can show it
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
             }
         }
 

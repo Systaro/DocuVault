@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, Document } from '../../core/api/documents.service';
-import { GitService, GitOperationResult } from '../../core/api/git.service';
+import { GitService, GitOperationResult, UncommittedFilesResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
 
@@ -80,6 +80,9 @@ import { AuthService } from '../../core/auth/auth.service';
             </div>
             <div class="uncommitted-content">
               <div class="uncommitted-title">{{ uncommittedFiles().length }} uncommitted file{{ uncommittedFiles().length > 1 ? 's' : '' }}</div>
+              @if (lastPushError()) {
+                <div class="uncommitted-reason">{{ lastPushError() }}</div>
+              }
               <div class="uncommitted-message">
                 These files exist locally but haven't been pushed to Git:
                 <span class="uncommitted-files">{{ uncommittedFiles().join(', ') }}</span>
@@ -265,6 +268,12 @@ import { AuthService } from '../../core/auth/auth.service';
       margin-bottom: 2px;
     }
 
+    .uncommitted-reason {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
     .uncommitted-message {
       font-size: 13px;
       opacity: 0.85;
@@ -355,6 +364,7 @@ export class SpaceOverviewComponent implements OnInit {
   isDragOver = signal(false);
   uploading = signal(false);
   uncommittedFiles = signal<string[]>([]);
+  lastPushError = signal<string | null>(null);
   pushing = signal(false);
 
   private dragCounter = 0;
@@ -429,8 +439,14 @@ export class SpaceOverviewComponent implements OnInit {
 
   private checkUncommitted(spaceId: string): void {
     this.gitService.getUncommittedFiles(spaceId).subscribe({
-      next: (files) => this.uncommittedFiles.set(files),
-      error: () => this.uncommittedFiles.set([])
+      next: (response) => {
+        this.uncommittedFiles.set(response.files);
+        this.lastPushError.set(response.lastPushError ?? null);
+      },
+      error: () => {
+        this.uncommittedFiles.set([]);
+        this.lastPushError.set(null);
+      }
     });
   }
 
@@ -489,8 +505,10 @@ export class SpaceOverviewComponent implements OnInit {
         this.pushing.set(false);
         if (result.success) {
           this.uncommittedFiles.set([]);
+          this.lastPushError.set(null);
           this.toastService.success('Push Complete', 'All files have been committed and pushed to Git.');
         } else {
+          this.lastPushError.set(result.userMessage || result.message || null);
           this.toastService.error('Push Failed', result.userMessage || result.message || 'Failed to push changes.');
         }
       },

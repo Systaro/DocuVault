@@ -81,6 +81,23 @@ interface SpaceTokenDto {
 
               <!-- Git settings only for repositories -->
               @if (space()?.type === 'REPOSITORY') {
+                @if (space()?.gitlabUrl) {
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">GitLab Repository</label>
+                    <div class="gitlab-repo-link">
+                      <svg class="gitlab-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M23.955 13.587l-1.342-4.135-2.664-8.189a.455.455 0 00-.867 0L16.418 9.45H7.582L4.918 1.263a.455.455 0 00-.867 0L1.387 9.452.045 13.587a.924.924 0 00.331 1.023L12 23.054l11.624-8.443a.92.92 0 00.331-1.024"/>
+                      </svg>
+                      <a [href]="space()!.gitlabUrl" target="_blank" rel="noopener" class="repo-url">
+                        {{ getRepoPath(space()!.gitlabUrl!) }}
+                      </a>
+                      <svg class="external-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </div>
+                  </div>
+                }
+
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                   <input
@@ -515,6 +532,39 @@ interface SpaceTokenDto {
       padding: 10px 12px;
       margin-bottom: 12px;
     }
+    .gitlab-repo-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--background, #f9fafb);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 6px;
+    }
+    .gitlab-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: #e24329;
+    }
+    .repo-url {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 13px;
+      color: var(--primary, #0d9488);
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .repo-url:hover {
+      text-decoration: underline;
+    }
+    .external-icon {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--text-muted, #9ca3af);
+    }
   `]
 })
 export class SpaceSettingsComponent implements OnInit {
@@ -877,6 +927,16 @@ export class SpaceSettingsComponent implements OnInit {
   onLogoRemoved(): void {
     this.pendingLogoFile = null;
     this.pendingLogoRemoval = true;
+  }
+
+  getRepoPath(gitlabUrl: string): string {
+    try {
+      const url = new URL(gitlabUrl);
+      // Strip leading slash and .git suffix
+      return url.pathname.replace(/^\//, '').replace(/\.git$/, '');
+    } catch {
+      return gitlabUrl;
+    }
   }
 
   deleteSpace(): void {
