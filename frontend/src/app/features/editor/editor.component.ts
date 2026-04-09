@@ -19,10 +19,12 @@ import { common, createLowlight } from 'lowlight';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
+import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService } from '../../core/api/ai.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { GitService } from '../../core/api/git.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
+import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
@@ -31,7 +33,7 @@ import { marked } from 'marked';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, ShareLinkDialogComponent],
+  imports: [CommonModule, FormsModule, ShareLinkDialogComponent, AnnotationOverlayComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -264,6 +266,14 @@ import { marked } from 'marked';
                 class="prose prose-lg max-w-none"
               ></div>
             }
+            @if (space() && documentPath) {
+              <app-annotation-overlay
+                [spaceId]="space()!.id"
+                [filePath]="documentPath"
+                [renderMode]="'markdown'"
+                [permission]="annotationPermission()"
+              />
+            }
           </div>
         </div>
       }
@@ -395,6 +405,7 @@ import { marked } from 'marked';
       margin-bottom: 24px;
       border-radius: 4px;
       box-shadow: var(--shadow-sm);
+      position: relative;
     }
 
     .preview-topbar {
@@ -683,6 +694,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   imageZoom = signal(1);
   isDraggingImage = signal(false);
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
+  annotationPermission = signal<AnnotationPermission>('VIEW');
 
   private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
   private boundImageDragMove = this.onImageDragMove.bind(this);
@@ -729,7 +741,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     private gitService: GitService,
     private authService: AuthService,
     private sanitizer: DomSanitizer,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private annotationsService: AnnotationsService
   ) {
     this.autoSave$.pipe(
       debounceTime(2000),
@@ -920,6 +933,13 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.spacesService.getSpaceByPath(fullPath).subscribe({
       next: (space) => {
         this.space.set(space);
+        this.annotationsService.getMyPermission(space.id).subscribe({
+          next: (res) => {
+            const level = res.level as AnnotationPermission;
+            this.annotationPermission.set(level === 'VIEW' ? 'VIEW' : level === 'EDIT' ? 'EDIT' : level === 'ADMIN' ? 'ADMIN' : 'VIEW');
+          },
+          error: () => {}
+        });
         if (this.isPreviewFile()) {
           const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
           this.previewUrl.set(url);

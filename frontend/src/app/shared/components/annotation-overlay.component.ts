@@ -17,46 +17,45 @@ import { ToastService } from '../services/toast.service';
   standalone: true,
   imports: [CommonModule, FormsModule, AnnotationMarkerComponent, AnnotationThreadComponent],
   template: `
-    <!-- Annotation mode toggle -->
-    @if (canComment()) {
-      <div class="annotation-toolbar">
-        <button class="annotation-toggle" [class.active]="annotationMode()"
-                (click)="toggleAnnotationMode()" title="Toggle annotation mode">
-          <span class="material-icons">{{ annotationMode() ? 'edit_off' : 'add_comment' }}</span>
-        </button>
-        @if (annotations().length > 0) {
-          <button class="annotation-toggle" [class.active]="showList()"
-                  (click)="showList.set(!showList())" title="Annotation list">
-            <span class="material-icons">format_list_bulleted</span>
-            <span class="annotation-count">{{ unresolvedCount() }}</span>
-          </button>
-        }
-      </div>
-    } @else if (annotations().length > 0) {
-      <div class="annotation-toolbar">
-        <button class="annotation-toggle" [class.active]="showList()"
-                (click)="showList.set(!showList())" title="Annotation list">
-          <span class="material-icons">format_list_bulleted</span>
-          <span class="annotation-count">{{ annotations().length }}</span>
-        </button>
-      </div>
+    <!-- Click-capture layer: only active in comment mode -->
+    @if (annotationMode()) {
+      <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
     }
 
-    <!-- Markers -->
-    @if (!showList()) {
-      @for (a of annotations(); track a.id; let i = $index) {
-        @if (a.anchor) {
-          <app-annotation-marker
-            [x]="a.anchor.xPercent"
-            [y]="a.anchor.yPercent"
-            [index]="i + 1"
-            [resolved]="a.resolved"
-            [active]="activeAnnotationId() === a.id"
-            (markerClick)="openThread(a, $event)"
-          />
-        }
+    <!-- Markers (always visible) -->
+    @for (a of annotations(); track a.id; let i = $index) {
+      @if (a.anchor) {
+        <app-annotation-marker
+          [x]="a.anchor.xPercent"
+          [y]="a.anchor.yPercent"
+          [index]="i + 1"
+          [resolved]="a.resolved"
+          [active]="activeAnnotationId() === a.id"
+          (markerClick)="openThread(a, $event)"
+        />
       }
     }
+
+    <!-- Floating toolbar — Figma-style bottom pill -->
+    <div class="annotation-fab" [class.has-annotations]="annotations().length > 0">
+      @if (canComment()) {
+        <button class="fab-btn" [class.active]="annotationMode()"
+                (click)="toggleAnnotationMode()" [title]="annotationMode() ? 'Exit comment mode (Esc)' : 'Add comment'">
+          <span class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
+          @if (annotationMode()) {
+            <span class="fab-label">Click to place comment</span>
+          }
+        </button>
+      }
+      @if (annotations().length > 0) {
+        <div class="fab-divider"></div>
+        <button class="fab-btn" [class.active]="showList()"
+                (click)="showList.set(!showList())" title="View all comments">
+          <span class="material-icons">chat_bubble_outline</span>
+          <span class="fab-badge">{{ annotations().length }}</span>
+        </button>
+      }
+    </div>
 
     <!-- Thread popover -->
     @if (activeAnnotation(); as active) {
@@ -86,7 +85,8 @@ import { ToastService } from '../services/toast.service';
         } @else {
           <textarea class="annotation-input" [(ngModel)]="newAnnotationText" placeholder="Add a comment..."
                     rows="3" (keydown.meta.Enter)="submitNewAnnotation()"
-                    (keydown.control.Enter)="submitNewAnnotation()" autofocus></textarea>
+                    (keydown.control.Enter)="submitNewAnnotation()"
+                    (keydown.escape)="cancelNewAnnotation()" autofocus></textarea>
           <div class="new-annotation-actions">
             <button class="btn-cancel" (click)="cancelNewAnnotation()">Cancel</button>
             <button class="btn-submit" [disabled]="!newAnnotationText.trim()" (click)="submitNewAnnotation()">
@@ -97,12 +97,12 @@ import { ToastService } from '../services/toast.service';
       </div>
     }
 
-    <!-- List view (mobile or toggled) -->
+    <!-- List panel -->
     @if (showList()) {
       <div class="annotation-list-overlay" (click)="showList.set(false)">
         <div class="annotation-list" (click)="$event.stopPropagation()">
           <div class="list-header">
-            <h3>Annotations ({{ annotations().length }})</h3>
+            <h3>Comments ({{ annotations().length }})</h3>
             <button class="thread-btn" (click)="showList.set(false)">
               <span class="material-icons">close</span>
             </button>
@@ -123,7 +123,7 @@ import { ToastService } from '../services/toast.service';
             </div>
           }
           @if (annotations().length === 0) {
-            <div class="list-empty">No annotations yet</div>
+            <div class="list-empty">No comments yet</div>
           }
         </div>
       </div>
@@ -131,68 +131,107 @@ import { ToastService } from '../services/toast.service';
   `,
   encapsulation: ViewEncapsulation.None,
   styles: [`
-    :host {
+    app-annotation-overlay {
       position: absolute;
       inset: 0;
       pointer-events: none;
       z-index: 10;
     }
 
-    .annotation-toolbar {
+    /* Full-area click layer for comment placement */
+    .annotation-click-layer {
       position: absolute;
-      top: 12px;
-      right: 12px;
-      display: flex;
-      gap: 4px;
+      inset: 0;
       pointer-events: auto;
-      z-index: 160;
+      cursor: crosshair;
+      z-index: 5;
     }
 
-    .annotation-toggle {
+    /* Figma-style floating pill at bottom center */
+    .annotation-fab {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 6px 10px;
-      border: 1px solid var(--border, #d4e5e7);
-      border-radius: 10px;
+      gap: 0;
       background: var(--surface, #fff);
+      border: 1px solid var(--border, #d4e5e7);
+      border-radius: 28px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+      padding: 4px;
+      pointer-events: auto;
+      z-index: 200;
+      transition: box-shadow 0.2s;
+    }
+
+    .annotation-fab:hover {
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    }
+
+    .fab-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: none;
+      border-radius: 24px;
+      background: none;
       color: var(--text-secondary, #4a6366);
       cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      transition: all 0.15s;
       font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: all 0.15s;
     }
 
-    .annotation-toggle .material-icons { font-size: 18px; }
+    .fab-btn .material-icons { font-size: 20px; }
 
-    .annotation-toggle:hover {
-      background: var(--primary-light, #badfe7);
-      color: var(--primary-dark, #388087);
+    .fab-btn:hover {
+      background: var(--background, #f6f6f2);
+      color: var(--text-primary, #1a2e30);
     }
 
-    .annotation-toggle.active {
+    .fab-btn.active {
       background: var(--primary, #6fb3b8);
       color: #fff;
-      border-color: var(--primary, #6fb3b8);
     }
 
-    .annotation-count {
-      font-weight: 600;
+    .fab-btn.active:hover {
+      background: var(--primary-dark, #388087);
+    }
+
+    .fab-label {
+      font-size: 13px;
+      font-weight: 400;
+    }
+
+    .fab-divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border, #d4e5e7);
+      margin: 0 2px;
+    }
+
+    .fab-badge {
       font-size: 12px;
-      min-width: 18px;
-      height: 18px;
+      font-weight: 600;
+      min-width: 20px;
+      height: 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 9px;
+      border-radius: 10px;
       background: var(--primary, #6fb3b8);
       color: #fff;
     }
 
-    .annotation-toggle.active .annotation-count {
+    .fab-btn.active .fab-badge {
       background: rgba(255, 255, 255, 0.3);
     }
 
+    /* New annotation popover */
     .new-annotation-popover {
       position: fixed;
       width: 280px;
@@ -328,7 +367,6 @@ import { ToastService } from '../services/toast.service';
     }
 
     .list-item:hover { background: #f9fafb; }
-
     .list-item.resolved { opacity: 0.6; }
 
     .list-index {
@@ -434,7 +472,6 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     private toastService: ToastService,
     private elRef: ElementRef
   ) {
-    // Reload annotations when filePath changes
     effect(() => {
       const fp = this.filePath();
       const sid = this.spaceId();
@@ -445,18 +482,14 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Load stored author name for shared links
     const token = this.shareToken();
     if (token) {
       const stored = localStorage.getItem(`dv-author-${token}`);
       if (stored) this.authorName.set(stored);
     }
 
-    // Listen for iframe messages (html render mode)
     window.addEventListener('message', this.boundMessageHandler);
-
     this.loadAnnotations();
-    // Refresh every 30 seconds
     this.refreshInterval = setInterval(() => this.loadAnnotations(), 30000);
   }
 
@@ -465,23 +498,35 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     window.removeEventListener('message', this.boundMessageHandler);
   }
 
-  @HostListener('click', ['$event'])
-  onOverlayClick(event: MouseEvent): void {
-    if (!this.annotationMode() || !this.canComment()) return;
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.newAnnotation()) {
+      this.cancelNewAnnotation();
+    } else if (this.activeAnnotation()) {
+      this.closeThread();
+    } else if (this.annotationMode()) {
+      this.annotationMode.set(false);
+    }
+  }
 
-    // Don't create annotation when clicking on markers or popovers
+  onLayerClick(event: MouseEvent): void {
+    if (!this.canComment()) return;
+
     const target = event.target as HTMLElement;
-    if (target.closest('.annotation-pin, .annotation-thread, .new-annotation-popover, .annotation-toolbar, .annotation-list')) return;
+    if (target.closest('.annotation-pin, .annotation-thread, .new-annotation-popover, .annotation-fab, .annotation-list')) return;
 
     const container = this.elRef.nativeElement as HTMLElement;
     const rect = container.getBoundingClientRect();
     const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((event.clientY - rect.top + container.scrollTop) / container.scrollHeight) * 100;
 
-    // Extract text snippet for markdown
     let snippet: string | undefined;
     if (this.renderMode() === 'markdown') {
+      // Temporarily disable pointer-events on the click layer to peek at content below
+      const layer = container.querySelector('.annotation-click-layer') as HTMLElement;
+      if (layer) layer.style.pointerEvents = 'none';
       const el = document.elementFromPoint(event.clientX, event.clientY);
+      if (layer) layer.style.pointerEvents = '';
       if (el && el.textContent) {
         snippet = el.textContent.substring(0, 40).trim();
       }
@@ -504,12 +549,13 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   toggleAnnotationMode(): void {
-    this.annotationMode.set(!this.annotationMode());
+    const entering = !this.annotationMode();
+    this.annotationMode.set(entering);
     this.cancelNewAnnotation();
     this.closeThread();
   }
 
-  // --- iframe communication (html render mode) ---
+  // --- iframe communication ---
 
   private onIframeMessage(event: MessageEvent): void {
     const data = event.data;
@@ -528,7 +574,6 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       if (annotation) {
         this.activeAnnotationId.set(annotation.id);
         this.cancelNewAnnotation();
-        // Position thread in center of viewport
         const iframe = this.getIframeElement();
         if (iframe) {
           const rect = iframe.getBoundingClientRect();
@@ -551,7 +596,6 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       };
 
       this.closeThread();
-      // Position form near center of iframe
       const iframe = this.getIframeElement();
       const screenX = iframe ? iframe.getBoundingClientRect().left + iframe.clientWidth / 2 : window.innerWidth / 2;
       const screenY = iframe ? iframe.getBoundingClientRect().top + 60 : window.innerHeight * 0.3;
@@ -607,7 +651,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         this.annotations.set(annotations);
         this.sendMarkersToIframe();
       },
-      error: () => {} // silently fail on background refresh
+      error: () => {}
     });
   }
 
@@ -618,7 +662,6 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     this.activeAnnotationId.set(annotation.id);
     this.cancelNewAnnotation();
 
-    // Position thread popover near the click
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     let x = event.clientX + 16;
@@ -634,7 +677,6 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   openThreadFromList(annotation: Annotation): void {
     this.showList.set(false);
     this.activeAnnotationId.set(annotation.id);
-    // Center thread on screen
     this.threadPosX.set(Math.max(20, (window.innerWidth - 340) / 2));
     this.threadPosY.set(Math.max(20, window.innerHeight * 0.2));
   }
