@@ -101,4 +101,15 @@ class AnnotationService(
     fun findById(annotationId: UUID): Annotation? {
         return annotationRepository.findById(annotationId).orElse(null)
     }
+
+    @Transactional(readOnly = true)
+    fun getUnresolvedCounts(spaceId: UUID): Map<String, Long> {
+        return annotationRepository.countUnresolvedBySpaceGroupedByFile(spaceId)
+            .associate { row -> row[0] as String to row[1] as Long }
+    }
+
+    @Transactional(readOnly = true)
+    fun getUnresolvedCountForSpace(spaceId: UUID): Long {
+        return annotationRepository.countUnresolvedBySpace(spaceId)
+    }
 }

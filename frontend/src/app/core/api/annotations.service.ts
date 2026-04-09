@@ -94,6 +94,12 @@ export class AnnotationsService {
     });
   }
 
+  // --- Counts ---
+
+  getAnnotationCounts(spaceId: string): Observable<{ total: number; perFile: Record<string, number> }> {
+    return this.http.get<{ total: number; perFile: Record<string, number> }>(`/api/spaces/${spaceId}/annotations/counts`);
+  }
+
   // --- Permission ---
 
   getMyPermission(spaceId: string): Observable<{ level: string }> {

@@ -8,6 +8,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { InboxService } from '../../core/api/inbox.service';
+import { AnnotationsService } from '../../core/api/annotations.service';
 
 @Component({
   selector: 'app-space',
@@ -281,6 +282,11 @@ import { InboxService } from '../../core/api/inbox.service';
                     <span class="tree-name">{{ node.name }}</span>
                     @if (sharedFilePaths().has(node.path)) {
                       <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                    }
+                    @if (annotationCounts()[node.path]; as count) {
+                      <span class="annotation-badge" title="{{ count }} open comment{{ count > 1 ? 's' : '' }}">
+                        <span class="material-icons">chat_bubble</span>{{ count }}
+                      </span>
                     }
                   }
                 </a>
@@ -781,6 +787,25 @@ import { InboxService } from '../../core/api/inbox.service';
       margin-left: auto;
     }
 
+    .annotation-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+      margin-left: 4px;
+      line-height: 1;
+    }
+
+    .annotation-badge .material-icons {
+      font-size: 12px;
+    }
+
     .sidebar-footer {
       padding: var(--spacing-md);
       border-top: 1px solid var(--border);
@@ -840,6 +865,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   shareFilePath = signal<string | null>(null);
   shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
+  annotationCounts = signal<Record<string, number>>({});
+  annotationTotal = signal(0);
   openMenuPath = signal<string | null>(null);
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
@@ -855,7 +882,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
     private sharedLinksService: SharedLinksService,
-    private inboxService: InboxService
+    private inboxService: InboxService,
+    private annotationsService: AnnotationsService
   ) {}
 
   ngOnInit(): void {
@@ -874,6 +902,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.spaceSignal.set(this.space);
       this.loadFileTree(this.space.id);
       this.loadSharedLinks(this.space.id);
+      this.loadAnnotationCounts(this.space.id);
       this.buildPathBreadcrumbs();
       this.loadInboxCount(this.space.id);
     }
@@ -974,6 +1003,15 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     if (space) {
       this.loadSharedLinks(space.id);
     }
+  }
+
+  loadAnnotationCounts(spaceId: string): void {
+    this.annotationsService.getAnnotationCounts(spaceId).subscribe({
+      next: (data) => {
+        this.annotationCounts.set(data.perFile);
+        this.annotationTotal.set(data.total);
+      }
+    });
   }
 
   loadSharedLinks(spaceId: string): void {

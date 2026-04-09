@@ -21,6 +21,23 @@ class AnnotationController(
     private val permissionService: PermissionService
 ) {
 
+    @GetMapping("/counts")
+    fun getAnnotationCounts(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Map<String, Any>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val perFile = annotationService.getUnresolvedCounts(spaceId)
+        val total = perFile.values.sum()
+        return ResponseEntity.ok(mapOf("total" to total, "perFile" to perFile))
+    }
+
     @GetMapping
     fun getAnnotations(
         @PathVariable spaceId: UUID,
