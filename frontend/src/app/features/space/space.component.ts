@@ -283,9 +283,9 @@ import { AnnotationsService } from '../../core/api/annotations.service';
                     @if (sharedFilePaths().has(node.path)) {
                       <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
-                    @if (annotationCounts()[node.path]; as count) {
-                      <span class="annotation-badge" title="{{ count }} open comment{{ count > 1 ? 's' : '' }}">
-                        <span class="material-icons">chat_bubble</span>{{ count }}
+                    @if (annotationCounts()[node.path]) {
+                      <span class="annotation-badge" [title]="annotationCounts()[node.path] + ' open comment' + (annotationCounts()[node.path] > 1 ? 's' : '')">
+                        <span class="material-icons">chat_bubble</span>{{ annotationCounts()[node.path] }}
                       </span>
                     }
                   }

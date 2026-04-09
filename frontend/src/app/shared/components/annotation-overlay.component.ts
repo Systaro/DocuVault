@@ -489,6 +489,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     }
 
     window.addEventListener('message', this.boundMessageHandler);
+    setTimeout(() => document.addEventListener('mousedown', this.boundDocClick), 0);
     this.loadAnnotations();
     this.refreshInterval = setInterval(() => this.loadAnnotations(), 30000);
   }
@@ -496,15 +497,16 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     window.removeEventListener('message', this.boundMessageHandler);
+    document.removeEventListener('mousedown', this.boundDocClick);
   }
 
-  @HostListener('document:mousedown', ['$event'])
-  onDocumentClick(event: MouseEvent): void {
+  private boundDocClick = (event: MouseEvent) => {
     if (!this.activeAnnotation()) return;
     const target = event.target as HTMLElement;
-    if (target.closest('.annotation-thread, .annotation-pin')) return;
+    if (target.closest('.annotation-thread, .annotation-pin, .annotation-fab')) return;
     this.closeThread();
-  }
+  };
+
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
