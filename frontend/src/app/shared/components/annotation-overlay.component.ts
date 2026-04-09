@@ -17,8 +17,8 @@ import { ToastService } from '../services/toast.service';
   standalone: true,
   imports: [CommonModule, FormsModule, AnnotationMarkerComponent, AnnotationThreadComponent],
   template: `
-    <!-- Click-capture layer: only active in comment mode -->
-    @if (annotationMode()) {
+    <!-- Click-capture layer: only active in comment mode, hidden when thread/popover is open -->
+    @if (annotationMode() && !activeAnnotation() && !newAnnotation()) {
       <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
     }
 
@@ -496,6 +496,14 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     window.removeEventListener('message', this.boundMessageHandler);
+  }
+
+  @HostListener('document:mousedown', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.activeAnnotation()) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.annotation-thread, .annotation-pin')) return;
+    this.closeThread();
   }
 
   @HostListener('document:keydown.escape')
