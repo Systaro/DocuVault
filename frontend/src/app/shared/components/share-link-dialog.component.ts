@@ -61,6 +61,29 @@ import { ToastService } from '../services/toast.service';
               </button>
             </div>
 
+            <!-- Access level -->
+            <div class="access-level-section">
+              <div class="section-label">Access Level</div>
+              <div class="access-level-options">
+                <label class="access-option" [class.selected]="accessLevel === 'VIEW'">
+                  <input type="radio" name="accessLevel" value="VIEW" [(ngModel)]="accessLevel" />
+                  <span class="material-icons">visibility</span>
+                  <div class="access-option-text">
+                    <span class="access-option-title">View only</span>
+                    <span class="access-option-desc">Can view content and annotations</span>
+                  </div>
+                </label>
+                <label class="access-option" [class.selected]="accessLevel === 'COMMENT'">
+                  <input type="radio" name="accessLevel" value="COMMENT" [(ngModel)]="accessLevel" />
+                  <span class="material-icons">add_comment</span>
+                  <div class="access-option-text">
+                    <span class="access-option-title">Can comment</span>
+                    <span class="access-option-desc">Can view and add annotations</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <!-- Password protection -->
             <div class="password-section">
               <label class="toggle-label">
@@ -125,6 +148,11 @@ import { ToastService } from '../services/toast.service';
                         </span>
                       }
                       <span class="meta-badge type-badge">{{ link.shareType === 'FOLDER' ? 'Folder' : 'File' }}</span>
+                      @if (link.accessLevel === 'COMMENT') {
+                        <span class="meta-badge comment-badge">
+                          <span class="material-icons">add_comment</span> Comments
+                        </span>
+                      }
                       @if (link.writableScopes?.length) {
                         <span class="meta-badge writable-badge">
                           <span class="material-icons">edit</span> Writable
@@ -439,6 +467,66 @@ import { ToastService } from '../services/toast.service';
       color: #166534;
     }
 
+    .comment-badge {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .access-level-section {
+      margin-top: 8px;
+    }
+
+    .access-level-options {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .access-option {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border, #d4e5e7);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--surface, #fff);
+    }
+
+    .access-option input[type="radio"] { display: none; }
+
+    .access-option .material-icons {
+      font-size: 20px;
+      color: var(--text-muted, #7a9a9d);
+    }
+
+    .access-option.selected {
+      border-color: var(--primary, #6fb3b8);
+      background: rgba(111, 179, 184, 0.06);
+    }
+
+    .access-option.selected .material-icons {
+      color: var(--primary, #6fb3b8);
+    }
+
+    .access-option-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .access-option-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-primary, #1a2e30);
+    }
+
+    .access-option-desc {
+      font-size: 11px;
+      color: var(--text-muted, #7a9a9d);
+    }
+
     .btn-sm {
       padding: 6px 12px;
       font-size: 13px;
@@ -468,6 +556,7 @@ export class ShareLinkDialogComponent implements OnInit {
   shareAsFolder = false;
   enableWritableScopes = false;
   writableScopesText = '';
+  accessLevel: 'VIEW' | 'COMMENT' = 'VIEW';
 
   constructor(
     private sharedLinksService: SharedLinksService,
@@ -508,7 +597,8 @@ export class ShareLinkDialogComponent implements OnInit {
       expiresInDays: this.selectedExpiry,
       password: this.usePassword ? this.sharePassword : null,
       shareType: this.shareAsFolder ? 'FOLDER' : 'FILE',
-      writableScopes
+      writableScopes,
+      accessLevel: this.accessLevel
     }).subscribe({
       next: (link) => {
         this.links.update(links => [link, ...links]);

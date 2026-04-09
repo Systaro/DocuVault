@@ -1,5 +1,6 @@
 package com.docuvault.service
 
+import com.docuvault.domain.space.AccessLevel
 import com.docuvault.domain.space.ShareType
 import com.docuvault.domain.space.SharedLink
 import com.docuvault.domain.space.Space
@@ -25,7 +26,8 @@ class SharedLinkService(
         expiresAt: Instant? = null,
         password: String? = null,
         shareType: ShareType = ShareType.FILE,
-        writableScopes: List<String> = emptyList()
+        writableScopes: List<String> = emptyList(),
+        accessLevel: AccessLevel = AccessLevel.VIEW
     ): SharedLink {
         val token = generateToken()
         val link = SharedLink(
@@ -36,7 +38,8 @@ class SharedLinkService(
             expiresAt = expiresAt,
             passwordHash = password?.let { passwordEncoder.encode(it) },
             shareType = shareType,
-            writableScopes = writableScopes
+            writableScopes = writableScopes,
+            accessLevel = accessLevel
         )
         return sharedLinkRepository.save(link)
     }

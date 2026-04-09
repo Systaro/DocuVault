@@ -596,6 +596,24 @@ class SpaceController(
             childCount = spaceRepository.countChildren(space.id!!)
         ))
     }
+
+    @GetMapping("/{spaceId}/my-permission")
+    fun getMyPermission(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Map<String, String>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (user.role == UserRole.SUPER_ADMIN) {
+            return ResponseEntity.ok(mapOf("level" to "ADMIN"))
+        }
+
+        val level = permissionService.getEffectivePermission(user.id!!, spaceId)
+            ?: return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+
+        return ResponseEntity.ok(mapOf("level" to level.name))
+    }
 }
 
 data class CreateSpaceRequest(

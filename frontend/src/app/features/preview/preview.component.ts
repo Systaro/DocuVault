@@ -5,7 +5,9 @@ import { Subject, forkJoin, takeUntil } from 'rxjs';
 import { SafeResourceUrl, SafeHtml, DomSanitizer } from '@angular/platform-browser';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
+import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
@@ -13,7 +15,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 @Component({
   selector: 'app-preview',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AnnotationOverlayComponent],
   template: `
     <div class="preview-shell">
       <!-- Header -->
@@ -93,17 +95,38 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               <p>Select a file from the sidebar to view its contents.</p>
             </div>
           } @else if (renderMode() === 'markdown') {
-            <div class="markdown-container" (click)="onMarkdownClick($event)">
+            <div class="markdown-container annotation-host" (click)="onMarkdownClick($event)">
               <article class="prose prose-lg max-w-none" [innerHTML]="renderedHtml()"></article>
+              <app-annotation-overlay
+                [spaceId]="spaceId"
+                [filePath]="currentPath()!"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [currentUserId]="currentUserId()"
+              />
             </div>
           } @else if (renderMode() === 'html') {
-            <div class="html-container">
+            <div class="html-container annotation-host">
               <iframe [src]="safeRawUrl()" sandbox="allow-scripts allow-same-origin allow-popups" class="html-iframe"></iframe>
+              <app-annotation-overlay
+                [spaceId]="spaceId"
+                [filePath]="currentPath()!"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [currentUserId]="currentUserId()"
+              />
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
+            <div class="image-container annotation-host" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
               <img [src]="rawUrl()" [alt]="currentFileName()" class="preview-image"
                 [style.width]="imgZoom.zoom() === 1 ? null : (imgZoom.zoom() * 100) + '%'" />
+              <app-annotation-overlay
+                [spaceId]="spaceId"
+                [filePath]="currentPath()!"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [currentUserId]="currentUserId()"
+              />
             </div>
             <div class="zoom-toolbar">
               <button class="zoom-btn" (click)="imgZoom.zoomOut()" [disabled]="imgZoom.zoom() <= 0.25" title="Zoom out">
@@ -119,8 +142,15 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               </button>
             </div>
           } @else if (renderMode() === 'pdf') {
-            <div class="pdf-container">
+            <div class="pdf-container annotation-host">
               <iframe [src]="safeRawUrl()" class="pdf-iframe"></iframe>
+              <app-annotation-overlay
+                [spaceId]="spaceId"
+                [filePath]="currentPath()!"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [currentUserId]="currentUserId()"
+              />
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
@@ -164,6 +194,10 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
   `,
   encapsulation: ViewEncapsulation.None,
   styles: [`
+    .annotation-host {
+      position: relative;
+    }
+
     .preview-shell {
       height: 100vh;
       display: flex;
@@ -464,7 +498,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
   `]
 })
 export class PreviewComponent implements OnInit, OnDestroy {
-  private spaceId = '';
+  spaceId = '';
   private filePath = '';
   private destroy$ = new Subject<void>();
 
@@ -481,6 +515,9 @@ export class PreviewComponent implements OnInit, OnDestroy {
   treeLoading = signal(true);
   expandedFolders = signal<Set<string>>(new Set());
   currentPath = signal('');
+
+  annotationPermission = signal<AnnotationPermission>('VIEW');
+  currentUserId = signal<string | null>(null);
 
   readonly imgZoom = new ImageZoomHandler();
   readonly getFileIcon = getFileIcon;
@@ -508,6 +545,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
     private markdownService: MarkdownRenderService,
+    private annotationsService: AnnotationsService,
     private sanitizer: DomSanitizer
   ) {}
 
@@ -532,6 +570,19 @@ export class PreviewComponent implements OnInit, OnDestroy {
         this.space.set(space);
         this.fileTree.set(tree);
         this.treeLoading.set(false);
+
+        // Fetch annotation permission
+        this.annotationsService.getMyPermission(this.spaceId)
+          .pipe(takeUntil(this.destroy$))
+          .subscribe({
+            next: (res) => {
+              const level = res.level as AnnotationPermission;
+              // Map EDIT/ADMIN to annotation permission levels
+              this.annotationPermission.set(level === 'VIEW' ? 'VIEW' : level === 'EDIT' ? 'EDIT' : level === 'ADMIN' ? 'ADMIN' : 'VIEW');
+            },
+            error: () => {} // keep default VIEW
+          });
+
         if (this.filePath) {
           this.currentPath.set(this.filePath);
           this.expandTreeToPath(this.filePath);

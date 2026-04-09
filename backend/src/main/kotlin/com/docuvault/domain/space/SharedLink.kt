@@ -10,6 +10,10 @@ enum class ShareType {
     FILE, FOLDER
 }
 
+enum class AccessLevel {
+    VIEW, COMMENT
+}
+
 @Entity
 @Table(name = "shared_links")
 data class SharedLink(
@@ -53,6 +57,10 @@ data class SharedLink(
     @Convert(converter = StringListConverter::class)
     @Column(name = "writable_scopes", columnDefinition = "TEXT")
     val writableScopes: List<String> = emptyList(),
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "access_level", nullable = false)
+    val accessLevel: AccessLevel = AccessLevel.VIEW,
 
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now()

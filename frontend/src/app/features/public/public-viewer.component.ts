@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { SharedLinksService, SharedFileMetadata, FileNode } from '../../core/api/shared-links.service';
 import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
+import { AnnotationPermission } from '../../core/api/annotations.service';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
@@ -12,7 +14,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 @Component({
   selector: 'app-public-viewer',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AnnotationOverlayComponent],
   template: `
     <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error()">
       <!-- Header -->
@@ -113,24 +115,42 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               <p>Loading file...</p>
             </div>
           } @else if (renderMode() === 'markdown') {
-            <div class="markdown-container" (click)="onMarkdownClick($event)">
+            <div class="markdown-container annotation-host" (click)="onMarkdownClick($event)">
               <article class="prose prose-lg max-w-none" [innerHTML]="renderedHtml()"></article>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'html') {
-            <div class="html-container">
+            <div class="html-container annotation-host">
               <iframe
                 [src]="safeRawUrl()"
                 sandbox="allow-scripts allow-same-origin allow-popups"
                 class="html-iframe"
               ></iframe>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
+            <div class="image-container annotation-host" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="currentFileName()"
                 class="preview-image"
                 [style.width]="imgZoom.zoom() === 1 ? null : (imgZoom.zoom() * 100) + '%'"
+              />
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
               />
             </div>
             <div class="zoom-toolbar">
@@ -149,8 +169,14 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               </button>
             </div>
           } @else if (renderMode() === 'pdf') {
-            <div class="pdf-container">
+            <div class="pdf-container annotation-host">
               <iframe [src]="safeRawUrl()" class="pdf-iframe"></iframe>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
@@ -167,24 +193,42 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
         <!-- Single file view (original behavior) -->
         <main class="viewer-content">
           @if (renderMode() === 'markdown') {
-            <div class="markdown-container" (click)="onMarkdownClick($event)">
+            <div class="markdown-container annotation-host" (click)="onMarkdownClick($event)">
               <article class="prose prose-lg max-w-none" [innerHTML]="renderedHtml()"></article>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'html') {
-            <div class="html-container">
+            <div class="html-container annotation-host">
               <iframe
                 [src]="safeRawUrl()"
                 sandbox="allow-scripts allow-same-origin allow-popups"
                 class="html-iframe"
               ></iframe>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'image') {
-            <div class="image-container" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
+            <div class="image-container annotation-host" [class.dragging]="imgZoom.dragging()" (mousedown)="imgZoom.onDragStart($event)">
               <img
                 [src]="rawUrl()"
                 [alt]="metadata()?.fileName"
                 class="preview-image"
                 [style.width]="imgZoom.zoom() === 1 ? null : (imgZoom.zoom() * 100) + '%'"
+              />
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
               />
             </div>
             <div class="zoom-toolbar">
@@ -203,8 +247,14 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               </button>
             </div>
           } @else if (renderMode() === 'pdf') {
-            <div class="pdf-container">
+            <div class="pdf-container annotation-host">
               <iframe [src]="safeRawUrl()" class="pdf-iframe"></iframe>
+              <app-annotation-overlay
+                [filePath]="currentFilePath()"
+                [renderMode]="renderMode()!"
+                [permission]="annotationPermission()"
+                [shareToken]="token"
+              />
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
@@ -248,6 +298,10 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
   `,
   encapsulation: ViewEncapsulation.None,
   styles: [`
+    .annotation-host {
+      position: relative;
+    }
+
     .public-viewer {
       min-height: 100vh;
       display: flex;
@@ -692,6 +746,19 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   subFileLoading = signal(false);
   sidebarWidth = signal(280);
   private resizing = false;
+
+  // Annotations
+  annotationPermission = computed<AnnotationPermission>(() => {
+    const meta = this.metadata();
+    if (!meta) return 'VIEW';
+    return meta.accessLevel === 'COMMENT' ? 'COMMENT' : 'VIEW';
+  });
+
+  currentFilePath = computed(() => {
+    const subPath = this.currentSubPath();
+    if (subPath) return subPath;
+    return this.metadata()?.filePath || '';
+  });
 
   currentFileName = computed(() => {
     const subPath = this.currentSubPath();

@@ -15,6 +15,7 @@ export interface SharedLink {
   hasPassword: boolean;
   shareType: 'FILE' | 'FOLDER';
   writableScopes: string[];
+  accessLevel: 'VIEW' | 'COMMENT';
 }
 
 export interface SharedFileMetadata {
@@ -24,6 +25,7 @@ export interface SharedFileMetadata {
   spaceName: string;
   filePath: string;
   shareType: 'FILE' | 'FOLDER';
+  accessLevel: 'VIEW' | 'COMMENT';
   requiresPassword: boolean;
   ogTitle?: string;
   ogDescription?: string;
@@ -36,6 +38,7 @@ export interface CreateShareLinkRequest {
   password?: string | null;
   shareType?: 'FILE' | 'FOLDER';
   writableScopes?: string[];
+  accessLevel?: 'VIEW' | 'COMMENT';
 }
 
 export interface FileNode {

@@ -1,7 +1,12 @@
 package com.docuvault.api.shares
 
+import com.docuvault.api.annotations.AnnotationDto
+import com.docuvault.api.annotations.CreateAnnotationRequest
+import com.docuvault.api.annotations.toDto
+import com.docuvault.domain.space.AccessLevel
 import com.docuvault.domain.space.ShareType
 import com.docuvault.domain.space.SharedLink
+import com.docuvault.service.AnnotationService
 import com.docuvault.service.ShareAccessTokenService
 import com.docuvault.service.SharedLinkService
 import com.docuvault.service.git.FileNode
@@ -19,6 +24,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.Base64
+import java.util.UUID
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +35,8 @@ data class WriteStateRequest(val content: String)
 class PublicShareController(
     private val sharedLinkService: SharedLinkService,
     private val gitService: GitService,
-    private val shareAccessTokenService: ShareAccessTokenService
+    private val shareAccessTokenService: ShareAccessTokenService,
+    private val annotationService: AnnotationService
 ) {
     @GetMapping("/{token}")
     fun getMetadata(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<SharedFileMetadataDto> {
@@ -60,6 +67,7 @@ class PublicShareController(
             spaceName = link.space.name,
             filePath = link.filePath,
             shareType = link.shareType.name,
+            accessLevel = link.accessLevel.name,
             requiresPassword = requiresPassword,
             ogTitle = ogMeta?.title,
             ogDescription = ogMeta?.description,
@@ -664,13 +672,72 @@ class PublicShareController(
         // Fix fragment-only links broken by <base> tag: intercept clicks on #anchor links
         // and scroll within the document instead of navigating to baseHref + #anchor
         val anchorFixScript = """<script>document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#"]');if(!a)return;var id=a.getAttribute('href').substring(1);var t=document.getElementById(id)||document.querySelector('[name="'+id+'"]');if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth'})}});</script>"""
+        val annotationBridgeScript = """<script>
+(function(){
+  var markers={},clickEnabled=false;
+  var style=document.createElement('style');
+  style.textContent='.dv-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;transform:translate(-50%,-100%) rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}.dv-pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15)}.dv-pin.resolved{background:#10b981}.dv-pin-num{transform:rotate(45deg);font-size:12px;font-weight:600;color:#fff;user-select:none;font-family:system-ui}';
+  document.head.appendChild(style);
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.source!=='docuvault-annotations')return;
+    if(e.data.type==='render-markers'){
+      Object.values(markers).forEach(function(m){m.remove()});markers={};
+      (e.data.annotations||[]).forEach(function(a){
+        var el=null,x=a.xPercent,y=a.yPercent;
+        if(a.elementId){el=document.getElementById(a.elementId)}
+        if(!el&&a.selector){try{el=document.querySelector(a.selector)}catch(ex){}}
+        var pin=document.createElement('div');pin.className='dv-pin'+(a.resolved?' resolved':'');
+        pin.dataset.id=a.id;
+        if(el){
+          var r=el.getBoundingClientRect();var br=document.body.getBoundingClientRect();
+          pin.style.left=(r.left-br.left+r.width*(a.offsetX||0)/100)+'px';
+          pin.style.top=(r.top-br.top+r.height*(a.offsetY||0)/100+window.scrollY)+'px';
+        }else{
+          pin.style.left=x+'%';pin.style.top=y+'%';
+        }
+        var num=document.createElement('span');num.className='dv-pin-num';num.textContent=a.index;
+        pin.appendChild(num);
+        pin.addEventListener('click',function(ev){ev.stopPropagation();
+          window.parent.postMessage({source:'docuvault-annotations',type:'marker-click',id:a.id},'*')});
+        document.body.appendChild(pin);markers[a.id]=pin;
+      });
+    }
+    if(e.data.type==='enable-click-capture'&&!clickEnabled){
+      clickEnabled=true;
+      document.addEventListener('click',function(ev){
+        if(ev.target.closest('.dv-pin'))return;
+        var br=document.body.getBoundingClientRect();
+        var xP=((ev.clientX-br.left)/br.width)*100;
+        var yP=((ev.clientY+window.scrollY)/document.body.scrollHeight)*100;
+        var t=ev.target.closest('[id]');
+        var sel=null;try{
+          var p=ev.target;var parts=[];while(p&&p!==document.body){
+            var tag=p.tagName.toLowerCase();if(p.id){parts.unshift('#'+p.id);break}
+            var idx=1;var s=p;while(s.previousElementSibling){s=s.previousElementSibling;if(s.tagName===p.tagName)idx++}
+            parts.unshift(tag+':nth-of-type('+idx+')');p=p.parentElement}
+          if(parts.length)sel=parts.join('>')
+        }catch(ex){}
+        window.parent.postMessage({source:'docuvault-annotations',type:'click-position',
+          xPercent:xP,yPercent:yP,elementId:t?t.id:null,selector:sel},'*');
+      });
+    }
+  });
+  document.addEventListener('DOMContentLoaded',function(){
+    window.parent.postMessage({source:'docuvault-annotations',type:'ready'},'*');
+  });
+  if(document.readyState!=='loading'){
+    window.parent.postMessage({source:'docuvault-annotations',type:'ready'},'*');
+  }
+})();
+</script>"""
+        val scripts = anchorFixScript + annotationBridgeScript
         val headIndex = html.indexOf("<head>", ignoreCase = true)
         if (headIndex >= 0) {
             val insertAt = headIndex + "<head>".length
-            return html.substring(0, insertAt) + baseTag + html.substring(insertAt) + anchorFixScript
+            return html.substring(0, insertAt) + baseTag + html.substring(insertAt) + scripts
         }
         // No <head> tag — prepend base tag
-        return baseTag + html + anchorFixScript
+        return baseTag + html + scripts
     }
 
     private fun getContentType(extension: String): String = when (extension.lowercase()) {
@@ -691,6 +758,135 @@ class PublicShareController(
         "woff2" -> "font/woff2"
         "ttf" -> "font/ttf"
         else -> "application/octet-stream"
+    }
+
+    // --- Annotation endpoints for shared links ---
+
+    @GetMapping("/{token}/annotations")
+    fun getAnnotations(
+        @PathVariable token: String,
+        @RequestParam filePath: String,
+        request: HttpServletRequest
+    ): ResponseEntity<List<AnnotationDto>> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (link.isPasswordProtected() && !checkAccess(link, request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val annotations = annotationService.getAnnotations(link.space.id!!, filePath)
+        return ResponseEntity.ok(annotations)
+    }
+
+    @PostMapping("/{token}/annotations")
+    fun createAnnotation(
+        @PathVariable token: String,
+        @RequestParam filePath: String,
+        @RequestBody request: CreateAnnotationRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<AnnotationDto> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (link.accessLevel != AccessLevel.COMMENT) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (link.isPasswordProtected() && !checkAccess(link, httpRequest)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val authorName = request.authorName
+            ?: return ResponseEntity.badRequest().build()
+
+        val parent = request.parentId?.let { parentId ->
+            annotationService.findById(parentId)
+                ?: return ResponseEntity.badRequest().build()
+        }
+
+        val annotation = annotationService.createAnnotation(
+            space = link.space,
+            filePath = filePath,
+            user = null,
+            authorName = authorName,
+            body = request.body,
+            anchor = if (parent == null) request.anchor else null,
+            parent = parent
+        )
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(annotation.toDto())
+    }
+
+    @PatchMapping("/{token}/annotations/{annotationId}/resolve")
+    fun resolvePublicAnnotation(
+        @PathVariable token: String,
+        @PathVariable annotationId: UUID,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<AnnotationDto> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (link.accessLevel != AccessLevel.COMMENT) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (link.isPasswordProtected() && !checkAccess(link, httpRequest)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val annotation = annotationService.findById(annotationId)
+            ?: return ResponseEntity.notFound().build()
+
+        if (annotation.space.id != link.space.id) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Anonymous users can only resolve annotations without an internal user
+        if (annotation.user != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val updated = if (annotation.resolved) {
+            annotationService.unresolveAnnotation(annotationId)
+        } else {
+            annotationService.resolveAnonymous(annotationId)
+        } ?: return ResponseEntity.notFound().build()
+
+        return ResponseEntity.ok(updated.toDto())
+    }
+
+    @DeleteMapping("/{token}/annotations/{annotationId}")
+    fun deletePublicAnnotation(
+        @PathVariable token: String,
+        @PathVariable annotationId: UUID,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<Void> {
+        val link = sharedLinkService.findActiveByToken(token)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (link.accessLevel != AccessLevel.COMMENT) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (link.isPasswordProtected() && !checkAccess(link, httpRequest)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val annotation = annotationService.findById(annotationId)
+            ?: return ResponseEntity.notFound().build()
+
+        if (annotation.space.id != link.space.id) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Anonymous users can only delete annotations without a user (anonymous ones)
+        if (annotation.user != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        annotationService.deleteAnnotation(annotationId)
+        return ResponseEntity.noContent().build()
     }
 
     private fun probeContentType(path: Path): String {

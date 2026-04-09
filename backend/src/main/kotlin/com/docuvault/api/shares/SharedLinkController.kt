@@ -1,5 +1,6 @@
 package com.docuvault.api.shares
 
+import com.docuvault.domain.space.AccessLevel
 import com.docuvault.domain.space.ShareType
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
@@ -48,6 +49,12 @@ class SharedLinkController(
             ShareType.FILE
         }
 
+        val accessLevel = try {
+            AccessLevel.valueOf(request.accessLevel.uppercase())
+        } catch (_: IllegalArgumentException) {
+            AccessLevel.VIEW
+        }
+
         val link = sharedLinkService.createLink(
             space = space,
             filePath = request.filePath,
@@ -55,7 +62,8 @@ class SharedLinkController(
             expiresAt = expiresAt,
             password = request.password,
             shareType = shareType,
-            writableScopes = request.writableScopes
+            writableScopes = request.writableScopes,
+            accessLevel = accessLevel
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(link.toDto())
     }
