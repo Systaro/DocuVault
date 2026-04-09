@@ -132,10 +132,7 @@ import { ToastService } from '../services/toast.service';
   encapsulation: ViewEncapsulation.None,
   styles: [`
     app-annotation-overlay {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 10;
+      display: contents;
     }
 
     /* Full-area click layer for comment placement */
@@ -526,7 +523,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     const target = event.target as HTMLElement;
     if (target.closest('.annotation-pin, .annotation-thread, .new-annotation-popover, .annotation-fab, .annotation-list')) return;
 
-    const container = this.elRef.nativeElement as HTMLElement;
+    const container = this.elRef.nativeElement.parentElement as HTMLElement;
     const rect = container.getBoundingClientRect();
     const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((event.clientY - rect.top + container.scrollTop) / container.scrollHeight) * 100;
@@ -534,7 +531,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     let snippet: string | undefined;
     if (this.renderMode() === 'markdown') {
       // Temporarily disable pointer-events on the click layer to peek at content below
-      const layer = container.querySelector('.annotation-click-layer') as HTMLElement;
+      const layer = (this.elRef.nativeElement.parentElement as HTMLElement)?.querySelector('.annotation-click-layer') as HTMLElement;
       if (layer) layer.style.pointerEvents = 'none';
       const el = document.elementFromPoint(event.clientX, event.clientY);
       if (layer) layer.style.pointerEvents = '';
@@ -644,8 +641,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   private getIframeElement(): HTMLIFrameElement | null {
-    const host = this.elRef.nativeElement as HTMLElement;
-    const parent = host.parentElement;
+    const parent = this.elRef.nativeElement.parentElement as HTMLElement;
     return parent?.querySelector('iframe') ?? null;
   }
 
