@@ -501,10 +501,11 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   private boundDocClick = (event: MouseEvent) => {
-    if (!this.activeAnnotation()) return;
+    if (!this.activeAnnotation() && !this.newAnnotation()) return;
     const target = event.target as HTMLElement;
-    if (target.closest('.annotation-thread, .annotation-pin, .annotation-fab')) return;
+    if (target.closest('app-annotation-thread, .annotation-thread, .annotation-pin, app-annotation-marker, .annotation-fab, .new-annotation-popover')) return;
     this.closeThread();
+    this.cancelNewAnnotation();
   };
 
 
