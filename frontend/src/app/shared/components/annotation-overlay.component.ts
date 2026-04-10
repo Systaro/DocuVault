@@ -227,12 +227,12 @@ import { ToastService } from '../services/toast.service';
       align-items: center;
       justify-content: center;
       border-radius: 10px;
-      background: var(--primary, #6fb3b8);
+      background: #f59e0b;
       color: #fff;
     }
 
     .fab-btn.active .fab-badge {
-      background: rgba(255, 255, 255, 0.3);
+      background: #d97706;
     }
 
     /* Yellow placement dot at click position */

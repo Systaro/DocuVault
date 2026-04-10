@@ -616,12 +616,12 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       }
 
       &.active {
-        background: rgba(245, 158, 11, 0.08);
-        color: #b45309;
+        background: #65aaaf36;
+        color: #4a9097;
         font-weight: 500;
 
         .file-icon {
-          color: #f59e0b;
+          color: #4a9097;
         }
       }
 
@@ -801,8 +801,8 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       gap: 2px;
       padding: 1px 6px;
       border-radius: 10px;
-      background: #fef3c7;
-      color: #92400e;
+      background: #d97706;
+      color: #fff;
       font-size: 11px;
       font-weight: 600;
       flex-shrink: 0;
@@ -811,7 +811,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 
       .material-icons {
         font-size: 12px;
-        color: #92400e;
+        color: #fff;
       }
     }
 
