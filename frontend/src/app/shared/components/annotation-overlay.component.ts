@@ -22,17 +22,19 @@ import { ToastService } from '../services/toast.service';
       <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
     }
 
-    <!-- Markers (always visible) -->
-    @for (a of annotations(); track a.id; let i = $index) {
-      @if (a.anchor) {
-        <app-annotation-marker
-          [x]="a.anchor.xPercent"
-          [y]="a.anchor.yPercent"
-          [index]="i + 1"
-          [resolved]="a.resolved"
-          [active]="activeAnnotationId() === a.id"
-          (markerClick)="openThread(a, $event)"
-        />
+    <!-- Markers (skip for html mode — iframe renders its own markers) -->
+    @if (renderMode() !== 'html') {
+      @for (a of annotations(); track a.id; let i = $index) {
+        @if (a.anchor) {
+          <app-annotation-marker
+            [x]="a.anchor.xPercent"
+            [y]="a.anchor.yPercent"
+            [index]="i + 1"
+            [resolved]="a.resolved"
+            [active]="activeAnnotationId() === a.id"
+            (markerClick)="openThread(a, $event)"
+          />
+        }
       }
     }
 
