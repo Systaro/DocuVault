@@ -116,7 +116,7 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: var(--primary, #6fb3b8);
+      background: #f59e0b;
       color: #fff;
       display: flex;
       align-items: center;
@@ -259,7 +259,7 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
     }
 
     .reply-input:focus {
-      border-color: var(--primary, #6fb3b8);
+      border-color: #f59e0b;
     }
 
     .reply-submit {
@@ -267,7 +267,7 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
       height: 34px;
       border: none;
       border-radius: 8px;
-      background: var(--primary, #6fb3b8);
+      background: #f59e0b;
       color: #fff;
       cursor: pointer;
       display: flex;
@@ -277,7 +277,7 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
       flex-shrink: 0;
     }
 
-    .reply-submit:hover { background: var(--primary-dark, #388087); }
+    .reply-submit:hover { background: #d97706; }
     .reply-submit:disabled { opacity: 0.5; cursor: default; }
     .reply-submit .material-icons { font-size: 18px; }
   `]

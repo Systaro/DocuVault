@@ -616,8 +616,13 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       }
 
       &.active {
-        background: rgba(111, 179, 184, 0.1);
-        color: var(--primary);
+        background: rgba(245, 158, 11, 0.08);
+        color: #b45309;
+        font-weight: 500;
+
+        .file-icon {
+          color: #f59e0b;
+        }
       }
 
       .expand-icon {
@@ -803,10 +808,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       flex-shrink: 0;
       margin-left: 4px;
       line-height: 1;
-    }
 
-    .annotation-badge .material-icons {
-      font-size: 12px;
+      .material-icons {
+        font-size: 12px;
+        color: #92400e;
+      }
     }
 
     .sidebar-footer {

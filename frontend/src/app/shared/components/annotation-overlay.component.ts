@@ -74,6 +74,13 @@ import { ToastService } from '../services/toast.service';
       />
     }
 
+    <!-- Yellow dot at click position during creation -->
+    @if (newAnnotation(); as na) {
+      <div class="annotation-placement-dot"
+           [style.left.%]="na.anchor.xPercent"
+           [style.top.%]="na.anchor.yPercent"></div>
+    }
+
     <!-- New annotation form -->
     @if (newAnnotation(); as na) {
       <div class="new-annotation-popover" [style.left.px]="na.screenX" [style.top.px]="na.screenY"
@@ -99,10 +106,9 @@ import { ToastService } from '../services/toast.service';
       </div>
     }
 
-    <!-- List panel -->
+    <!-- List panel (floating, no backdrop) -->
     @if (showList()) {
-      <div class="annotation-list-overlay" (click)="showList.set(false)">
-        <div class="annotation-list" (click)="$event.stopPropagation()">
+      <div class="annotation-list">
           <div class="list-header">
             <h3>Comments ({{ annotations().length }})</h3>
             <button class="thread-btn" (click)="showList.set(false)">
@@ -128,7 +134,6 @@ import { ToastService } from '../services/toast.service';
             <div class="list-empty">No comments yet</div>
           }
         </div>
-      </div>
     }
   `,
   encapsulation: ViewEncapsulation.None,
@@ -230,6 +235,26 @@ import { ToastService } from '../services/toast.service';
       background: rgba(255, 255, 255, 0.3);
     }
 
+    /* Yellow placement dot at click position */
+    .annotation-placement-dot {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #f59e0b;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      transform: translate(-50%, -50%);
+      z-index: 6;
+      pointer-events: none;
+      animation: dot-pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes dot-pulse {
+      0%, 100% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(245, 158, 11, 0.4); }
+      50% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 0 0 6px rgba(245, 158, 11, 0); }
+    }
+
     /* New annotation popover */
     .new-annotation-popover {
       position: fixed;
@@ -261,7 +286,7 @@ import { ToastService } from '../services/toast.service';
     }
 
     .annotation-name-input:focus, .annotation-input:focus {
-      border-color: var(--primary, #6fb3b8);
+      border-color: #f59e0b;
     }
 
     .annotation-name-btn {
@@ -270,7 +295,7 @@ import { ToastService } from '../services/toast.service';
       height: 32px;
       border: none;
       border-radius: 8px;
-      background: var(--primary, #6fb3b8);
+      background: #f59e0b;
       color: #fff;
       cursor: pointer;
       display: flex;
@@ -307,7 +332,7 @@ import { ToastService } from '../services/toast.service';
       padding: 6px 14px;
       border: none;
       border-radius: 8px;
-      background: var(--primary, #6fb3b8);
+      background: #f59e0b;
       color: #fff;
       cursor: pointer;
       font-size: 13px;
@@ -315,30 +340,27 @@ import { ToastService } from '../services/toast.service';
       transition: background 0.15s;
     }
 
-    .btn-submit:hover { background: var(--primary-dark, #388087); }
+    .btn-submit:hover { background: #d97706; }
     .btn-submit:disabled { opacity: 0.5; cursor: default; }
     .btn-submit .material-icons { font-size: 16px; }
 
-    /* List overlay */
-    .annotation-list-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.2);
-      z-index: 180;
-      display: flex;
-      justify-content: flex-end;
-      pointer-events: auto;
-    }
-
+    /* Floating comments list */
     .annotation-list {
+      position: fixed;
+      right: 24px;
+      bottom: 80px;
       width: 340px;
       max-width: 90vw;
-      height: 100%;
+      max-height: 60vh;
       background: var(--surface, #fff);
-      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border, #d4e5e7);
+      border-radius: var(--radius-lg, 12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
       overflow-y: auto;
       display: flex;
       flex-direction: column;
+      z-index: 180;
+      pointer-events: auto;
     }
 
     .list-header {
@@ -418,7 +440,7 @@ import { ToastService } from '../services/toast.service';
 
     .list-replies {
       font-size: 11px;
-      color: var(--primary, #6fb3b8);
+      color: #d97706;
       margin-top: 4px;
       display: inline-block;
     }
@@ -686,8 +708,35 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   openThreadFromList(annotation: Annotation): void {
     this.showList.set(false);
     this.activeAnnotationId.set(annotation.id);
-    this.threadPosX.set(Math.max(20, (window.innerWidth - 340) / 2));
-    this.threadPosY.set(Math.max(20, window.innerHeight * 0.2));
+
+    if (!annotation.anchor) {
+      this.threadPosX.set(Math.max(20, (window.innerWidth - 340) / 2));
+      this.threadPosY.set(Math.max(20, window.innerHeight * 0.2));
+      return;
+    }
+
+    const container = this.elRef.nativeElement.parentElement as HTMLElement;
+    if (!container) return;
+
+    // Scroll the container so the annotation's y position is visible
+    const targetScrollTop = (annotation.anchor.yPercent / 100) * container.scrollHeight - container.clientHeight / 3;
+    container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+
+    // Position the thread popover near the marker after scroll settles
+    setTimeout(() => {
+      const rect = container.getBoundingClientRect();
+      const markerX = rect.left + (annotation.anchor!.xPercent / 100) * rect.width;
+      const markerY = rect.top + (annotation.anchor!.yPercent / 100) * container.scrollHeight - container.scrollTop;
+
+      let x = markerX + 20;
+      let y = markerY - 20;
+      if (x + 340 > window.innerWidth) x = markerX - 360;
+      if (y + 300 > window.innerHeight) y = window.innerHeight - 320;
+      if (y < 10) y = 10;
+
+      this.threadPosX.set(x);
+      this.threadPosY.set(y);
+    }, 350);
   }
 
   closeThread(): void {
