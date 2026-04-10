@@ -6,6 +6,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { AiService, ChatHistory, ChatMessage } from '../../core/api/ai.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 @Component({
   selector: 'app-space-chat',
@@ -894,7 +895,7 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
   navigateToSource(source: string): void {
     const space = this.space();
     if (space) {
-      this.router.navigate(['/spaces', space.fullPath, 'doc'], {
+      this.router.navigate(spaceRoute(space.fullPath, 'doc'), {
         queryParams: { path: source }
       });
     }

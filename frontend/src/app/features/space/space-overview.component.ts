@@ -6,11 +6,12 @@ import { DocumentsService, Document } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 
 @Component({
   selector: 'app-space-overview',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, SpaceRoutePipe],
   template: `
     @if (isDragOver()) {
       <div class="drop-overlay">
@@ -145,7 +146,7 @@ import { AuthService } from '../../core/auth/auth.service';
               </svg>
               <p class="overview-text-secondary">No documents yet</p>
               <a
-                [routerLink]="['/spaces', space()?.fullPath, 'doc']"
+                [routerLink]="space()?.fullPath | spaceRoute:'doc'"
                 class="btn btn-primary mt-4 inline-flex"
               >
                 Create your first document
@@ -155,7 +156,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="overview-doc-list">
               @for (doc of documents().slice(0, 10); track doc.id) {
                 <a
-                  [routerLink]="['/spaces', space()?.fullPath, 'doc']"
+                  [routerLink]="space()?.fullPath | spaceRoute:'doc'"
                   [queryParams]="{ path: doc.path }"
                   class="overview-doc-item flex items-center justify-between gap-4 p-4"
                 >

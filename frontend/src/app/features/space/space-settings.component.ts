@@ -9,6 +9,7 @@ import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/inbox.service';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 interface SpaceTokenDto {
   id: string;
@@ -740,7 +741,7 @@ export class SpaceSettingsComponent implements OnInit {
         this.moving.set(false);
         this.toastService.success('Moved', `${space.name} has been moved successfully.`);
         // Navigate to new location
-        this.router.navigate(['/spaces', updated.fullPath, 'settings']);
+        this.router.navigate(spaceRoute(updated.fullPath, 'settings'));
       },
       error: (err) => {
         this.moving.set(false);

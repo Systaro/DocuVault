@@ -6,6 +6,8 @@ import { CreateSpaceModalComponent } from '../../shared/components/create-space-
 import { SpacesService, Space, SpaceType } from '../../core/api/spaces.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 interface BreadcrumbItem {
   name: string;
@@ -15,7 +17,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-group',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       <div class="group-content">
@@ -30,7 +32,7 @@ interface BreadcrumbItem {
               @if (last) {
                 <span class="breadcrumb-item active">{{ crumb.name }}</span>
               } @else {
-                <a [routerLink]="['/spaces', crumb.path]" class="breadcrumb-item">{{ crumb.name }}</a>
+                <a [routerLink]="crumb.path | spaceRoute" class="breadcrumb-item">{{ crumb.name }}</a>
               }
             }
           </div>
@@ -97,7 +99,7 @@ interface BreadcrumbItem {
               <div class="children-grid">
                 @for (child of children(); track child.id) {
                   @if (child.type === 'GROUP') {
-                    <a [routerLink]="['/spaces', child.fullPath]" class="child-card group-card">
+                    <a [routerLink]="child.fullPath | spaceRoute" class="child-card group-card">
                       <div class="child-icon group">
                         <span class="material-icons">folder</span>
                       </div>
@@ -111,7 +113,7 @@ interface BreadcrumbItem {
                       <span class="material-icons child-arrow">chevron_right</span>
                     </a>
                   } @else {
-                    <a [routerLink]="['/spaces', child.fullPath]" class="child-card repo-card">
+                    <a [routerLink]="child.fullPath | spaceRoute" class="child-card repo-card">
                       @if (child.logoUrl) {
                         <div class="child-logo">
                           <img [src]="child.logoUrl" [alt]="child.name" />
@@ -505,7 +507,7 @@ export class GroupComponent implements OnInit, OnChanges {
   openSettings(): void {
     const group = this.group();
     if (group) {
-      this.router.navigate(['/spaces', group.fullPath, 'settings']);
+      this.router.navigate(spaceRoute(group.fullPath, 'settings'));
     }
   }
 

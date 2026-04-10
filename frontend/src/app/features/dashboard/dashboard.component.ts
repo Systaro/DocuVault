@@ -7,6 +7,8 @@ import { SpacesService, Space, SpaceType } from '../../core/api/spaces.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { QuickShareDialogComponent } from '../../shared/components/quick-share-dialog.component';
+import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 interface BreadcrumbItem {
   id: string;
@@ -17,7 +19,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -163,7 +165,7 @@ interface BreadcrumbItem {
                   </div>
                 } @else {
                   <!-- Repository Card -->
-                  <a [routerLink]="['/spaces', space.fullPath]" class="workspace-card repo-card">
+                  <a [routerLink]="space.fullPath | spaceRoute" class="workspace-card repo-card">
                     @if (authService.isAdmin()) {
                       <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
                         <button class="icon-btn" (click)="toggleMenu(space.id)">
@@ -1102,7 +1104,7 @@ export class DashboardComponent implements OnInit {
   }
 
   navigateToGroup(group: Space): void {
-    this.router.navigate(['/spaces', group.fullPath]);
+    this.router.navigate(spaceRoute(group.fullPath));
   }
 
   navigateToRoot(): void {
@@ -1152,7 +1154,7 @@ export class DashboardComponent implements OnInit {
   }
 
   private navigateToChat(space: Space): void {
-    this.router.navigate(['/spaces', space.fullPath, 'chat']);
+    this.router.navigate(spaceRoute(space.fullPath, 'chat'));
   }
 
   closeModal(): void {
@@ -1176,7 +1178,7 @@ export class DashboardComponent implements OnInit {
 
   goToSettings(slug: string): void {
     this.openMenuId.set(null);
-    this.router.navigate(['/spaces', slug, 'settings']);
+    this.router.navigate(spaceRoute(slug, 'settings'));
   }
 
   confirmDelete(space: Space): void {

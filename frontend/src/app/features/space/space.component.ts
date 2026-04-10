@@ -9,11 +9,13 @@ import { ShareLinkDialogComponent } from '../../shared/components/share-link-dia
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { InboxService } from '../../core/api/inbox.service';
 import { AnnotationsService } from '../../core/api/annotations.service';
+import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -26,10 +28,10 @@ import { AnnotationsService } from '../../core/api/annotations.service';
               </a>
               @for (crumb of pathBreadcrumbs(); track crumb.path) {
                 <span class="material-icons breadcrumb-sep">chevron_right</span>
-                <a [routerLink]="['/spaces', crumb.path]" class="breadcrumb-item">{{ crumb.name }}</a>
+                <a [routerLink]="crumb.path | spaceRoute" class="breadcrumb-item">{{ crumb.name }}</a>
               }
               <span class="material-icons breadcrumb-sep">chevron_right</span>
-              <a [routerLink]="['/spaces', spaceSignal()?.fullPath]" class="breadcrumb-item" [class.active]="!currentDocPath()">
+              <a [routerLink]="spaceSignal()?.fullPath | spaceRoute" class="breadcrumb-item" [class.active]="!currentDocPath()">
                 {{ spaceSignal()?.name }}
               </a>
               @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
@@ -100,7 +102,7 @@ import { AnnotationsService } from '../../core/api/annotations.service';
               <!-- Navigation -->
               <nav class="sidebar-nav">
                 <a
-                  [routerLink]="['/spaces', spaceSignal()?.fullPath]"
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute"
                   [routerLinkActiveOptions]="{ exact: true }"
                   routerLinkActive="active"
                   class="nav-item"
@@ -109,7 +111,7 @@ import { AnnotationsService } from '../../core/api/annotations.service';
                   Overview
                 </a>
                 <a
-                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'chat']"
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'chat'"
                   routerLinkActive="active"
                   class="nav-item"
                 >
@@ -117,7 +119,7 @@ import { AnnotationsService } from '../../core/api/annotations.service';
                   AI Chat
                 </a>
                 <a
-                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'inbox']"
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'inbox'"
                   routerLinkActive="active"
                   class="nav-item"
                 >
@@ -128,7 +130,7 @@ import { AnnotationsService } from '../../core/api/annotations.service';
                   }
                 </a>
                 <a
-                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'settings']"
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'settings'"
                   routerLinkActive="active"
                   class="nav-item"
                 >
@@ -263,9 +265,10 @@ import { AnnotationsService } from '../../core/api/annotations.service';
             } @else {
               <div class="tree-file-row">
                 <a
-                  [routerLink]="['/spaces', spaceSignal()?.fullPath, 'doc']"
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'doc'"
                   [queryParams]="{ path: node.path }"
                   class="tree-item file"
+                  [class.active]="currentDocPath() === node.path"
                   [style.padding-left.px]="32 + level * 16"
                 >
                   <span class="material-icons file-icon">description</span>
@@ -973,7 +976,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   createNewDocument(): void {
-    this.router.navigate(['/spaces', this.fullPath, 'doc']);
+    this.router.navigate(spaceRoute(this.fullPath, 'doc'));
   }
 
   @HostListener('document:click')
