@@ -4,6 +4,7 @@ import com.docuvault.domain.space.Space
 import com.docuvault.service.SettingsService
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.api.errors.CheckoutConflictException
 import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.LoggerFactory
@@ -81,13 +82,30 @@ class GitService(
 
         try {
             Git.open(repoDir).use { git ->
-                val baseRef = git.repository.resolve("HEAD")?.name
+                var baseRef = git.repository.resolve("HEAD")?.name
                     ?: throw GitOperationException(GitErrorCode.PULL_FAILED, "Repository HEAD is unresolved")
 
-                val result = git.pull()
-                    .setRemoteBranchName(space.branch)
-                    .setCredentialsProvider(getCredentialsProvider())
-                    .call()
+                val result = try {
+                    git.pull()
+                        .setRemoteBranchName(space.branch)
+                        .setCredentialsProvider(getCredentialsProvider())
+                        .call()
+                } catch (e: CheckoutConflictException) {
+                    // JGit couldn't start the merge because the working tree has dirty files
+                    // that would be overwritten. Snapshot those edits as a docuvault-bot commit
+                    // so we have a single ref to branch off, then retry the pull. If the retry
+                    // itself hits a merge conflict, the normal flow below handles it.
+                    logger.warn("Checkout conflict for space '${space.name}' — snapshotting dirty working tree as docuvault-bot and retrying pull")
+                    if (!snapshotDirtyWorkingTree(git, space)) {
+                        // Nothing to commit but JGit still failed — treat as a hard error.
+                        throw e
+                    }
+                    baseRef = git.repository.resolve("HEAD")?.name ?: baseRef
+                    git.pull()
+                        .setRemoteBranchName(space.branch)
+                        .setCredentialsProvider(getCredentialsProvider())
+                        .call()
+                }
 
                 if (result.mergeResult?.mergeStatus?.isSuccessful == false) {
                     logger.warn("Merge conflict during pull for space '${space.name}', resetting to $baseRef")
@@ -110,6 +128,26 @@ class GitService(
             logger.error("Failed to pull changes for space '${space.name}': ${e.message}", e)
             throw mapException(e, GitErrorCode.PULL_FAILED, "pull changes")
         }
+    }
+
+    /**
+     * Commits any dirty working-tree changes as a docuvault-bot snapshot so that
+     * a subsequent pull has a clean slate to merge into. Returns `false` if the
+     * working tree was already clean (nothing to commit).
+     */
+    private fun snapshotDirtyWorkingTree(git: Git, space: Space): Boolean {
+        val status = git.status().call()
+        if (status.isClean) return false
+
+        // Stage everything: new files + modifications, then deletions.
+        git.add().addFilepattern(".").call()
+        git.add().addFilepattern(".").setUpdate(true).call()
+
+        git.commit()
+            .setMessage("DocuVault: snapshot local changes before conflict resolution in '${space.name}'")
+            .setAuthor("docuvault-bot", "bot@docuvault.systaro.de")
+            .call()
+        return true
     }
 
     /**
