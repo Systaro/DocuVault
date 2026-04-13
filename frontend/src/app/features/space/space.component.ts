@@ -269,7 +269,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   [queryParams]="{ path: node.path }"
                   class="tree-item file"
                   [class.active]="currentDocPath() === node.path"
-                  [style.padding-left.px]="32 + level * 16"
+                  [style.padding-left.px]="40 + level * 16"
                 >
                   <span class="material-icons file-icon">description</span>
                   @if (renamingPath() === node.path) {
