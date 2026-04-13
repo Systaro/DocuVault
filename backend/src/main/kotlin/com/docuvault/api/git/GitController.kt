@@ -76,16 +76,27 @@ class GitController(
         }
 
         if (space.syncStatus == SyncStatus.IN_CONFLICT) {
-            return ResponseEntity.ok(
-                GitOperationResponse(
-                    success = false,
-                    message = "Space is in conflict; resolve the open merge request before pulling again.",
-                    errorCode = GitErrorCode.MERGE_CONFLICT.name,
-                    userMessage = GitErrorCode.MERGE_CONFLICT.toUserMessage(),
-                    requiresSetup = false,
-                    conflictMrUrl = space.conflictMrUrl
+            // Poll the tracked MR first — if it's been merged, this clears the conflict
+            // state so the regular pull below can proceed. Otherwise, return early with
+            // the current MR link so the UI can keep showing the banner.
+            try {
+                gitConflictService.checkConflictMrStatus(space)
+            } catch (e: Exception) {
+                logger.warn("Failed to poll conflict MR for space '${space.name}': ${e.message}")
+            }
+            if (space.syncStatus == SyncStatus.IN_CONFLICT) {
+                return ResponseEntity.ok(
+                    GitOperationResponse(
+                        success = false,
+                        message = "Space is in conflict; resolve the open merge request before pulling again.",
+                        errorCode = GitErrorCode.MERGE_CONFLICT.name,
+                        userMessage = GitErrorCode.MERGE_CONFLICT.toUserMessage(),
+                        requiresSetup = false,
+                        conflictMrUrl = space.conflictMrUrl
+                    )
                 )
-            )
+            }
+            // State was cleared by checkConflictMrStatus — fall through to the normal pull path.
         }
 
         return try {
