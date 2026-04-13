@@ -280,10 +280,16 @@ class GitService(
     }
 
     private fun buildFileTree(space: Space, directory: String): List<FileNode> {
+        val repoDir = getRepoPath(space.id!!)
         val nodes = listFiles(space, directory)
-        return nodes.map { node ->
+        return nodes.mapNotNull { node ->
             if (node.isDirectory) {
-                node.copy(children = buildFileTree(space, node.path))
+                val children = buildFileTree(space, node.path)
+                if (children.isEmpty() && !Files.exists(validatePath(repoDir, "${node.path}/.gitkeep"))) {
+                    null
+                } else {
+                    node.copy(children = children)
+                }
             } else {
                 node
             }
