@@ -2,11 +2,14 @@ package com.docuvault.service
 
 import com.docuvault.domain.space.Document
 import com.docuvault.domain.space.Space
+import com.docuvault.domain.space.SyncStatus
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.service.embedding.EmbeddingService
+import com.docuvault.service.git.GitConflictService
 import com.docuvault.service.git.GitOperationException
 import com.docuvault.service.git.GitService
+import com.docuvault.service.git.MergeConflictException
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -22,6 +25,7 @@ import kotlin.io.path.isRegularFile
 class SyncScheduler(
     private val spaceRepository: SpaceRepository,
     private val gitService: GitService,
+    private val gitConflictService: GitConflictService,
     private val documentRepository: DocumentRepository,
     private val embeddingService: EmbeddingService
 ) {
@@ -37,6 +41,16 @@ class SyncScheduler(
         val spaces = spaceRepository.findAllRepositoriesWithSyncEnabled()
 
         for (space in spaces) {
+            if (space.syncStatus == SyncStatus.IN_CONFLICT) {
+                // Don't attempt to pull; instead poll the tracked resolution MR.
+                try {
+                    gitConflictService.checkConflictMrStatus(space)
+                } catch (e: Exception) {
+                    logger.warn("Failed to poll conflict MR for space '${space.name}': ${e.message}")
+                }
+                continue
+            }
+
             val lastSync = space.lastSyncedAt ?: Instant.EPOCH
             val intervalMs = space.syncIntervalMinutes * 60 * 1000L
 
@@ -45,13 +59,26 @@ class SyncScheduler(
                     logger.info("Syncing space: ${space.name}")
                     gitService.pullChanges(space)
                     val filesChanged = indexDocuments(space)
+                    space.syncStatus = SyncStatus.OK
                     spaceRepository.updateSyncStatus(space.id!!, Instant.now(), null, filesChanged)
+                    spaceRepository.save(space)
                     logger.info("Successfully synced space: ${space.name}")
+                } catch (e: MergeConflictException) {
+                    logger.warn("Merge conflict during scheduled sync of space '${space.name}'")
+                    space.syncStatus = SyncStatus.IN_CONFLICT
+                    space.conflictBaseRef = e.baseRef
+                    space.conflictDetectedAt = Instant.now()
+                    space.lastSyncError = e.message
+                    spaceRepository.save(space)
                 } catch (e: GitOperationException) {
                     logger.warn("Failed to sync space '${space.name}': [${e.errorCode}] ${e.message}")
+                    space.syncStatus = SyncStatus.SYNC_ERROR
+                    spaceRepository.save(space)
                     spaceRepository.updateSyncStatus(space.id!!, space.lastSyncedAt, e.message ?: "Sync failed")
                 } catch (e: Exception) {
                     logger.error("Unexpected error syncing space '${space.name}': ${e.message}", e)
+                    space.syncStatus = SyncStatus.SYNC_ERROR
+                    spaceRepository.save(space)
                     spaceRepository.updateSyncStatus(space.id!!, space.lastSyncedAt, e.message?.take(500) ?: "Unexpected sync error")
                 }
             }

@@ -3,6 +3,7 @@ package com.docuvault.service.git
 import com.docuvault.domain.space.Space
 import com.docuvault.service.SettingsService
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.LoggerFactory
@@ -80,17 +81,26 @@ class GitService(
 
         try {
             Git.open(repoDir).use { git ->
+                val baseRef = git.repository.resolve("HEAD")?.name
+                    ?: throw GitOperationException(GitErrorCode.PULL_FAILED, "Repository HEAD is unresolved")
+
                 val result = git.pull()
                     .setRemoteBranchName(space.branch)
                     .setCredentialsProvider(getCredentialsProvider())
                     .call()
 
                 if (result.mergeResult?.mergeStatus?.isSuccessful == false) {
-                    logger.warn("Merge conflict during pull for space '${space.name}'")
-                    throw GitOperationException(
-                        GitErrorCode.MERGE_CONFLICT,
-                        "Merge conflict detected while pulling changes"
-                    )
+                    logger.warn("Merge conflict during pull for space '${space.name}', resetting to $baseRef")
+                    // Clean the working tree so the repo is usable again — we'll branch off baseRef later.
+                    try {
+                        git.reset()
+                            .setMode(ResetCommand.ResetType.HARD)
+                            .setRef(baseRef)
+                            .call()
+                    } catch (resetEx: Exception) {
+                        logger.error("Failed to reset after merge conflict for space '${space.name}': ${resetEx.message}", resetEx)
+                    }
+                    throw MergeConflictException(baseRef)
                 }
             }
             logger.info("Successfully pulled changes for space '${space.name}'")

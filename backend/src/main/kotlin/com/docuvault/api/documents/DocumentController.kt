@@ -6,6 +6,7 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
 import com.docuvault.service.embedding.EmbeddingService
+import com.docuvault.service.requireSpaceWritable
 import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.GitService
 import jakarta.validation.Valid
@@ -128,6 +129,8 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        requireSpaceWritable(space)
+
         val prefix = folder?.trim('/')?.let { "$it/" } ?: ""
         val uploaded = mutableListOf<UploadedFileDto>()
 
@@ -207,6 +210,8 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        requireSpaceWritable(space)
+
         // Write file to git
         if (!gitService.writeFile(space, request.path, request.content)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
@@ -265,6 +270,8 @@ class DocumentController(
         if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
+
+        requireSpaceWritable(space)
 
         // Extract path from URL
         val documentPath = extractDocumentPath(servletRequest.requestURI, spaceId)
@@ -338,6 +345,8 @@ class DocumentController(
         if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
+
+        requireSpaceWritable(space)
 
         // Extract path from URL
         val documentPath = extractDocumentPath(servletRequest.requestURI, spaceId)
@@ -547,6 +556,8 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        requireSpaceWritable(space)
+
         // Extract path from URL
         val documentPath = extractDocumentPath(request.requestURI, spaceId)
             ?: return ResponseEntity.badRequest().build()
@@ -577,6 +588,8 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        requireSpaceWritable(space)
+
         if (!gitService.createFolder(space, request.path)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
@@ -599,6 +612,8 @@ class DocumentController(
         if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
+
+        requireSpaceWritable(space)
 
         val isDir = gitService.isDirectory(space, request.oldPath)
 

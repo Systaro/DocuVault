@@ -26,6 +26,10 @@ export interface Space {
   childCount?: number;
   logoUrl?: string;
   lastSyncFilesChanged?: number;
+  syncStatus?: 'OK' | 'SYNC_ERROR' | 'PUSH_ERROR' | 'IN_CONFLICT';
+  conflictMrUrl?: string;
+  conflictBranch?: string;
+  conflictDetectedAt?: string;
 }
 
 export interface CreateSpaceRequest {

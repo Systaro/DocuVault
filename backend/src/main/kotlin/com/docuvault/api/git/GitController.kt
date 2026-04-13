@@ -1,10 +1,12 @@
 package com.docuvault.api.git
 
+import com.docuvault.domain.space.SyncStatus
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
 import com.docuvault.service.SyncScheduler
 import com.docuvault.service.git.*
+import java.time.Instant
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -19,6 +21,7 @@ import java.util.*
 class GitController(
     private val gitLabService: GitLabService,
     private val gitService: GitService,
+    private val gitConflictService: GitConflictService,
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
     private val permissionService: PermissionService,
@@ -72,14 +75,28 @@ class GitController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        if (space.syncStatus == SyncStatus.IN_CONFLICT) {
+            return ResponseEntity.ok(
+                GitOperationResponse(
+                    success = false,
+                    message = "Space is in conflict; resolve the open merge request before pulling again.",
+                    errorCode = GitErrorCode.MERGE_CONFLICT.name,
+                    userMessage = GitErrorCode.MERGE_CONFLICT.toUserMessage(),
+                    requiresSetup = false,
+                    conflictMrUrl = space.conflictMrUrl
+                )
+            )
+        }
+
         return try {
             gitService.pullChanges(space)
             val filesChanged = syncScheduler.indexDocuments(space)
 
             // Update last synced timestamp and clear error
-            space.lastSyncedAt = java.time.Instant.now()
+            space.lastSyncedAt = Instant.now()
             space.lastSyncError = null
             space.lastSyncFilesChanged = filesChanged
+            space.syncStatus = SyncStatus.OK
             spaceRepository.save(space)
 
             logger.info("Successfully pulled changes for space '${space.name}' (${space.id})")
@@ -89,9 +106,27 @@ class GitController(
                     message = "Successfully synced from Git"
                 )
             )
+        } catch (e: MergeConflictException) {
+            logger.warn("Merge conflict detected for space '${space.name}'")
+            space.syncStatus = SyncStatus.IN_CONFLICT
+            space.conflictBaseRef = e.baseRef
+            space.conflictDetectedAt = Instant.now()
+            space.lastSyncError = e.message
+            spaceRepository.save(space)
+            ResponseEntity.ok(
+                GitOperationResponse(
+                    success = false,
+                    message = e.message,
+                    errorCode = e.errorCode.name,
+                    userMessage = e.errorCode.toUserMessage(),
+                    requiresSetup = false,
+                    conflictMrUrl = null
+                )
+            )
         } catch (e: GitOperationException) {
             logger.warn("Git pull failed for space '${space.name}': ${e.message}")
             space.lastSyncError = e.message ?: "Sync failed"
+            space.syncStatus = SyncStatus.SYNC_ERROR
             spaceRepository.save(space)
             ResponseEntity.ok(
                 GitOperationResponse(
@@ -206,6 +241,47 @@ class GitController(
             )
         }
     }
+
+    @PostMapping("/spaces/{spaceId}/conflict/create-mr")
+    fun createConflictMr(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (space.syncStatus != SyncStatus.IN_CONFLICT) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                GitOperationResponse(
+                    success = false,
+                    message = "Space is not in a conflict state",
+                    errorCode = "NOT_IN_CONFLICT"
+                )
+            )
+        }
+
+        return try {
+            val result = gitConflictService.createConflictMr(space)
+            ResponseEntity.ok(ConflictMrResponse(result.mrUrl, result.branch, result.alreadyExisted))
+        } catch (e: Exception) {
+            logger.error("Failed to open conflict MR for space '${space.name}': ${e.message}", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                GitOperationResponse(
+                    success = false,
+                    message = e.message ?: "Failed to open merge request",
+                    errorCode = GitErrorCode.UNKNOWN_ERROR.name,
+                    userMessage = "Could not open the conflict merge request. Check the backend logs."
+                )
+            )
+        }
+    }
 }
 
 data class GitStatusResponse(
@@ -218,7 +294,14 @@ data class GitOperationResponse(
     val message: String? = null,
     val errorCode: String? = null,
     val userMessage: String? = null,
-    val requiresSetup: Boolean = false
+    val requiresSetup: Boolean = false,
+    val conflictMrUrl: String? = null
+)
+
+data class ConflictMrResponse(
+    val mrUrl: String,
+    val branch: String,
+    val alreadyExisted: Boolean
 )
 
 data class PushRequest(

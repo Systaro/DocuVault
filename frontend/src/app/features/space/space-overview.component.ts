@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, Document } from '../../core/api/documents.service';
-import { GitService, GitOperationResult, UncommittedFilesResponse } from '../../core/api/git.service';
+import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
@@ -57,8 +57,42 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
           </div>
         </div>
 
-        <!-- Sync Error Alert -->
-        @if (space()?.gitError) {
+        <!-- In-Conflict Banner -->
+        @if (space()?.syncStatus === 'IN_CONFLICT') {
+          <div class="sync-error-alert mb-6">
+            <div class="sync-error-icon">
+              <span class="material-icons">merge_type</span>
+            </div>
+            <div class="sync-error-content">
+              <div class="sync-error-title">Sync paused — merge conflict</div>
+              <div class="sync-error-message">
+                DocuVault's local changes diverged from <code>{{ space()?.branch }}</code> and could not be merged automatically.
+                Editing is disabled for this space until the conflict is resolved in GitLab.
+              </div>
+              @if (space()?.conflictMrUrl) {
+                <div class="sync-error-message mt-1">
+                  Waiting for
+                  <a [href]="space()!.conflictMrUrl!" target="_blank" rel="noopener">merge request</a>
+                  to be merged.
+                </div>
+              }
+            </div>
+            @if (space()?.conflictMrUrl) {
+              <a [href]="space()!.conflictMrUrl!" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">
+                View MR
+              </a>
+            } @else {
+              <button (click)="openConflictMr()" [disabled]="openingConflictMr()" class="btn btn-sm btn-secondary">
+                @if (openingConflictMr()) {
+                  Opening…
+                } @else {
+                  Open merge request
+                }
+              </button>
+            }
+          </div>
+        } @else if (space()?.gitError) {
+          <!-- Sync Error Alert -->
           <div class="sync-error-alert mb-6">
             <div class="sync-error-icon">
               <span class="material-icons">error_outline</span>
@@ -125,8 +159,8 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
         <div class="card">
           <div class="p-4 overview-section-header flex items-center justify-between">
             <h2 class="font-semibold overview-text-primary">Recent Documents</h2>
-            <label class="upload-btn" title="Upload files">
-              <input type="file" multiple (change)="onFileInputChange($event)" class="sr-only" />
+            <label class="upload-btn" [class.opacity-50]="isInConflict()" [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Upload files'">
+              <input type="file" multiple (change)="onFileInputChange($event)" [disabled]="isInConflict()" class="sr-only" />
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
               </svg>
@@ -367,6 +401,11 @@ export class SpaceOverviewComponent implements OnInit {
   uncommittedFiles = signal<string[]>([]);
   lastPushError = signal<string | null>(null);
   pushing = signal(false);
+  openingConflictMr = signal(false);
+
+  isInConflict(): boolean {
+    return this.space()?.syncStatus === 'IN_CONFLICT';
+  }
 
   private dragCounter = 0;
 
@@ -520,7 +559,37 @@ export class SpaceOverviewComponent implements OnInit {
     });
   }
 
+  openConflictMr(): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.openingConflictMr.set(true);
+    this.gitService.createConflictMr(space.id).subscribe({
+      next: (result: ConflictMrResponse) => {
+        this.openingConflictMr.set(false);
+        this.toastService.success(
+          result.alreadyExisted ? 'Merge request already open' : 'Merge request opened',
+          `Branch ${result.branch}`
+        );
+        this.loadSpaceByPath(space.fullPath);
+      },
+      error: (error) => {
+        this.openingConflictMr.set(false);
+        const message = error?.error?.message || error?.error?.userMessage || 'Could not open the merge request.';
+        this.toastService.error('Failed to open MR', message);
+      }
+    });
+  }
+
   private handleSyncError(result: GitOperationResult): void {
+    // Merge conflict is a persistent state, not a transient error — reload the space
+    // so the IN_CONFLICT banner renders instead of a dismissible toast.
+    if (result.errorCode === 'MERGE_CONFLICT') {
+      const space = this.space();
+      if (space) this.loadSpaceByPath(space.fullPath);
+      return;
+    }
+
     const title = this.getErrorTitle(result.errorCode);
     const message = result.userMessage || result.message || 'An unexpected error occurred during sync.';
 

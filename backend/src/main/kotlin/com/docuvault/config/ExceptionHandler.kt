@@ -1,5 +1,6 @@
 package com.docuvault.config
 
+import com.docuvault.service.SpaceInConflictException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -20,6 +21,18 @@ class GlobalExceptionHandler {
                 status = 400,
                 message = "Validation failed",
                 errors = errors
+            ))
+    }
+
+    @ExceptionHandler(SpaceInConflictException::class)
+    fun handleSpaceInConflict(ex: SpaceInConflictException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(
+                status = 409,
+                message = ex.message ?: "Space is in conflict",
+                errorCode = "SPACE_IN_CONFLICT",
+                conflictMrUrl = ex.conflictMrUrl
             ))
     }
 
@@ -48,5 +61,7 @@ class GlobalExceptionHandler {
 data class ErrorResponse(
     val status: Int,
     val message: String,
-    val errors: List<String>? = null
+    val errors: List<String>? = null,
+    val errorCode: String? = null,
+    val conflictMrUrl: String? = null
 )

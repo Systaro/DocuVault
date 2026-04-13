@@ -23,6 +23,13 @@ export interface GitOperationResult {
   errorCode?: string;
   userMessage?: string;
   requiresSetup?: boolean;
+  conflictMrUrl?: string;
+}
+
+export interface ConflictMrResponse {
+  mrUrl: string;
+  branch: string;
+  alreadyExisted: boolean;
 }
 
 export interface UncommittedFilesResponse {
@@ -83,5 +90,9 @@ export class GitService {
       authorName,
       authorEmail
     });
+  }
+
+  createConflictMr(spaceId: string): Observable<ConflictMrResponse> {
+    return this.http.post<ConflictMrResponse>(`/api/git/spaces/${spaceId}/conflict/create-mr`, {});
   }
 }

@@ -61,6 +61,28 @@ data class Space(
     @Column(name = "last_sync_files_changed")
     var lastSyncFilesChanged: Int? = null,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sync_status", nullable = false, length = 32)
+    var syncStatus: SyncStatus = SyncStatus.OK,
+
+    @Column(name = "conflict_base_ref", length = 64)
+    var conflictBaseRef: String? = null,
+
+    @Column(name = "conflict_branch", length = 255)
+    var conflictBranch: String? = null,
+
+    @Column(name = "conflict_mr_url", length = 500)
+    var conflictMrUrl: String? = null,
+
+    @Column(name = "conflict_mr_iid")
+    var conflictMrIid: Long? = null,
+
+    @Column(name = "conflict_mr_project_id")
+    var conflictMrProjectId: Long? = null,
+
+    @Column(name = "conflict_detected_at")
+    var conflictDetectedAt: Instant? = null,
+
     @Column(name = "logo_url", length = 500)
     var logoUrl: String? = null,
 

@@ -3,11 +3,21 @@ package com.docuvault.service.git
 /**
  * Exception class for Git operations with detailed error codes and user-friendly messages.
  */
-class GitOperationException(
+open class GitOperationException(
     val errorCode: GitErrorCode,
     override val message: String,
     override val cause: Throwable? = null
 ) : RuntimeException(message, cause)
+
+/**
+ * Raised when a pull fails due to a merge conflict. Carries the SHA of HEAD
+ * before the failed merge so callers can place the space into IN_CONFLICT state
+ * and later branch off that ref when opening a resolution MR.
+ */
+class MergeConflictException(
+    val baseRef: String,
+    message: String = "Merge conflict detected while pulling changes"
+) : GitOperationException(GitErrorCode.MERGE_CONFLICT, message)
 
 enum class GitErrorCode {
     // Configuration errors
