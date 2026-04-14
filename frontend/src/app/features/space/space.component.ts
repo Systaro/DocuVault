@@ -276,10 +276,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                     <input
                       class="rename-input"
                       [(ngModel)]="renamingValue"
-                      (keydown.enter)="submitRename(node); $event.stopPropagation()"
+                      (keydown.enter)="submitRename(node); $event.stopPropagation(); $event.preventDefault()"
                       (keydown.escape)="cancelRename(); $event.stopPropagation()"
                       (blur)="cancelRename()"
-                      (click)="$event.stopPropagation()"
+                      (click)="$event.stopPropagation(); $event.preventDefault()"
+                      (mousedown)="$event.stopPropagation()"
                     />
                   } @else {
                     <span class="tree-name">{{ node.name }}</span>
