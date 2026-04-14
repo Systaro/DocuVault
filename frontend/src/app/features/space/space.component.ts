@@ -1081,10 +1081,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   submitRename(node: FileNode): void {
-    const newName = this.renamingValue.trim();
+    let newName = this.renamingValue.trim();
     if (!newName || newName === node.name) { this.cancelRename(); return; }
     const space = this.spaceSignal();
     if (!space) return;
+
+    if (!node.isDirectory) {
+      const dot = node.name.lastIndexOf('.');
+      const oldExt = dot > 0 ? node.name.substring(dot) : '';
+      if (oldExt && !newName.toLowerCase().endsWith(oldExt.toLowerCase())) {
+        newName += oldExt;
+      }
+    }
 
     const parentPrefix = node.path.includes('/')
       ? node.path.substring(0, node.path.lastIndexOf('/') + 1)

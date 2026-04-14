@@ -172,6 +172,14 @@ class GitService(
             Git.open(repoDir).use { git ->
                 git.add().addFilepattern(".").call()
 
+                val status = git.status().call()
+                val removed = status.missing + status.removed
+                if (removed.isNotEmpty()) {
+                    val rm = git.rm()
+                    removed.forEach { rm.addFilepattern(it) }
+                    rm.call()
+                }
+
                 git.commit()
                     .setMessage(message)
                     .setAuthor(authorName, authorEmail)
