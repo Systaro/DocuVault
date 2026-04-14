@@ -282,6 +282,15 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                       (click)="$event.stopPropagation(); $event.preventDefault()"
                       (mousedown)="$event.stopPropagation()"
                     />
+                    <button
+                      type="button"
+                      class="rename-confirm-btn"
+                      title="Confirm rename"
+                      (mousedown)="$event.preventDefault(); $event.stopPropagation()"
+                      (click)="submitRename(node); $event.stopPropagation(); $event.preventDefault()"
+                    >
+                      <span class="material-icons">check</span>
+                    </button>
                   } @else {
                     <span class="tree-name">{{ node.name }}</span>
                     @if (sharedFilePaths().has(node.path)) {
@@ -728,6 +737,26 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       padding: 1px 4px;
       color: var(--text-primary);
       outline: none;
+    }
+
+    .rename-confirm-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      margin-left: 4px;
+      padding: 0;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+
+      .material-icons { font-size: 16px; }
+
+      &:hover { filter: brightness(1.1); }
     }
 
     .tree-new-folder-row {
