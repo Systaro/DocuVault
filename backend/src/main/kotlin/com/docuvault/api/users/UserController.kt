@@ -548,7 +548,7 @@ data class AcceptInvitationRequest(
     @field:NotBlank(message = "Password is required")
     @field:jakarta.validation.constraints.Size(min = 8, message = "Password must be at least 8 characters")
     @field:jakarta.validation.constraints.Pattern(
-        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{8,}$",
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
         message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
     )
     val password: String
@@ -561,7 +561,7 @@ data class ChangePasswordRequest(
     @field:NotBlank(message = "New password is required")
     @field:jakarta.validation.constraints.Size(min = 8, message = "Password must be at least 8 characters")
     @field:jakarta.validation.constraints.Pattern(
-        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@\$!%*?&\\-_#])[A-Za-z\\d@\$!%*?&\\-_#]{8,}$",
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$",
         message = "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character"
     )
     val newPassword: String
