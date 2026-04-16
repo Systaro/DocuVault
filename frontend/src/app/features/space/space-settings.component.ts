@@ -357,7 +357,97 @@ interface SpaceTokenDto {
           <!-- State Script -->
           @if (space()?.type === 'REPOSITORY') {
             <div class="card p-6 mb-6">
-              <h2 class="font-semibold text-gray-900 mb-1">State Script</h2>
+              <div class="flex items-center gap-2 mb-1">
+                <h2 class="font-semibold text-gray-900">State Script</h2>
+                <button class="state-help-btn" (click)="stateHelpOpen.set(!stateHelpOpen())" title="How to use State">
+                  <span class="material-icons" style="font-size:18px">help_outline</span>
+                </button>
+              </div>
+
+              @if (stateHelpOpen()) {
+                <div class="state-help-panel mb-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="state-help-title">How to use DocuVault State</span>
+                    <button class="state-help-close" (click)="stateHelpOpen.set(false)">
+                      <span class="material-icons" style="font-size:16px">close</span>
+                    </button>
+                  </div>
+
+                  <p class="state-help-text mb-3">
+                    DocuVault State lets interactive HTML files (forms, dashboards, checklists) persist data server-side
+                    without creating Git commits. State is stored per <strong>space + key</strong> in the database and can be
+                    read/written from any device.
+                  </p>
+
+                  <h4 class="state-help-subtitle">Setup (3 steps)</h4>
+                  <ol class="state-help-list mb-3">
+                    <li><strong>Create a Space Token</strong> — click "+ New token" below. Copy the <code>dvs_…</code> token immediately; it is shown only once.</li>
+                    <li><strong>Choose a State Key</strong> — a unique name for this state bucket (e.g. <code>pilot-assignments</code>). One key = one JSON object in the database.</li>
+                    <li><strong>Paste the snippet</strong> — copy the generated <code>&lt;script&gt;</code> block into your HTML file, right before your own scripts.</li>
+                  </ol>
+
+                  <h4 class="state-help-subtitle">Reading state</h4>
+                  <pre class="state-help-code">const state = await DocuVaultState.ready();
+const value = state.get('assignee');     // single key
+const all   = state.getAll();            // full object</pre>
+
+                  <h4 class="state-help-subtitle">Writing state</h4>
+                  <pre class="state-help-code">state.set('assignee', 'Anna');
+state.set('votes', {{ '{' }} 0: 3, 1: 5 {{ '}' }});
+await state.save();                      // persists to DB</pre>
+
+                  <h4 class="state-help-subtitle">Removing a key</h4>
+                  <pre class="state-help-code">state.remove('assignee');
+await state.save();</pre>
+
+                  <h4 class="state-help-subtitle">Full example</h4>
+                  <pre class="state-help-code">&lt;script src="/assets/docuvault-state.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  DocuVaultState.init({{ '{' }}
+    spaceId: 'YOUR_SPACE_ID',
+    key:     'my-form',
+    token:   'dvs_…'
+  {{ '}' }});
+
+  async function main() {{ '{' }}
+    const state = await DocuVaultState.ready();
+
+    // Load saved data
+    const saved = state.get('formData');
+    if (saved) populateForm(saved);
+
+    // Save on button click
+    document.getElementById('save')
+      .addEventListener('click', async () => {{ '{' }}
+        state.set('formData', collectForm());
+        await state.save();
+      {{ '}' }});
+  {{ '}' }}
+  main();
+&lt;/script&gt;</pre>
+
+                  <h4 class="state-help-subtitle">API reference</h4>
+                  <table class="state-help-table">
+                    <tr><td><code>DocuVaultState.init(config)</code></td><td>Initialize with <code>spaceId</code>, <code>key</code>, and optional <code>token</code>. Triggers an immediate load.</td></tr>
+                    <tr><td><code>DocuVaultState.ready()</code></td><td>Returns a Promise resolving to the state handle once loaded.</td></tr>
+                    <tr><td><code>state.get(key)</code></td><td>Read a value from in-memory state.</td></tr>
+                    <tr><td><code>state.getAll()</code></td><td>Get a shallow copy of the full state object.</td></tr>
+                    <tr><td><code>state.set(key, value)</code></td><td>Set a value in memory (not persisted until <code>save()</code>).</td></tr>
+                    <tr><td><code>state.remove(key)</code></td><td>Delete a key from memory (not persisted until <code>save()</code>).</td></tr>
+                    <tr><td><code>state.save()</code></td><td>Persist current state to the database via <code>PUT</code>.</td></tr>
+                    <tr><td><code>DocuVaultState.clearToken()</code></td><td>Clear the stored token. Next <code>save()</code> will re-prompt.</td></tr>
+                  </table>
+
+                  <h4 class="state-help-subtitle">Notes</h4>
+                  <ul class="state-help-list">
+                    <li>Each <code>save()</code> overwrites the entire state object for that key — there is no partial/merge update.</li>
+                    <li>If multiple users edit concurrently, the last <code>save()</code> wins. For collaborative use, consider loading fresh state before saving (see <code>DocuVaultState.ready()</code>).</li>
+                    <li>The token is stored in <code>localStorage</code> on the user's browser. If no token is configured in the snippet, the user will be prompted on first save.</li>
+                    <li>State is scoped to a single space. Different spaces cannot share state.</li>
+                  </ul>
+                </div>
+              }
+
               <p class="text-sm text-gray-500 mb-4">
                 Add persistent, cross-device state to any interactive HTML file hosted in this space.
                 Create a space token, enter a key for the state bucket, then paste the snippet into your HTML.
@@ -447,7 +537,7 @@ interface SpaceTokenDto {
 
               <p class="text-xs text-gray-400 mt-3">
                 State is stored in the database — no Git commits on every save.
-                See <code>assets/docuvault-state.js</code> for the full API reference.
+                Click the <span class="material-icons" style="font-size:14px;vertical-align:middle">help_outline</span> icon above for full usage documentation.
               </p>
             </div>
           }
@@ -566,6 +656,105 @@ interface SpaceTokenDto {
       flex-shrink: 0;
       color: var(--text-muted, #9ca3af);
     }
+
+    .state-help-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted, #9ca3af);
+      display: flex;
+      align-items: center;
+      padding: 2px;
+      border-radius: 50%;
+      transition: color 0.15s, background 0.15s;
+    }
+    .state-help-btn:hover {
+      color: var(--primary, #0d9488);
+      background: rgba(13, 148, 136, 0.08);
+    }
+    .state-help-panel {
+      background: var(--background, #f9fafb);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    .state-help-title {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-primary, #111827);
+    }
+    .state-help-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted, #9ca3af);
+      display: flex;
+      align-items: center;
+      padding: 2px;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+    .state-help-close:hover { color: var(--text-primary, #111827); }
+    .state-help-text {
+      font-size: 13px;
+      color: var(--text-secondary, #6b7280);
+      line-height: 1.6;
+    }
+    .state-help-subtitle {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-primary, #111827);
+      margin: 12px 0 6px;
+    }
+    .state-help-list {
+      font-size: 13px;
+      color: var(--text-secondary, #6b7280);
+      padding-left: 20px;
+      line-height: 1.7;
+    }
+    .state-help-list code {
+      font-size: 12px;
+      background: rgba(0,0,0,0.06);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .state-help-code {
+      background: #1e1f2e;
+      color: #e2e4f0;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: 'SFMono-Regular', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre;
+      overflow-x: auto;
+      margin-bottom: 4px;
+    }
+    .state-help-table {
+      width: 100%;
+      font-size: 13px;
+      border-collapse: collapse;
+    }
+    .state-help-table td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border, #e5e7eb);
+      vertical-align: top;
+      color: var(--text-secondary, #6b7280);
+    }
+    .state-help-table td:first-child {
+      white-space: nowrap;
+      font-family: 'SFMono-Regular', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-primary, #111827);
+    }
+    .state-help-table code {
+      font-size: 12px;
+      background: rgba(0,0,0,0.06);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
   `]
 })
 export class SpaceSettingsComponent implements OnInit {
@@ -579,6 +768,7 @@ export class SpaceSettingsComponent implements OnInit {
   moving = signal(false);
   copied = signal(false);
   snippetCopied = signal(false);
+  stateHelpOpen = signal(false);
   creatingToken = signal(false);
   newTokenValue = signal<string | null>(null);
   newTokenCopied = signal(false);
