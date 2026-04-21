@@ -28,8 +28,7 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/reset-password.component').then(m => m.ResetPasswordComponent)
   },
   {
-    path: 'share/:token',
-    loadComponent: () => import('./features/public/public-viewer.component').then(m => m.PublicViewerComponent),
+    path: 'share',
     children: [
       {
         path: '**',

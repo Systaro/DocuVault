@@ -1,7 +1,8 @@
 import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { SharedLinksService, SharedFileMetadata, FileNode } from '../../core/api/shared-links.service';
 import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
@@ -16,7 +17,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
   standalone: true,
   imports: [CommonModule, FormsModule, AnnotationOverlayComponent],
   template: `
-    <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error()">
+    <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error() && !maintenanceMode()">
       <!-- Header -->
       <header class="viewer-header">
         <div class="header-brand">
@@ -77,6 +78,18 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
             <p>Loading shared content...</p>
+          </div>
+        </main>
+      } @else if (maintenanceMode()) {
+        <main class="viewer-content">
+          <div class="error-state">
+            <span class="material-icons error-icon">build_circle</span>
+            <h2>Wartungsmodus</h2>
+            <p>Die Seite befindet sich gerade im Wartungsmodus. Bitte versuche es in wenigen Minuten erneut.</p>
+            <button type="button" class="btn btn-primary" (click)="retryLoad()">
+              <span class="material-icons">refresh</span>
+              Erneut versuchen
+            </button>
           </div>
         </main>
       } @else if (error()) {
@@ -724,6 +737,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   metadata = signal<SharedFileMetadata | null>(null);
   loading = signal(true);
   error = signal<string | null>(null);
+  maintenanceMode = signal(false);
   renderMode = signal<RenderMode | null>(null);
   renderedHtml = signal<SafeHtml>('');
   rawUrl = signal('');
@@ -788,7 +802,6 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   });
 
   constructor(
-    private route: ActivatedRoute,
     private router: Router,
     private location: Location,
     private sharedLinksService: SharedLinksService,
@@ -799,18 +812,16 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.token = this.route.snapshot.paramMap.get('token') || '';
-    if (!this.token) {
+    const url = this.router.url.split('?')[0].split('#')[0];
+    const match = url.match(/^\/share\/([^\/]+)(?:\/(.*))?$/);
+    if (!match) {
       this.error.set('Invalid share link.');
       this.loading.set(false);
       return;
     }
-
-    // Extract subpath from the full URL
-    const url = this.router.url.split('?')[0].split('#')[0];
-    const prefix = `/share/${this.token}/`;
-    if (url.startsWith(prefix) && url.length > prefix.length) {
-      this.currentSubPath.set(decodeURIComponent(url.substring(prefix.length)));
+    this.token = match[1];
+    if (match[2]) {
+      this.currentSubPath.set(decodeURIComponent(match[2]));
     }
 
     this.sharedLinksService.getSharedFileMetadata(this.token).subscribe({
@@ -826,8 +837,12 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
           this.loadContent();
         }
       },
-      error: () => {
-        this.error.set('This shared link is no longer available or has expired.');
+      error: (err: HttpErrorResponse) => {
+        if (err.status === 0 || err.status >= 500) {
+          this.maintenanceMode.set(true);
+        } else {
+          this.error.set('This shared link is no longer available or has expired.');
+        }
         this.loading.set(false);
       }
     });
@@ -849,6 +864,12 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
     this.imgZoom.destroy();
+  }
+
+  retryLoad(): void {
+    this.maintenanceMode.set(false);
+    this.loading.set(true);
+    this.ngOnInit();
   }
 
   submitPassword(event: Event): void {
