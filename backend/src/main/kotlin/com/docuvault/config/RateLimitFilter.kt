@@ -14,7 +14,7 @@ class RateLimitFilter : OncePerRequestFilter() {
     companion object {
         private const val AUTH_MAX_ATTEMPTS = 10
         private const val AUTH_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
-        private const val SHARED_MAX_ATTEMPTS = 60
+        private const val SHARED_MAX_ATTEMPTS = 600
         private const val SHARED_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
     }
 

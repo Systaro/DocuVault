@@ -45,6 +45,7 @@ spring:
 server:
   address: 0.0.0.0
   port: 7030
+  forward-headers-strategy: native
   servlet:
     context-path: /api
     session:
