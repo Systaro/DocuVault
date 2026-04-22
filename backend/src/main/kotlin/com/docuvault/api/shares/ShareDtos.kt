@@ -1,6 +1,7 @@
 package com.docuvault.api.shares
 
 import com.docuvault.domain.space.SharedLink
+import com.docuvault.domain.space.SharedLinkAccessDenial
 import java.time.Instant
 import java.util.*
 
@@ -46,6 +47,24 @@ data class SharedFileMetadataDto(
 data class SharePasswordRequest(val password: String)
 
 data class UpdateSharePasswordRequest(val password: String?)
+
+data class SharedLinkAccessDenialDto(
+    val id: UUID,
+    val reason: String,
+    val clientIp: String?,
+    val userAgent: String?,
+    val requestUri: String?,
+    val createdAt: Instant
+)
+
+fun SharedLinkAccessDenial.toDto() = SharedLinkAccessDenialDto(
+    id = this.id!!,
+    reason = this.reason.name,
+    clientIp = this.clientIp,
+    userAgent = this.userAgent,
+    requestUri = this.requestUri,
+    createdAt = this.createdAt
+)
 
 fun SharedLink.toDto() = SharedLinkDto(
     id = this.id!!,

@@ -5,6 +5,7 @@ import com.docuvault.domain.space.ShareType
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.SharedLinkAccessDenialService
 import com.docuvault.service.SharedLinkService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -21,7 +22,8 @@ class SharedLinkController(
     private val sharedLinkService: SharedLinkService,
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
-    private val permissionService: PermissionService
+    private val permissionService: PermissionService,
+    private val denialService: SharedLinkAccessDenialService
 ) {
     @PostMapping
     fun createShareLink(
@@ -140,5 +142,28 @@ class SharedLinkController(
         } else {
             ResponseEntity.notFound().build()
         }
+    }
+
+    @GetMapping("/{linkId}/denials")
+    fun getShareDenials(
+        @PathVariable spaceId: UUID,
+        @PathVariable linkId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<SharedLinkAccessDenialDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val link = sharedLinkService.findBySpace(spaceId).firstOrNull { it.id == linkId }
+            ?: return ResponseEntity.notFound().build()
+
+        val denials = denialService.findByToken(link.token)
+        return ResponseEntity.ok(denials.map { it.toDto() })
     }
 }
