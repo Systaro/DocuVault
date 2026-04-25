@@ -22,6 +22,15 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         <div class="space-container">
           <!-- Breadcrumb -->
           <div class="breadcrumb-bar">
+            <button
+              type="button"
+              class="menu-toggle-btn"
+              [attr.aria-label]="mobileSidebarOpen() ? 'Close menu' : 'Open menu'"
+              [attr.aria-expanded]="mobileSidebarOpen()"
+              (click)="toggleMobileSidebar($event)"
+            >
+              <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
+            </button>
             <div class="breadcrumb">
               <a routerLink="/dashboard" class="breadcrumb-item">
                 <span class="material-icons">home</span>
@@ -62,8 +71,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
           </div>
 
           <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
+            @if (mobileSidebarOpen()) {
+              <div class="sidebar-backdrop" (click)="mobileSidebarOpen.set(false)"></div>
+            }
             <!-- Sidebar -->
-            <aside class="sidebar" [style.width.px]="sidebarWidth()">
+            <aside class="sidebar" [class.mobile-open]="mobileSidebarOpen()">
               <div class="sidebar-header">
                 <span class="material-icons">folder_special</span>
                 Project Files
@@ -340,7 +352,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: calc(100vh - 64px);
+      height: calc(100dvh - 64px);
       color: var(--text-muted);
 
       .material-icons {
@@ -351,9 +363,32 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     }
 
     .space-container {
-      height: calc(100vh - 64px);
+      height: calc(100dvh - 64px);
       display: flex;
       flex-direction: column;
+    }
+
+    .menu-toggle-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      margin-right: var(--spacing-sm);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      cursor: pointer;
+      flex-shrink: 0;
+
+      .material-icons { font-size: 22px; }
+      &:hover { background: var(--background); }
+    }
+
+    .sidebar-backdrop {
+      display: none;
     }
 
     .breadcrumb-bar {
@@ -454,6 +489,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      width: var(--sidebar-width);
       min-width: 200px;
       max-width: 500px;
     }
@@ -869,14 +905,73 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     }
 
     @media (max-width: 768px) {
-      .sidebar {
+      .menu-toggle-btn {
+        display: inline-flex;
+      }
+
+      .breadcrumb-bar {
+        padding: var(--spacing-sm) var(--spacing-md);
+        gap: var(--spacing-sm);
+      }
+
+      .breadcrumb {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .breadcrumb::-webkit-scrollbar { display: none; }
+
+      .breadcrumb-item {
+        flex-shrink: 0;
+      }
+
+      .breadcrumb-actions .search-box {
         display: none;
       }
 
-      .breadcrumb-actions {
-        .search-box {
-          display: none;
-        }
+      .browser-main {
+        position: relative;
+      }
+
+      .sidebar {
+        position: fixed;
+        top: 64px;
+        bottom: 0;
+        left: 0;
+        width: min(85vw, 320px);
+        min-width: 0;
+        max-width: none;
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+      }
+
+      .sidebar.mobile-open {
+        transform: translateX(0);
+      }
+
+      .resize-handle {
+        display: none;
+      }
+
+      .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        top: 64px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        z-index: 199;
+        animation: sidebar-fade-in 0.18s ease;
+      }
+
+      @keyframes sidebar-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
       }
     }
   `]
@@ -911,6 +1006,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
   );
   isResizing = signal(false);
+  mobileSidebarOpen = signal(false);
   private resizing = false;
   private boundOnMouseMove = this.onResizeMove.bind(this);
   private boundOnMouseUp = this.onResizeEnd.bind(this);
@@ -930,6 +1026,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) {
         this.updateBreadcrumb();
+        this.mobileSidebarOpen.set(false);
       }
     });
     // Initial check
@@ -1022,6 +1119,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   toggleTreeMenu(path: string): void {
     this.openMenuPath.set(this.openMenuPath() === path ? null : path);
+  }
+
+  toggleMobileSidebar(event: Event): void {
+    event.stopPropagation();
+    this.mobileSidebarOpen.set(!this.mobileSidebarOpen());
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.mobileSidebarOpen()) {
+      this.mobileSidebarOpen.set(false);
+    }
   }
 
   openFullscreenPreview(filePath: string): void {
