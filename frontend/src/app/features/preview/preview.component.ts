@@ -8,6 +8,7 @@ import { DocumentsService, FileNode } from '../../core/api/documents.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
+import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
@@ -15,7 +16,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 @Component({
   selector: 'app-preview',
   standalone: true,
-  imports: [CommonModule, AnnotationOverlayComponent],
+  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent],
   template: `
     <div class="preview-shell">
       <!-- Header -->
@@ -39,6 +40,11 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
               }
             }
           </nav>
+        }
+        @if (currentPath()) {
+          <button class="header-icon-btn header-action-end" (click)="showShareDialog.set(true)" title="Share">
+            <span class="material-icons">share</span>
+          </button>
         }
       </header>
 
@@ -166,6 +172,14 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
       </div>
     </div>
 
+    @if (showShareDialog() && currentPath()) {
+      <app-share-link-dialog
+        [spaceId]="spaceId"
+        [filePath]="currentPath()!"
+        (close)="showShareDialog.set(false)"
+      />
+    }
+
     <!-- Recursive tree template -->
     <ng-template #treeTemplate let-nodes="nodes" let-level="level">
       @for (node of nodes; track node.path) {
@@ -235,6 +249,10 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
     .header-icon-btn:hover {
       background: #f3f4f6;
       color: #374151;
+    }
+
+    .header-action-end {
+      margin-left: auto;
     }
 
     .header-brand {
@@ -511,6 +529,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
   safeRawUrl = signal<SafeResourceUrl>('');
 
   sidebarOpen = signal(false);
+  showShareDialog = signal(false);
   fileTree = signal<FileNode[]>([]);
   treeLoading = signal(true);
   expandedFolders = signal<Set<string>>(new Set());
