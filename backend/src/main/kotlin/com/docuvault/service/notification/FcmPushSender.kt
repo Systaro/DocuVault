@@ -14,14 +14,14 @@ import com.google.firebase.messaging.MessagingErrorCode
 import com.google.firebase.messaging.Notification
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Component
 import java.io.FileInputStream
 
 @Configuration
-@ConditionalOnProperty(name = ["fcm.service-account-path"])
+@ConditionalOnExpression("'\${fcm.service-account-path:}' != ''")
 class FirebaseConfig {
     private val logger = LoggerFactory.getLogger(FirebaseConfig::class.java)
 
@@ -47,7 +47,7 @@ class FirebaseConfig {
 }
 
 @Component("fcmPushSender")
-@ConditionalOnProperty(name = ["fcm.service-account-path"])
+@ConditionalOnExpression("'\${fcm.service-account-path:}' != ''")
 @org.springframework.core.annotation.Order(0)
 class FcmPushSender(
     @Suppress("unused") private val firebaseApp: FirebaseApp
