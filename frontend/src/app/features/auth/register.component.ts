@@ -42,6 +42,8 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="name"
                   class="input"
                   placeholder="Enter your name"
+                  autocomplete="name"
+                  enterkeyhint="next"
                   required
                 />
               </div>
@@ -57,6 +59,9 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="email"
                   class="input"
                   placeholder="Enter your email"
+                  autocomplete="email"
+                  inputmode="email"
+                  enterkeyhint="next"
                   required
                 />
               </div>
@@ -72,6 +77,8 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="password"
                   class="input"
                   placeholder="At least 8 characters"
+                  autocomplete="new-password"
+                  enterkeyhint="next"
                   required
                   minlength="8"
                 />
@@ -88,12 +95,14 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="confirmPassword"
                   class="input"
                   placeholder="Repeat your password"
+                  autocomplete="new-password"
+                  enterkeyhint="go"
                   required
                 />
               </div>
             </div>
 
-            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full">
+            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Create Account">
               @if (loading()) {
                 <span class="material-icons animate-spin">sync</span>
                 Creating account...
@@ -255,28 +264,45 @@ import { AuthService } from '../../core/auth/auth.service';
     @media (max-width: 768px) {
       .register-container {
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
       }
 
       .register-left {
-        padding: 32px;
-        min-height: 200px;
+        padding: 16px 24px;
+        min-height: 0;
+        flex: 0 0 auto;
       }
 
-      .register-brand-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
-      }
-
-      .register-brand h1 {
-        font-size: 24px;
+      .register-brand-logo {
+        max-width: 120px;
+        margin-bottom: 0;
       }
 
       .register-brand p {
-        font-size: 14px;
+        display: none;
       }
 
       .register-right {
-        padding: 32px;
+        padding: 24px 24px 32px;
+      }
+
+      .register-form h2 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .register-form .subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 16px;
+      }
+
+      .signin-link {
+        margin-top: 20px;
       }
     }
   `]

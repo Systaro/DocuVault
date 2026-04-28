@@ -52,6 +52,9 @@ data class Space(
     @Column(name = "last_synced_at")
     var lastSyncedAt: Instant? = null,
 
+    @Column(name = "last_synced_commit_sha", length = 40)
+    var lastSyncedCommitSha: String? = null,
+
     @Column(name = "last_sync_error", length = 1000)
     var lastSyncError: String? = null,
 

@@ -56,7 +56,16 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:4200", "http://localhost:7031", "http://127.0.0.1:7031", "http://localhost:80", "https://docuvault.systaro.de")
+        configuration.allowedOrigins = listOf(
+            "http://localhost:4200",
+            "http://localhost:7031",
+            "http://127.0.0.1:7031",
+            "http://localhost:80",
+            "https://docuvault.systaro.de",
+            "capacitor://localhost",
+            "https://localhost",
+            "ionic://localhost"
+        )
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true

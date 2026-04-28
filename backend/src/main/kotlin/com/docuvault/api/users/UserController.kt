@@ -96,6 +96,31 @@ class UserController(
         return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
     }
 
+    @GetMapping("/me/notifications")
+    fun getNotificationPreferences(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<NotificationPreferencesDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+        return ResponseEntity.ok(NotificationPreferencesDto(pushMode = user.pushMode.name, emailMode = user.emailMode.name))
+    }
+
+    @PutMapping("/me/notifications")
+    fun updateNotificationPreferences(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: NotificationPreferencesDto
+    ): ResponseEntity<NotificationPreferencesDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+        try {
+            user.pushMode = com.docuvault.domain.user.PushMode.valueOf(request.pushMode)
+            user.emailMode = com.docuvault.domain.user.EmailMode.valueOf(request.emailMode)
+        } catch (_: IllegalArgumentException) {
+            return ResponseEntity.badRequest().build()
+        }
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+        return ResponseEntity.ok(NotificationPreferencesDto(pushMode = user.pushMode.name, emailMode = user.emailMode.name))
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
     fun listUsers(): ResponseEntity<List<UserDto>> {
@@ -523,6 +548,13 @@ class UserController(
 data class UpdateUserRequest(
     val name: String? = null,
     val password: String? = null
+)
+
+data class NotificationPreferencesDto(
+    @field:jakarta.validation.constraints.NotBlank
+    val pushMode: String,
+    @field:jakarta.validation.constraints.NotBlank
+    val emailMode: String
 )
 
 data class AdminUpdateUserRequest(

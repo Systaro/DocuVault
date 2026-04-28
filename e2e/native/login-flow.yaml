@@ -1,0 +1,18 @@
+appId: de.systaro.docuvault
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Welcome back"
+- takeScreenshot: 01-login-screen
+- tapOn:
+    text: "Enter your email"
+- inputText: "admin@docuvault.local"
+- tapOn:
+    text: "Enter your password"
+- inputText: "LocalDev-Pass1!"
+- takeScreenshot: 02-credentials-entered
+- pressKey: Enter
+- extendedWaitUntil:
+    notVisible: "Welcome back"
+    timeout: 10000
+- takeScreenshot: 03-post-login

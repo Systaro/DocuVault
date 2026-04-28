@@ -24,6 +24,14 @@ data class User(
     @Column(nullable = false)
     var role: UserRole = UserRole.VIEWER,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "push_mode", nullable = false)
+    var pushMode: PushMode = PushMode.INSTANT,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "email_mode", nullable = false)
+    var emailMode: EmailMode = EmailMode.NONE,
+
     @Column(nullable = false)
     var enabled: Boolean = true,
 
@@ -39,4 +47,16 @@ enum class UserRole {
     ORG_ADMIN,
     EDITOR,
     VIEWER
+}
+
+enum class PushMode {
+    INSTANT,
+    NONE
+}
+
+enum class EmailMode {
+    INSTANT,
+    HOURLY,
+    DAILY,
+    NONE
 }

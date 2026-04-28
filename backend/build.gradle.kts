@@ -64,6 +64,9 @@ dependencies {
     implementation(platform("software.amazon.awssdk:bom:2.25.16"))
     implementation("software.amazon.awssdk:s3")
 
+    // Firebase Admin SDK (FCM push notifications)
+    implementation("com.google.firebase:firebase-admin:9.4.3")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

@@ -5,6 +5,7 @@ import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.PasswordResetTokenRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.ApiTokenService
 import com.docuvault.service.EmailService
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
@@ -34,7 +35,8 @@ class AuthController(
     private val passwordEncoder: PasswordEncoder,
     private val authenticationManager: AuthenticationManager,
     private val passwordResetTokenRepository: PasswordResetTokenRepository,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    private val apiTokenService: ApiTokenService
 ) {
     private val logger = LoggerFactory.getLogger(AuthController::class.java)
     @PostMapping("/register")
@@ -115,6 +117,41 @@ class AuthController(
             impersonating = if (originalAdmin != null) true else null,
             originalAdminName = originalAdmin?.name
         ))
+    }
+
+    @PostMapping("/native-login")
+    fun nativeLogin(@Valid @RequestBody request: NativeLoginRequest): ResponseEntity<NativeLoginResponse> {
+        val user = userRepository.findByEmail(request.email)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(NativeLoginResponse(error = "Invalid credentials"))
+
+        if (!passwordEncoder.matches(request.password, user.passwordHash)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(NativeLoginResponse(error = "Invalid credentials"))
+        }
+
+        if (!user.enabled) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(NativeLoginResponse(error = "Account is disabled"))
+        }
+
+        val tokenName = "Native: ${request.deviceName.take(60)}"
+        val expiresAt = Instant.now().plus(365, ChronoUnit.DAYS)
+
+        return try {
+            val (apiToken, rawToken) = apiTokenService.createToken(user, tokenName, expiresAt)
+            ResponseEntity.ok(
+                NativeLoginResponse(
+                    user = user.toDto(),
+                    token = rawToken,
+                    tokenId = apiToken.id!!,
+                    expiresAt = expiresAt.toString()
+                )
+            )
+        } catch (e: IllegalStateException) {
+            ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(NativeLoginResponse(error = e.message ?: "Token limit reached"))
+        }
     }
 
     @PostMapping("/forgot-password")
@@ -287,6 +324,27 @@ data class ForgotPasswordRequest(
     @field:NotBlank(message = "Email is required")
     @field:Email(message = "Invalid email format")
     val email: String
+)
+
+data class NativeLoginRequest(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Invalid email format")
+    val email: String,
+
+    @field:NotBlank(message = "Password is required")
+    val password: String,
+
+    @field:NotBlank(message = "Device name is required")
+    @field:Size(max = 80, message = "Device name too long")
+    val deviceName: String
+)
+
+data class NativeLoginResponse(
+    val user: UserDto? = null,
+    val token: String? = null,
+    val tokenId: UUID? = null,
+    val expiresAt: String? = null,
+    val error: String? = null
 )
 
 data class ResetPasswordRequest(

@@ -1,7 +1,9 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap, catchError, of, map } from 'rxjs';
+import { Observable, tap, catchError, of, map, from, switchMap } from 'rxjs';
+import { PlatformService } from '../platform/platform.service';
+import { NativeTokenStore } from './native-token.store';
 
 export interface User {
   id: string;
@@ -35,6 +37,9 @@ export interface RegisterRequest {
 export class AuthService {
   private readonly USER_KEY = 'docuvault_user';
 
+  private platform = inject(PlatformService);
+  private tokenStore = inject(NativeTokenStore);
+
   private userSignal = signal<User | null>(this.getStoredUser());
 
   user = this.userSignal.asReadonly();
@@ -51,9 +56,35 @@ export class AuthService {
   ) {}
 
   login(credentials: LoginRequest): Observable<AuthResponse> {
+    if (this.platform.isNative()) {
+      return this.nativeLogin(credentials);
+    }
     return this.http.post<AuthResponse>('/api/auth/login', credentials, { withCredentials: true }).pipe(
       tap(response => this.handleAuthResponse(response)),
       catchError(error => of({ error: error.error?.error || 'Login failed' }))
+    );
+  }
+
+  private nativeLogin(credentials: LoginRequest): Observable<AuthResponse> {
+    return from(this.platform.deviceLabel()).pipe(
+      switchMap(deviceName =>
+        this.http.post<{ user?: User; token?: string; error?: string }>(
+          '/api/auth/native-login',
+          { ...credentials, deviceName }
+        )
+      ),
+      switchMap(response => {
+        if (response.error || !response.token || !response.user) {
+          return of({ error: response.error || 'Login failed' } as AuthResponse);
+        }
+        return from(this.tokenStore.set(response.token)).pipe(
+          map(() => {
+            this.handleAuthResponse({ user: response.user });
+            return { user: response.user } as AuthResponse;
+          })
+        );
+      }),
+      catchError(error => of({ error: error.error?.error || 'Login failed' } as AuthResponse))
     );
   }
 
@@ -77,10 +108,14 @@ export class AuthService {
   }
 
   logout(): void {
-    this.http.post('/api/auth/logout', {}, { withCredentials: true }).subscribe({
-      complete: () => {},
-      error: () => {}
-    });
+    if (this.platform.isNative()) {
+      this.tokenStore.clear();
+    } else {
+      this.http.post('/api/auth/logout', {}, { withCredentials: true }).subscribe({
+        complete: () => {},
+        error: () => {}
+      });
+    }
     localStorage.removeItem(this.USER_KEY);
     this.userSignal.set(null);
     this.router.navigate(['/login']);

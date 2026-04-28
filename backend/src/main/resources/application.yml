@@ -34,6 +34,9 @@ spring:
         smtp:
           auth: true
           localhost: ${MAIL_SMTP_LOCALHOST:docuvault.systaro.de}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
           starttls:
             enable: false
 
@@ -87,6 +90,17 @@ minio:
 # Git Repository Storage
 git:
   repos-path: ${GIT_REPOS_PATH:/data/repos}
+
+# Push notifications
+fcm:
+  service-account-path: ${FCM_SERVICE_ACCOUNT_PATH:}
+  project-id: ${FCM_PROJECT_ID:}
+apns:
+  key-path: ${APNS_KEY_PATH:}
+  key-id: ${APNS_KEY_ID:}
+  team-id: ${APNS_TEAM_ID:}
+  bundle-id: ${APNS_BUNDLE_ID:}
+  production: ${APNS_PRODUCTION:false}
 
 # Logging
 logging:

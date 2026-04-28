@@ -65,6 +65,8 @@ import { UsersService } from '../../core/api/users.service';
                     name="name"
                     class="input"
                     placeholder="Enter your full name"
+                    autocomplete="name"
+                    enterkeyhint="next"
                     required
                   />
                 </div>
@@ -80,6 +82,8 @@ import { UsersService } from '../../core/api/users.service';
                     name="password"
                     class="input"
                     placeholder="Choose a password"
+                    autocomplete="new-password"
+                    enterkeyhint="next"
                     required
                     minlength="8"
                   />
@@ -99,12 +103,14 @@ import { UsersService } from '../../core/api/users.service';
                     name="confirmPassword"
                     class="input"
                     placeholder="Confirm your password"
+                    autocomplete="new-password"
+                    enterkeyhint="go"
                     required
                   />
                 </div>
               </div>
 
-              <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full">
+              <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Create Account">
                 @if (loading()) {
                   <span class="material-icons animate-spin">sync</span>
                   Creating account...
@@ -304,19 +310,41 @@ import { UsersService } from '../../core/api/users.service';
     @media (max-width: 768px) {
       .invitation-container {
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
       }
 
       .invitation-left {
-        padding: 32px;
-        min-height: 200px;
+        padding: 16px 24px;
+        min-height: 0;
+        flex: 0 0 auto;
+      }
+
+      .invitation-brand-logo {
+        max-width: 120px;
+        margin-bottom: 0;
       }
 
       .invitation-brand p {
-        font-size: 14px;
+        display: none;
       }
 
       .invitation-right {
-        padding: 32px;
+        padding: 24px 24px 32px;
+      }
+
+      .invitation-form h2 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .invitation-form .subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 16px;
       }
     }
   `]

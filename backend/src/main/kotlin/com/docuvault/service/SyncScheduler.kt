@@ -7,9 +7,11 @@ import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.git.GitConflictService
+import com.docuvault.service.git.GitDiffService
 import com.docuvault.service.git.GitOperationException
 import com.docuvault.service.git.GitService
 import com.docuvault.service.git.MergeConflictException
+import com.docuvault.service.notification.ChangeNotificationService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -26,8 +28,10 @@ class SyncScheduler(
     private val spaceRepository: SpaceRepository,
     private val gitService: GitService,
     private val gitConflictService: GitConflictService,
+    private val gitDiffService: GitDiffService,
     private val documentRepository: DocumentRepository,
-    private val embeddingService: EmbeddingService
+    private val embeddingService: EmbeddingService,
+    private val changeNotificationService: ChangeNotificationService
 ) {
     private val logger = LoggerFactory.getLogger(SyncScheduler::class.java)
 
@@ -57,8 +61,18 @@ class SyncScheduler(
             if (Instant.now().toEpochMilli() - lastSync.toEpochMilli() >= intervalMs) {
                 try {
                     logger.info("Syncing space: ${space.name}")
+                    val fromRef = space.lastSyncedCommitSha
                     gitService.pullChanges(space)
+                    val toRef = gitDiffService.currentHeadSha(space)
                     val filesChanged = indexDocuments(space)
+                    if (toRef != null) {
+                        try {
+                            changeNotificationService.recordSyncedChanges(space, fromRef, toRef)
+                        } catch (e: Exception) {
+                            logger.warn("Failed to dispatch change notifications for space '${space.name}': ${e.message}", e)
+                        }
+                        space.lastSyncedCommitSha = toRef
+                    }
                     space.syncStatus = SyncStatus.OK
                     spaceRepository.updateSyncStatus(space.id!!, Instant.now(), null, filesChanged)
                     spaceRepository.save(space)

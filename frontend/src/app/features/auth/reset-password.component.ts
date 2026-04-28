@@ -61,6 +61,8 @@ import { AuthService } from '../../core/auth/auth.service';
                     name="password"
                     class="input"
                     placeholder="Enter new password"
+                    autocomplete="new-password"
+                    enterkeyhint="next"
                     required
                   />
                   <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
@@ -80,12 +82,14 @@ import { AuthService } from '../../core/auth/auth.service';
                     name="confirmPassword"
                     class="input"
                     placeholder="Confirm new password"
+                    autocomplete="new-password"
+                    enterkeyhint="go"
                     required
                   />
                 </div>
               </div>
 
-              <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full">
+              <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Reset Password">
                 @if (loading()) {
                   <span class="material-icons animate-spin">sync</span>
                   Resetting...
@@ -285,19 +289,41 @@ import { AuthService } from '../../core/auth/auth.service';
     @media (max-width: 768px) {
       .reset-container {
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
       }
 
       .reset-left {
-        padding: 32px;
-        min-height: 200px;
+        padding: 16px 24px;
+        min-height: 0;
+        flex: 0 0 auto;
+      }
+
+      .reset-brand-logo {
+        max-width: 120px;
+        margin-bottom: 0;
       }
 
       .reset-brand p {
-        font-size: 14px;
+        display: none;
       }
 
       .reset-right {
-        padding: 32px;
+        padding: 24px 24px 32px;
+      }
+
+      .reset-form h2 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .reset-form .subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 16px;
       }
     }
   `]

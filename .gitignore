@@ -10,6 +10,9 @@
 *.jks
 *.keystore
 *.pfx
+*-firebase-adminsdk-*.json
+firebase-admin.json
+AuthKey_*.p8
 
 # IDE
 .idea/
@@ -54,3 +57,17 @@ docker-compose.production.yml
 
 # Data volumes (local development)
 data/
+
+# Capacitor native projects — keep source, exclude build/derived output
+frontend/ios/App/Pods/
+frontend/ios/App/build/
+frontend/ios/App/App/public/
+frontend/ios/DerivedData/
+frontend/ios/.gradle/
+frontend/android/app/src/main/assets/public/
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/captures/
+frontend/android/local.properties
+frontend/.capacitor/

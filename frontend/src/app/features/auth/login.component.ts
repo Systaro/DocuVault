@@ -42,6 +42,9 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="email"
                   class="input"
                   placeholder="Enter your email"
+                  autocomplete="username"
+                  inputmode="email"
+                  enterkeyhint="next"
                   required
                 />
               </div>
@@ -57,6 +60,8 @@ import { AuthService } from '../../core/auth/auth.service';
                   name="password"
                   class="input"
                   placeholder="Enter your password"
+                  autocomplete="current-password"
+                  enterkeyhint="go"
                   required
                 />
                 <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
@@ -73,7 +78,7 @@ import { AuthService } from '../../core/auth/auth.service';
               <a routerLink="/forgot-password" class="link">Forgot password?</a>
             </div>
 
-            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full">
+            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Sign In">
               @if (loading()) {
                 <span class="material-icons animate-spin">sync</span>
                 Signing in...
@@ -321,28 +326,45 @@ import { AuthService } from '../../core/auth/auth.service';
     @media (max-width: 768px) {
       .login-container {
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
       }
 
       .login-left {
-        padding: 32px;
-        min-height: 200px;
+        padding: 16px 24px;
+        min-height: 0;
+        flex: 0 0 auto;
       }
 
-      .login-brand-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
-      }
-
-      .login-brand h1 {
-        font-size: 24px;
+      .login-brand-logo {
+        max-width: 120px;
+        margin-bottom: 0;
       }
 
       .login-brand p {
-        font-size: 14px;
+        display: none;
       }
 
       .login-right {
-        padding: 32px;
+        padding: 24px 24px 32px;
+      }
+
+      .login-form h2 {
+        font-size: 22px;
+        margin-bottom: 4px;
+      }
+
+      .login-form .subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 16px;
+      }
+
+      .signup-link {
+        margin-top: 20px;
       }
     }
   `]
