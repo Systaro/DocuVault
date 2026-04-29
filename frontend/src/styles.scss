@@ -101,7 +101,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-// Material Icons helper
+// Material Icons font (bundled locally — no Google Fonts CDN dependency, works offline & in WebViews with strict CSP)
+@font-face {
+  font-family: 'Material Icons';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('assets/fonts/material-icons.woff2') format('woff2');
+}
+
 .material-icons {
   font-family: 'Material Icons';
   font-weight: normal;

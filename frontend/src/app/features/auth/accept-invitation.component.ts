@@ -107,6 +107,9 @@ import { UsersService } from '../../core/api/users.service';
                     enterkeyhint="go"
                     required
                   />
+                  <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                    {{ showPassword() ? 'visibility_off' : 'visibility' }}
+                  </span>
                 </div>
               </div>
 

@@ -72,7 +72,7 @@ import { AuthService } from '../../core/auth/auth.service';
               <div class="input-icon">
                 <span class="material-icons">lock</span>
                 <input
-                  type="password"
+                  [type]="showPassword() ? 'text' : 'password'"
                   [(ngModel)]="password"
                   name="password"
                   class="input"
@@ -82,6 +82,9 @@ import { AuthService } from '../../core/auth/auth.service';
                   required
                   minlength="8"
                 />
+                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  {{ showPassword() ? 'visibility_off' : 'visibility' }}
+                </span>
               </div>
             </div>
 
@@ -90,7 +93,7 @@ import { AuthService } from '../../core/auth/auth.service';
               <div class="input-icon">
                 <span class="material-icons">lock</span>
                 <input
-                  type="password"
+                  [type]="showPassword() ? 'text' : 'password'"
                   [(ngModel)]="confirmPassword"
                   name="confirmPassword"
                   class="input"
@@ -99,6 +102,9 @@ import { AuthService } from '../../core/auth/auth.service';
                   enterkeyhint="go"
                   required
                 />
+                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  {{ showPassword() ? 'visibility_off' : 'visibility' }}
+                </span>
               </div>
             </div>
 
@@ -312,6 +318,7 @@ export class RegisterComponent {
   email = '';
   password = '';
   confirmPassword = '';
+  showPassword = signal(false);
   loading = signal(false);
   error = signal<string | null>(null);
 
