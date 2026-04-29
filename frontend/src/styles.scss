@@ -252,7 +252,8 @@ body {
 .input-icon {
   position: relative;
 
-  .material-icons {
+  // Leading icon (sits on the left of the input) — not interactive
+  > .material-icons:not(.toggle-password) {
     position: absolute;
     left: 16px;
     top: 50%;
@@ -263,8 +264,29 @@ body {
     z-index: 1;
   }
 
+  // Trailing icon used as a click target (e.g. show-password toggle)
+  > .toggle-password {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 20px;
+    cursor: pointer;
+    user-select: none;
+    z-index: 2;
+
+    &:hover {
+      color: var(--text-secondary);
+    }
+  }
+
   input, select, textarea {
     padding-left: 48px;
+  }
+
+  &:has(> .toggle-password) input {
+    padding-right: 48px;
   }
 
   &.textarea-icon .material-icons {

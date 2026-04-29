@@ -284,19 +284,6 @@ import { AuthService } from '../../core/auth/auth.service';
       }
     }
 
-    .toggle-password {
-      position: absolute;
-      right: 12px;
-      cursor: pointer;
-      color: var(--text-muted);
-      font-size: 20px;
-      user-select: none;
-
-      &:hover {
-        color: var(--text-secondary);
-      }
-    }
-
     .error-message {
       display: flex;
       align-items: center;
