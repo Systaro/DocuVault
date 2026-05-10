@@ -167,5 +167,5 @@ if you've enabled file logging via `LOGGING_FILE_NAME`.
 
 ## Support
 
-- Bug reports / install help: <support contact — to be filled in>
+- Bug reports / install help: antonia.engfors@systaro.de
 - Status of your install: `docker compose -f docker-compose.product.yml ps`
