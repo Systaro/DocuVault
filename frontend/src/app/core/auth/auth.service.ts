@@ -95,6 +95,19 @@ export class AuthService {
     );
   }
 
+  getSetupStatus(): Observable<{ needsSetup: boolean }> {
+    return this.http.get<{ needsSetup: boolean }>('/api/auth/setup-status').pipe(
+      catchError(() => of({ needsSetup: false }))
+    );
+  }
+
+  setupAdmin(data: RegisterRequest): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>('/api/auth/setup-admin', data, { withCredentials: true }).pipe(
+      tap(response => this.handleAuthResponse(response)),
+      catchError(error => of({ error: error.error?.error || 'Setup failed' }))
+    );
+  }
+
   forgotPassword(email: string): Observable<{ message: string }> {
     return this.http.post<{ message: string }>('/api/auth/forgot-password', { email }).pipe(
       catchError(error => of({ message: error.error?.error || 'Something went wrong. Please try again.' }))

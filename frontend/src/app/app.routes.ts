@@ -16,6 +16,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/register.component').then(m => m.RegisterComponent)
   },
   {
+    path: 'setup',
+    loadComponent: () => import('./features/auth/setup.component').then(m => m.SetupComponent)
+  },
+  {
     path: 'accept-invitation',
     loadComponent: () => import('./features/auth/accept-invitation.component').then(m => m.AcceptInvitationComponent)
   },

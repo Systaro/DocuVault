@@ -75,11 +75,6 @@ gitlab:
   url: ${GITLAB_URL:https://gitlab.com}
   token: ${GITLAB_TOKEN:}
 
-# Admin Configuration
-admin:
-  email: ${ADMIN_EMAIL:}
-  password: ${ADMIN_PASSWORD:}
-
 # MinIO / S3 Configuration
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

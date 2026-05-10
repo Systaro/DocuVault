@@ -44,8 +44,10 @@ where indicated (`openssl rand -base64 48`). The fields that *must* be set:
 - `LETSENCRYPT_EMAIL` (gets cert expiry notices)
 - `DOCUVAULT_REGISTRY_USER` + `DOCUVAULT_REGISTRY_TOKEN` (from Systaro)
 - `DB_PASSWORD`, `JWT_SECRET`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`
-- `ADMIN_EMAIL`, `ADMIN_PASSWORD` (used to bootstrap the first admin user)
 - `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` (your SMTP relay)
+
+You do **not** set an admin account in `.env`. The first admin is created in
+the browser via the setup wizard the first time you visit your instance.
 
 ## 3. Install
 
@@ -67,10 +69,16 @@ logs and rolls back to the previous version. On a fresh install there is no
 previous version, so the new container stays running but unhealthy — see
 *Troubleshooting* below.
 
-## 4. Verify
+## 4. Create the administrator (first-time setup)
 
-Visit `https://<PUBLIC_HOSTNAME>`. You should see the login screen. Sign in
-with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`.
+Visit `https://<PUBLIC_HOSTNAME>`. On a fresh install the app redirects you
+to `/setup`, where you create the first administrator account in the browser
+(name, email, password). Once submitted, you're logged in and dropped on the
+dashboard.
+
+The setup endpoint stops working as soon as any user exists, so it cannot be
+used to take over an existing install. Additional users are invited from the
+admin panel.
 
 Health endpoint (returns `{"status":"UP"}` once everything is ready):
 

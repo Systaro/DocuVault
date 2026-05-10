@@ -51,7 +51,6 @@ USAGE
 fi
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
-HEALTH_URL="${HEALTH_URL:-http://localhost:7030/api/actuator/health}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"
 BACKUP_RETAIN="${BACKUP_RETAIN:-10}"
 STATE_FILE=".docuvault-current-version"
@@ -76,9 +75,11 @@ for cmd in docker curl tar; do
   }
 done
 
-# Read DB creds from .env without sourcing the file (sourcing is fragile)
+# Read values from .env without sourcing the file (sourcing is fragile).
+# Strips both single and double quotes — `infisical export --format=dotenv`
+# wraps values in single quotes, manual edits often use double.
 env_get() {
-  grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | sed 's/^"//; s/"$//' || true
+  grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- | sed "s/^['\"]//; s/['\"]\$//" || true
 }
 DB_USERNAME="$(env_get DB_USERNAME)"
 DB_NAME="$(env_get DB_NAME)"
@@ -89,6 +90,21 @@ PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)" | tr '[:upper:]' '[:lo
 REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-registry.git.systaro.de}"
 REGISTRY_USER="${DOCUVAULT_REGISTRY_USER:-$(env_get DOCUVAULT_REGISTRY_USER)}"
 REGISTRY_TOKEN="${DOCUVAULT_REGISTRY_TOKEN:-$(env_get DOCUVAULT_REGISTRY_TOKEN)}"
+
+# HEALTH_URL default depends on whether this is a product install (nginx-proxy
+# on host port 80, backend not directly exposed) or a dev compose (backend
+# bound to host:7030). PUBLIC_HOSTNAME is set in product installs, so we use
+# its presence to pick the right default.
+PUBLIC_HOSTNAME_FROM_ENV="$(env_get PUBLIC_HOSTNAME)"
+if [ -z "${HEALTH_URL:-}" ]; then
+  if [ -n "$PUBLIC_HOSTNAME_FROM_ENV" ]; then
+    HEALTH_URL="http://localhost/api/actuator/health"
+    HEALTH_HOST_HEADER="${HEALTH_HOST_HEADER:-$PUBLIC_HOSTNAME_FROM_ENV}"
+  else
+    HEALTH_URL="http://localhost:7030/api/actuator/health"
+  fi
+fi
+HEALTH_HOST_HEADER="${HEALTH_HOST_HEADER:-}"
 
 PREV_VERSION="<none>"
 [ -f "$STATE_FILE" ] && PREV_VERSION="$(cat "$STATE_FILE")"
@@ -146,7 +162,7 @@ echo "==> Pulling images for $VERSION"
 DOCUVAULT_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" pull backend frontend
 
 echo "==> Restarting backend and frontend"
-DOCUVAULT_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" up -d backend frontend
+DOCUVAULT_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" up -d
 
 # ---------------------------------------------------------------------------
 # 3. Health check (with rollback on failure)
@@ -157,7 +173,11 @@ ATTEMPT=0
 HEALTHY=false
 while true; do
   ATTEMPT=$((ATTEMPT + 1))
-  STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 "$HEALTH_URL" 2>/dev/null || echo "000")
+  if [ -n "$HEALTH_HOST_HEADER" ]; then
+    STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 -H "Host: $HEALTH_HOST_HEADER" "$HEALTH_URL" 2>/dev/null || echo "000")
+  else
+    STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 "$HEALTH_URL" 2>/dev/null || echo "000")
+  fi
   echo "    attempt $ATTEMPT: HTTP $STATUS"
   if [ "$STATUS" = "200" ]; then
     HEALTHY=true

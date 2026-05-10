@@ -39,6 +39,38 @@ class AuthController(
     private val apiTokenService: ApiTokenService
 ) {
     private val logger = LoggerFactory.getLogger(AuthController::class.java)
+    @GetMapping("/setup-status")
+    fun setupStatus(): ResponseEntity<SetupStatusResponse> =
+        ResponseEntity.ok(SetupStatusResponse(needsSetup = userRepository.count() == 0L))
+
+    @PostMapping("/setup-admin")
+    fun setupAdmin(
+        @Valid @RequestBody request: RegisterRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<AuthResponse> {
+        // Only succeeds when zero users exist. Once any user is in the DB,
+        // this endpoint returns 409, so it can never be used to take over
+        // an existing install.
+        if (userRepository.count() > 0L) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(AuthResponse(error = "Setup has already been completed."))
+        }
+
+        val admin = User(
+            email = request.email,
+            passwordHash = passwordEncoder.encode(request.password),
+            name = request.name,
+            role = UserRole.SUPER_ADMIN
+        )
+        val saved = userRepository.save(admin)
+        authenticateSession(httpRequest, request.email, request.password)
+        logger.info("Initial admin created via setup wizard: ${saved.email}")
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            AuthResponse(user = saved.toDto())
+        )
+    }
+
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: RegisterRequest,
@@ -310,6 +342,10 @@ data class AuthResponse(
     val error: String? = null,
     val impersonating: Boolean? = null,
     val originalAdminName: String? = null
+)
+
+data class SetupStatusResponse(
+    val needsSetup: Boolean
 )
 
 data class UserDto(

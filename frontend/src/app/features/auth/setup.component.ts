@@ -1,28 +1,28 @@
-import { Component, OnInit, signal, isDevMode } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
-  selector: 'app-login',
+  selector: 'app-setup',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
-    <div class="login-container">
+    <div class="setup-container">
       <!-- Left Brand Panel -->
-      <div class="login-left">
-        <div class="login-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="login-brand-logo" />
-          <p>Your team's collaborative documentation workspace with Git-powered version control</p>
+      <div class="setup-left">
+        <div class="setup-brand">
+          <img src="assets/logo.png" alt="DocuVault" class="setup-brand-logo" />
+          <p>Welcome — let's get your DocuVault instance set up. Create the first administrator account to continue.</p>
         </div>
       </div>
 
       <!-- Right Form Panel -->
-      <div class="login-right">
-        <div class="login-form">
-          <h2>Welcome back</h2>
-          <p class="subtitle">Sign in to your account to continue</p>
+      <div class="setup-right">
+        <div class="setup-form">
+          <h2>First-time setup</h2>
+          <p class="subtitle">Create the administrator account for this instance</p>
 
           @if (error()) {
             <div class="error-message">
@@ -31,7 +31,24 @@ import { AuthService } from '../../core/auth/auth.service';
             </div>
           }
 
-          <form (ngSubmit)="login()">
+          <form (ngSubmit)="setup()">
+            <div class="form-group">
+              <label class="form-label">Your name</label>
+              <div class="input-icon">
+                <span class="material-icons">person</span>
+                <input
+                  type="text"
+                  [(ngModel)]="name"
+                  name="name"
+                  class="input"
+                  placeholder="Enter your name"
+                  autocomplete="name"
+                  enterkeyhint="next"
+                  required
+                />
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="form-label">Email address</label>
               <div class="input-icon">
@@ -41,8 +58,8 @@ import { AuthService } from '../../core/auth/auth.service';
                   [(ngModel)]="email"
                   name="email"
                   class="input"
-                  placeholder="Enter your email"
-                  autocomplete="username"
+                  placeholder="admin@example.com"
+                  autocomplete="email"
                   inputmode="email"
                   enterkeyhint="next"
                   required
@@ -59,8 +76,29 @@ import { AuthService } from '../../core/auth/auth.service';
                   [(ngModel)]="password"
                   name="password"
                   class="input"
-                  placeholder="Enter your password"
-                  autocomplete="current-password"
+                  placeholder="At least 8 characters"
+                  autocomplete="new-password"
+                  enterkeyhint="next"
+                  required
+                  minlength="8"
+                />
+                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  {{ showPassword() ? 'visibility_off' : 'visibility' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Confirm password</label>
+              <div class="input-icon">
+                <span class="material-icons">lock</span>
+                <input
+                  [type]="showPassword() ? 'text' : 'password'"
+                  [(ngModel)]="confirmPassword"
+                  name="confirmPassword"
+                  class="input"
+                  placeholder="Repeat your password"
+                  autocomplete="new-password"
                   enterkeyhint="go"
                   required
                 />
@@ -70,50 +108,33 @@ import { AuthService } from '../../core/auth/auth.service';
               </div>
             </div>
 
-            <div class="form-row">
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="rememberMe" name="rememberMe" />
-                Remember me
-              </label>
-              <a routerLink="/forgot-password" class="link">Forgot password?</a>
-            </div>
-
-            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Sign In">
+            <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Create administrator account">
               @if (loading()) {
                 <span class="material-icons animate-spin">sync</span>
-                Signing in...
+                Creating administrator…
               } @else {
-                <span class="material-icons">login</span>
-                Sign In
+                <span class="material-icons">admin_panel_settings</span>
+                Create administrator
               }
             </button>
           </form>
 
-          <p class="signup-link">
-            Don't have an account? <a routerLink="/register" class="link">Sign up</a>
+          <p class="setup-note">
+            This is a one-time step. Once the administrator is created, additional users
+            are invited from the admin panel.
           </p>
-
-          @if (isDevMode) {
-            <div class="dev-login">
-              <div class="divider">Development</div>
-              <button type="button" (click)="devLogin()" class="btn btn-dev">
-                <span class="material-icons">bolt</span>
-                Quick Admin Login
-              </button>
-            </div>
-          }
         </div>
       </div>
     </div>
   `,
   styles: [`
-    .login-container {
+    .setup-container {
       display: flex;
       height: 100vh;
       width: 100%;
     }
 
-    .login-left {
+    .setup-left {
       flex: 1;
       min-width: 0;
       background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--primary-light) 100%);
@@ -148,29 +169,27 @@ import { AuthService } from '../../core/auth/auth.service';
       }
     }
 
-    .login-brand {
+    .setup-brand {
       position: relative;
       z-index: 1;
       text-align: center;
       color: white;
     }
 
-    .login-brand-logo {
-      display: inline-block;
+    .setup-brand-logo {
       max-width: 200px;
       height: auto;
       margin-bottom: 24px;
-      filter: brightness(0) invert(1);
     }
 
-    .login-brand p {
+    .setup-brand p {
       font-size: 17px;
       opacity: 0.9;
-      max-width: 300px;
+      max-width: 320px;
       line-height: 1.6;
     }
 
-    .login-right {
+    .setup-right {
       flex: 1;
       min-width: 0;
       display: flex;
@@ -179,27 +198,28 @@ import { AuthService } from '../../core/auth/auth.service';
       align-items: center;
       padding: 64px;
       background: var(--surface);
+      overflow-y: auto;
     }
 
-    .login-form {
+    .setup-form {
       width: 100%;
       max-width: 380px;
     }
 
-    .login-form h2 {
+    .setup-form h2 {
       font-size: 28px;
       font-weight: 600;
       color: var(--text-primary);
       margin-bottom: 8px;
     }
 
-    .login-form .subtitle {
+    .setup-form .subtitle {
       color: var(--text-muted);
       margin-bottom: 32px;
     }
 
     .form-group {
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
 
     .form-label {
@@ -210,78 +230,17 @@ import { AuthService } from '../../core/auth/auth.service';
       margin-bottom: 8px;
     }
 
-    .form-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text-secondary);
-      cursor: pointer;
-
-      input {
-        width: 18px;
-        height: 18px;
-        accent-color: var(--primary);
-      }
-    }
-
     .btn-full {
       width: 100%;
+      margin-top: 8px;
     }
 
-    .signup-link {
+    .setup-note {
       text-align: center;
       margin-top: 32px;
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
-    }
-
-    .dev-login {
-      margin-top: 32px;
-      padding-top: 24px;
-      border-top: 1px dashed var(--border);
-    }
-
-    .divider {
-      text-align: center;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--warning);
-      margin-bottom: 16px;
-    }
-
-    .btn-dev {
-      width: 100%;
-      background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: var(--radius-md);
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      transition: all 0.2s ease;
-
-      &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
-      }
-
-      .material-icons {
-        font-size: 20px;
-      }
+      line-height: 1.6;
     }
 
     .error-message {
@@ -311,37 +270,37 @@ import { AuthService } from '../../core/auth/auth.service';
     }
 
     @media (max-width: 768px) {
-      .login-container {
+      .setup-container {
         flex-direction: column;
         height: auto;
         min-height: 100vh;
       }
 
-      .login-left {
+      .setup-left {
         padding: 16px 24px;
         min-height: 0;
         flex: 0 0 auto;
       }
 
-      .login-brand-logo {
+      .setup-brand-logo {
         max-width: 120px;
         margin-bottom: 0;
       }
 
-      .login-brand p {
+      .setup-brand p {
         display: none;
       }
 
-      .login-right {
+      .setup-right {
         padding: 24px 24px 32px;
       }
 
-      .login-form h2 {
+      .setup-form h2 {
         font-size: 22px;
         margin-bottom: 4px;
       }
 
-      .login-form .subtitle {
+      .setup-form .subtitle {
         font-size: 14px;
         margin-bottom: 20px;
       }
@@ -350,20 +309,20 @@ import { AuthService } from '../../core/auth/auth.service';
         margin-bottom: 16px;
       }
 
-      .signup-link {
+      .setup-note {
         margin-top: 20px;
       }
     }
   `]
 })
-export class LoginComponent implements OnInit {
+export class SetupComponent implements OnInit {
+  name = '';
   email = '';
   password = '';
-  rememberMe = false;
+  confirmPassword = '';
   showPassword = signal(false);
   loading = signal(false);
   error = signal<string | null>(null);
-  isDevMode = isDevMode();
 
   constructor(
     private authService: AuthService,
@@ -371,26 +330,35 @@ export class LoginComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    // Redirect to dashboard if already logged in
-    if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/dashboard']);
-      return;
-    }
-    // First-time install: no users yet — send to setup wizard
+    // If setup is already complete, do not show the wizard.
     this.authService.getSetupStatus().subscribe(status => {
-      if (status.needsSetup) {
-        this.router.navigate(['/setup']);
+      if (!status.needsSetup) {
+        this.router.navigate(['/login']);
       }
     });
   }
 
-  login(): void {
-    if (!this.email || !this.password) return;
+  setup(): void {
+    if (!this.name || !this.email || !this.password) return;
+
+    if (this.password !== this.confirmPassword) {
+      this.error.set('Passwords do not match');
+      return;
+    }
+
+    if (this.password.length < 8) {
+      this.error.set('Password must be at least 8 characters');
+      return;
+    }
 
     this.loading.set(true);
     this.error.set(null);
 
-    this.authService.login({ email: this.email, password: this.password }).subscribe({
+    this.authService.setupAdmin({
+      name: this.name,
+      email: this.email,
+      password: this.password
+    }).subscribe({
       next: (response) => {
         this.loading.set(false);
         if (response.error) {
@@ -404,11 +372,5 @@ export class LoginComponent implements OnInit {
         this.error.set('An error occurred. Please try again.');
       }
     });
-  }
-
-  devLogin(): void {
-    this.email = 'admin@docuvault.local';
-    this.password = 'password123';
-    this.login();
   }
 }
