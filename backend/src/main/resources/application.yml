@@ -40,17 +40,15 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
-app:
-  mail:
-    from-address: ${MAIL_FROM_ADDRESS:noreply@docuvault.systaro.de}
-    from-name: ${MAIL_FROM_NAME:DocuVault}
-          starttls:
-            enable: false
-
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 100MB
+
+app:
+  mail:
+    from-address: ${MAIL_FROM_ADDRESS:noreply@docuvault.systaro.de}
+    from-name: ${MAIL_FROM_NAME:DocuVault}
 
 server:
   address: 0.0.0.0
