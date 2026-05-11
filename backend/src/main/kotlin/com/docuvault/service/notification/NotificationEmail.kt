@@ -5,7 +5,7 @@ import com.docuvault.domain.space.SpaceChangeEvent
 import com.docuvault.service.git.DetectedChange
 
 object NotificationEmail {
-    fun buildInstant(spaceName: String, author: String, changes: List<DetectedChange>): String {
+    fun buildInstant(spaceName: String, author: String, changes: List<DetectedChange>, publicUrl: String): String {
         val rows = changes.joinToString("\n") { c ->
             row(verb(c.changeType), c.filePath, author)
         }
@@ -13,11 +13,12 @@ object NotificationEmail {
             spaceName = spaceName,
             heading = "New activity",
             subheading = "$author made ${changes.size} change${if (changes.size == 1) "" else "s"} in ${escapeHtml(spaceName)}",
-            tableRows = rows
+            tableRows = rows,
+            publicUrl = publicUrl
         )
     }
 
-    fun buildDigest(spaceName: String, events: List<SpaceChangeEvent>, periodLabel: String): String {
+    fun buildDigest(spaceName: String, events: List<SpaceChangeEvent>, periodLabel: String, publicUrl: String): String {
         val rows = events.joinToString("\n") { evt ->
             val author = evt.triggeredBy?.name ?: evt.commitAuthorName ?: "Unknown"
             row(verb(evt.changeType), evt.filePath, author)
@@ -26,7 +27,8 @@ object NotificationEmail {
             spaceName = spaceName,
             heading = "$periodLabel updates",
             subheading = "${escapeHtml(spaceName)} &middot; ${events.size} change${if (events.size == 1) "" else "s"} in the last $periodLabel",
-            tableRows = rows
+            tableRows = rows,
+            publicUrl = publicUrl
         )
     }
 
@@ -44,7 +46,7 @@ object NotificationEmail {
         ChangeType.RENAMED -> "renamed"
     }
 
-    private fun wrap(spaceName: String, heading: String, subheading: String, tableRows: String): String = """
+    private fun wrap(spaceName: String, heading: String, subheading: String, tableRows: String, publicUrl: String): String = """
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -62,7 +64,7 @@ object NotificationEmail {
           </table>
         </td></tr>
         <tr><td style="background:#fafbfc;padding:16px 32px;border-top:1px solid #eef1f4;text-align:center;">
-          <a href="https://docuvault.systaro.de" style="color:#6fb3b8;text-decoration:none;font-size:13px;">Open DocuVault</a>
+          <a href="$publicUrl" style="color:#6fb3b8;text-decoration:none;font-size:13px;">Open DocuVault</a>
         </td></tr>
       </table>
     </td></tr>

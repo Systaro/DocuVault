@@ -9,6 +9,7 @@ import com.docuvault.service.ApiTokenService
 import com.docuvault.service.EmailService
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.transaction.annotation.Transactional
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
@@ -36,8 +37,10 @@ class AuthController(
     private val authenticationManager: AuthenticationManager,
     private val passwordResetTokenRepository: PasswordResetTokenRepository,
     private val emailService: EmailService,
-    private val apiTokenService: ApiTokenService
+    private val apiTokenService: ApiTokenService,
+    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
+    private val publicHost: String get() = publicUrl.replace(Regex("^https?://"), "").trimEnd('/')
     private val logger = LoggerFactory.getLogger(AuthController::class.java)
     @GetMapping("/setup-status")
     fun setupStatus(): ResponseEntity<SetupStatusResponse> =
@@ -240,7 +243,7 @@ class AuthController(
     }
 
     private fun sendPasswordResetEmail(token: PasswordResetToken) {
-        val resetUrl = "https://docuvault.systaro.de/reset-password?token=${token.token}"
+        val resetUrl = "$publicUrl/reset-password?token=${token.token}"
         emailService.sendHtml(
             to = token.email,
             subject = "Reset your DocuVault password",
@@ -255,7 +258,7 @@ class AuthController(
         <!-- Header -->
         <tr><td style="background: linear-gradient(135deg, #4a8a8f 0%, #6fb3b8 50%, #8fcdd2 100%); border-radius: 16px 16px 0 0; padding: 40px 40px 32px; text-align: center;">
           <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
-            <img src="https://docuvault.systaro.de/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
+            <img src="$publicUrl/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
           </div>
           <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Reset Your Password</h1>
           <p style="color: rgba(255,255,255,0.85); font-size: 15px; margin: 0;">DocuVault account security</p>
@@ -289,7 +292,7 @@ class AuthController(
         <tr><td style="background: #fafbfc; border-radius: 0 0 16px 16px; border-top: 1px solid #eef1f4; padding: 24px 40px; text-align: center;">
           <p style="color: #aaa; font-size: 12px; line-height: 1.6; margin: 0;">
             If you didn't request a password reset, you can safely ignore this email.<br>
-            &copy; DocuVault &middot; <a href="https://docuvault.systaro.de" style="color: #6fb3b8; text-decoration: none;">docuvault.systaro.de</a>
+            &copy; DocuVault &middot; <a href="$publicUrl" style="color: #6fb3b8; text-decoration: none;">$publicHost</a>
           </p>
         </td></tr>
       </table>

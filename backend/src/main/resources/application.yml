@@ -46,6 +46,9 @@ spring:
       max-request-size: 100MB
 
 app:
+  # Public URL of this install — used in email links/logos. Falls back to
+  # https://${PUBLIC_HOSTNAME} so customer installs only need PUBLIC_HOSTNAME.
+  public-url: ${PUBLIC_URL:https://${PUBLIC_HOSTNAME:docuvault.systaro.de}}
   mail:
     from-address: ${MAIL_FROM_ADDRESS:noreply@docuvault.systaro.de}
     from-name: ${MAIL_FROM_NAME:DocuVault}

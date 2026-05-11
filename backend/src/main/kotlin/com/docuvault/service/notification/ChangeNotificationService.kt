@@ -18,6 +18,7 @@ import com.docuvault.service.EmailService
 import com.docuvault.service.git.DetectedChange
 import com.docuvault.service.git.GitDiffService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -30,7 +31,8 @@ class ChangeNotificationService(
     private val spacePermissionRepository: SpacePermissionRepository,
     private val userRepository: UserRepository,
     private val pushSenders: List<PushSender>,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(ChangeNotificationService::class.java)
 
@@ -109,7 +111,7 @@ class ChangeNotificationService(
         val author = event.triggeredBy?.name ?: event.commitAuthorName ?: "Someone"
         val subject = "${space.name}: $author ${verb(event.changeType)} ${event.filePath}" +
             if (group.size > 1) " (+${group.size - 1} more)" else ""
-        val html = NotificationEmail.buildInstant(spaceName = space.name, author = author, changes = group)
+        val html = NotificationEmail.buildInstant(spaceName = space.name, author = author, changes = group, publicUrl = publicUrl)
 
         val result = runCatching { emailService.sendHtml(user.email, subject, html) }
         dispatchRepository.save(

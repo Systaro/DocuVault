@@ -22,6 +22,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UserDetails
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
@@ -40,8 +41,10 @@ class UserController(
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
     private val authenticationManager: AuthenticationManager,
-    private val userDetailsService: UserDetailsService
+    private val userDetailsService: UserDetailsService,
+    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
+    private val publicHost: String get() = publicUrl.replace(Regex("^https?://"), "").trimEnd('/')
     @GetMapping("/search")
     fun searchUsers(
         @RequestParam q: String,
@@ -388,7 +391,7 @@ class UserController(
     }
 
     private fun sendInvitationEmail(invitation: Invitation) {
-        val acceptUrl = "https://docuvault.systaro.de/accept-invitation?token=${invitation.token}"
+        val acceptUrl = "$publicUrl/accept-invitation?token=${invitation.token}"
         val roleName = invitation.role.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
         val expiryDate = invitation.expiresAt.toString().substring(0, 10)
         emailService.sendHtml(
@@ -405,7 +408,7 @@ class UserController(
         <!-- Header -->
         <tr><td style="background: linear-gradient(135deg, #4a8a8f 0%, #6fb3b8 50%, #8fcdd2 100%); border-radius: 16px 16px 0 0; padding: 40px 40px 32px; text-align: center;">
           <div style="width: 56px; height: 56px; background: rgba(255,255,255,0.2); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
-            <img src="https://docuvault.systaro.de/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
+            <img src="$publicUrl/assets/logo.png" alt="DocuVault" width="36" height="36" style="display: block; filter: brightness(0) invert(1);" />
           </div>
           <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">You're invited to DocuVault</h1>
           <p style="color: rgba(255,255,255,0.85); font-size: 15px; margin: 0;">Collaborative documentation with Git-powered version control</p>
@@ -444,7 +447,7 @@ class UserController(
         <tr><td style="background: #fafbfc; border-radius: 0 0 16px 16px; border-top: 1px solid #eef1f4; padding: 24px 40px; text-align: center;">
           <p style="color: #aaa; font-size: 12px; line-height: 1.6; margin: 0;">
             If you didn't expect this invitation, you can safely ignore this email.<br>
-            &copy; DocuVault &middot; <a href="https://docuvault.systaro.de" style="color: #6fb3b8; text-decoration: none;">docuvault.systaro.de</a>
+            &copy; DocuVault &middot; <a href="$publicUrl" style="color: #6fb3b8; text-decoration: none;">$publicHost</a>
           </p>
         </td></tr>
       </table>

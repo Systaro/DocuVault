@@ -12,6 +12,7 @@ import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,7 +25,8 @@ class DigestEmailScheduler(
     private val dispatchRepository: NotificationDispatchRepository,
     private val spacePermissionRepository: SpacePermissionRepository,
     private val userRepository: UserRepository,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(DigestEmailScheduler::class.java)
 
@@ -68,7 +70,7 @@ class DigestEmailScheduler(
             val recipients = digestRecipientsFor(space, spaceEvents, targetMode)
             if (recipients.isEmpty()) continue
 
-            val html = NotificationEmail.buildDigest(space.name, spaceEvents, periodLabel)
+            val html = NotificationEmail.buildDigest(space.name, spaceEvents, periodLabel, publicUrl)
             val subject = "${space.name}: ${spaceEvents.size} change${if (spaceEvents.size == 1) "" else "s"} in last $periodLabel"
 
             for (user in recipients) {
