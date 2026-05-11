@@ -1,6 +1,7 @@
 package com.docuvault.service
 
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.mail.SimpleMailMessage
 import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.mail.javamail.MimeMessageHelper
@@ -9,20 +10,17 @@ import org.springframework.stereotype.Service
 
 @Service
 class EmailService(
-    private val mailSender: JavaMailSender
+    private val mailSender: JavaMailSender,
+    @Value("\${app.mail.from-address:noreply@docuvault.systaro.de}") private val fromAddress: String,
+    @Value("\${app.mail.from-name:DocuVault}") private val fromName: String
 ) {
     private val logger = LoggerFactory.getLogger(EmailService::class.java)
-
-    companion object {
-        const val FROM_ADDRESS = "noreply@docuvault.systaro.de"
-        const val FROM_NAME = "DocuVault"
-    }
 
     @Async
     fun sendSimple(to: String, subject: String, body: String) {
         try {
             val message = SimpleMailMessage()
-            message.from = "$FROM_NAME <$FROM_ADDRESS>"
+            message.from = "$fromName <$fromAddress>"
             message.setTo(to)
             message.subject = subject
             message.text = body
@@ -38,7 +36,7 @@ class EmailService(
         try {
             val mimeMessage = mailSender.createMimeMessage()
             val helper = MimeMessageHelper(mimeMessage, true, "UTF-8")
-            helper.setFrom(FROM_ADDRESS, FROM_NAME)
+            helper.setFrom(fromAddress, fromName)
             helper.setTo(to)
             helper.setSubject(subject)
             helper.setText(htmlBody, true)
