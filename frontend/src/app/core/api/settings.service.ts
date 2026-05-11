@@ -15,6 +15,13 @@ export interface AppSettings {
   'openai.api-key': SettingValue;
   'openai.chat-model': SettingValue;
   'openai.embedding-model': SettingValue;
+  'mail.host'?: SettingValue;
+  'mail.port'?: SettingValue;
+  'mail.username'?: SettingValue;
+  'mail.password'?: SettingValue;
+  'mail.starttls'?: SettingValue;
+  'mail.from-address'?: SettingValue;
+  'mail.from-name'?: SettingValue;
 }
 
 export interface UpdateSettingsRequest {
@@ -23,6 +30,13 @@ export interface UpdateSettingsRequest {
   openaiApiKey?: string;
   openaiChatModel?: string;
   openaiEmbeddingModel?: string;
+  mailHost?: string;
+  mailPort?: number;
+  mailUsername?: string;
+  mailPassword?: string;
+  mailStartTls?: boolean;
+  mailFromAddress?: string;
+  mailFromName?: string;
 }
 
 export interface TestResult {
@@ -48,5 +62,9 @@ export class SettingsService {
 
   testOpenai(apiKey?: string, model?: string): Observable<TestResult> {
     return this.http.post<TestResult>('/api/settings/test-openai', { apiKey, model });
+  }
+
+  testEmail(to: string): Observable<TestResult> {
+    return this.http.post<TestResult>('/api/settings/test-email', { to });
   }
 }

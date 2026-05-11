@@ -6,6 +6,7 @@ import com.aallam.openai.api.chat.ChatRole
 import com.aallam.openai.api.http.Timeout
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
+import com.docuvault.service.EmailService
 import com.docuvault.service.SettingValue
 import com.docuvault.service.SettingsService
 import kotlinx.coroutines.runBlocking
@@ -19,7 +20,8 @@ import kotlin.time.Duration.Companion.seconds
 @RequestMapping("/settings")
 @PreAuthorize("hasRole('SUPER_ADMIN')")
 class SettingsController(
-    private val settingsService: SettingsService
+    private val settingsService: SettingsService,
+    private val emailService: EmailService
 ) {
 
     @GetMapping
@@ -45,8 +47,57 @@ class SettingsController(
         request.openaiEmbeddingModel?.let {
             settingsService.set(SettingsService.OPENAI_EMBEDDING_MODEL, it)
         }
+        request.mailHost?.let {
+            settingsService.set(SettingsService.MAIL_HOST, it)
+        }
+        request.mailPort?.let {
+            settingsService.set(SettingsService.MAIL_PORT, it.toString())
+        }
+        request.mailUsername?.let {
+            settingsService.set(SettingsService.MAIL_USERNAME, it)
+        }
+        request.mailPassword?.let {
+            settingsService.set(SettingsService.MAIL_PASSWORD, it, encrypted = true)
+        }
+        request.mailStartTls?.let {
+            settingsService.set(SettingsService.MAIL_STARTTLS, it.toString())
+        }
+        request.mailFromAddress?.let {
+            settingsService.set(SettingsService.MAIL_FROM_ADDRESS, it)
+        }
+        request.mailFromName?.let {
+            settingsService.set(SettingsService.MAIL_FROM_NAME, it)
+        }
 
         return ResponseEntity.ok(mapOf("message" to "Settings updated successfully"))
+    }
+
+    @PostMapping("/test-email")
+    fun testEmail(@RequestBody request: TestEmailRequest): ResponseEntity<TestResult> {
+        if (request.to.isBlank()) {
+            return ResponseEntity.ok(TestResult(
+                success = false,
+                message = "Recipient address is required"
+            ))
+        }
+        if (settingsService.getMailHost().isBlank()) {
+            return ResponseEntity.ok(TestResult(
+                success = false,
+                message = "MAIL_HOST is not configured"
+            ))
+        }
+        return try {
+            emailService.sendTestSync(request.to)
+            ResponseEntity.ok(TestResult(
+                success = true,
+                message = "Test email sent to ${request.to} from ${settingsService.getMailFromAddress()}"
+            ))
+        } catch (e: Exception) {
+            ResponseEntity.ok(TestResult(
+                success = false,
+                message = "SMTP send failed: ${e.message?.take(300)}"
+            ))
+        }
     }
 
     @PostMapping("/test-gitlab")
@@ -134,7 +185,18 @@ data class UpdateSettingsRequest(
     val gitlabToken: String? = null,
     val openaiApiKey: String? = null,
     val openaiChatModel: String? = null,
-    val openaiEmbeddingModel: String? = null
+    val openaiEmbeddingModel: String? = null,
+    val mailHost: String? = null,
+    val mailPort: Int? = null,
+    val mailUsername: String? = null,
+    val mailPassword: String? = null,
+    val mailStartTls: Boolean? = null,
+    val mailFromAddress: String? = null,
+    val mailFromName: String? = null
+)
+
+data class TestEmailRequest(
+    val to: String
 )
 
 data class TestGitlabRequest(

@@ -240,6 +240,110 @@ import { SettingsService, AppSettings, TestResult } from '../../core/api/setting
           </div>
         </div>
 
+        <!-- Email / SMTP -->
+        <div class="settings-card" id="email">
+          <div class="settings-card-header">
+            <div class="settings-card-icon">
+              <span class="material-icons">mail</span>
+            </div>
+            <div>
+              <h2>Email (SMTP)</h2>
+              <p>Outbound mail for invitations, password resets, and notifications</p>
+            </div>
+          </div>
+
+          <div class="settings-card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mailHost">SMTP host</label>
+                <input id="mailHost" type="text" [(ngModel)]="mailHost"
+                       placeholder="mail.example.com" class="form-input" />
+                <span class="source-badge" [class.database]="settings()?.['mail.host']?.source === 'database'">
+                  {{ settings()?.['mail.host']?.source === 'database' ? 'From database' : 'From environment' }}
+                </span>
+              </div>
+              <div class="form-group">
+                <label for="mailPort">Port</label>
+                <input id="mailPort" type="number" [(ngModel)]="mailPort"
+                       placeholder="25" class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="mailUsername">Username</label>
+              <input id="mailUsername" type="text" [(ngModel)]="mailUsername"
+                     autocomplete="off" class="form-input" />
+            </div>
+
+            <div class="form-group">
+              <label for="mailPassword">Password</label>
+              <input id="mailPassword" type="password" [(ngModel)]="mailPassword"
+                     autocomplete="new-password"
+                     [placeholder]="settings()?.['mail.password']?.configured ? 'Stored. Leave blank to keep.' : 'Enter SMTP password'"
+                     class="form-input" />
+              <span class="source-badge" [class.database]="settings()?.['mail.password']?.source === 'database'">
+                @if (settings()?.['mail.password']?.configured) {
+                  {{ settings()?.['mail.password']?.source === 'database' ? 'Configured (database)' : 'Configured (environment)' }}
+                } @else {
+                  Not configured
+                }
+              </span>
+            </div>
+
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="mailStartTls" />
+                Use STARTTLS
+              </label>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mailFromAddress">From address</label>
+                <input id="mailFromAddress" type="email" [(ngModel)]="mailFromAddress"
+                       placeholder="noreply@example.com" class="form-input" />
+              </div>
+              <div class="form-group">
+                <label for="mailFromName">From name</label>
+                <input id="mailFromName" type="text" [(ngModel)]="mailFromName"
+                       placeholder="DocuVault" class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="testEmailTo">Send test email to</label>
+              <input id="testEmailTo" type="email" [(ngModel)]="testEmailTo"
+                     placeholder="you@example.com" class="form-input" />
+            </div>
+
+            @if (emailTestResult()) {
+              <div class="test-result" [class.success]="emailTestResult()?.success" [class.error]="!emailTestResult()?.success">
+                <span class="material-icons">{{ emailTestResult()?.success ? 'check_circle' : 'error' }}</span>
+                {{ emailTestResult()?.message }}
+              </div>
+            }
+
+            <div class="button-row">
+              <button (click)="testEmail()" [disabled]="testingEmail() || !testEmailTo"
+                      class="btn btn-secondary">
+                @if (testingEmail()) {
+                  <span class="material-icons animate-spin">sync</span> Sending…
+                } @else {
+                  <span class="material-icons">send</span> Send test email
+                }
+              </button>
+              <button (click)="saveEmail()" [disabled]="savingEmail()"
+                      class="btn btn-primary">
+                @if (savingEmail()) {
+                  <span class="material-icons animate-spin">sync</span> Saving…
+                } @else {
+                  <span class="material-icons">save</span> Save email settings
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Application Info -->
         <div class="settings-card">
           <div class="settings-card-header">
@@ -592,6 +696,19 @@ export class SettingsComponent implements OnInit {
   savingOpenai = signal(false);
   openaiTestResult = signal<TestResult | null>(null);
 
+  // Email / SMTP form
+  mailHost = '';
+  mailPort = 25;
+  mailUsername = '';
+  mailPassword = '';
+  mailStartTls = true;
+  mailFromAddress = '';
+  mailFromName = 'DocuVault';
+  testEmailTo = '';
+  testingEmail = signal(false);
+  savingEmail = signal(false);
+  emailTestResult = signal<TestResult | null>(null);
+
   constructor(private settingsService: SettingsService) {}
 
   ngOnInit(): void {
@@ -608,6 +725,13 @@ export class SettingsComponent implements OnInit {
         this.gitlabUrl = settings['gitlab.url']?.value || '';
         this.chatModel = settings['openai.chat-model']?.value || 'gpt-4o';
         this.embeddingModel = settings['openai.embedding-model']?.value || 'text-embedding-3-small';
+        this.mailHost = settings['mail.host']?.value || '';
+        this.mailPort = parseInt(settings['mail.port']?.value || '25', 10) || 25;
+        this.mailUsername = settings['mail.username']?.value || '';
+        this.mailStartTls = (settings['mail.starttls']?.value || 'true') === 'true';
+        this.mailFromAddress = settings['mail.from-address']?.value || '';
+        this.mailFromName = settings['mail.from-name']?.value || 'DocuVault';
+        this.testEmailTo = '';
         this.loading.set(false);
       },
       error: (err) => {
@@ -691,6 +815,48 @@ export class SettingsComponent implements OnInit {
       error: () => {
         this.openaiTestResult.set({ success: false, message: 'Failed to save settings' });
         this.savingOpenai.set(false);
+      }
+    });
+  }
+
+  saveEmail(): void {
+    this.savingEmail.set(true);
+    this.emailTestResult.set(null);
+
+    this.settingsService.updateSettings({
+      mailHost: this.mailHost || undefined,
+      mailPort: this.mailPort || undefined,
+      mailUsername: this.mailUsername || undefined,
+      mailPassword: this.mailPassword || undefined,
+      mailStartTls: this.mailStartTls,
+      mailFromAddress: this.mailFromAddress || undefined,
+      mailFromName: this.mailFromName || undefined
+    }).subscribe({
+      next: () => {
+        this.mailPassword = '';
+        this.loadSettings();
+        this.savingEmail.set(false);
+      },
+      error: () => {
+        this.emailTestResult.set({ success: false, message: 'Failed to save settings' });
+        this.savingEmail.set(false);
+      }
+    });
+  }
+
+  testEmail(): void {
+    if (!this.testEmailTo) return;
+    this.testingEmail.set(true);
+    this.emailTestResult.set(null);
+
+    this.settingsService.testEmail(this.testEmailTo).subscribe({
+      next: (result) => {
+        this.emailTestResult.set(result);
+        this.testingEmail.set(false);
+      },
+      error: () => {
+        this.emailTestResult.set({ success: false, message: 'Failed to send test email' });
+        this.testingEmail.set(false);
       }
     });
   }

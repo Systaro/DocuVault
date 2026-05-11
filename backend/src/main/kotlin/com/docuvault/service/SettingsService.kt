@@ -19,6 +19,13 @@ class SettingsService(
     @Value("\${openai.api-key}") private val defaultOpenaiApiKey: String,
     @Value("\${openai.chat-model}") private val defaultChatModel: String,
     @Value("\${openai.embedding-model}") private val defaultEmbeddingModel: String,
+    @Value("\${spring.mail.host:}") private val defaultMailHost: String,
+    @Value("\${spring.mail.port:25}") private val defaultMailPort: String,
+    @Value("\${spring.mail.username:}") private val defaultMailUsername: String,
+    @Value("\${spring.mail.password:}") private val defaultMailPassword: String,
+    @Value("\${spring.mail.properties.mail.smtp.starttls.enable:true}") private val defaultMailStartTls: String,
+    @Value("\${app.mail.from-address:noreply@docuvault.systaro.de}") private val defaultMailFromAddress: String,
+    @Value("\${app.mail.from-name:DocuVault}") private val defaultMailFromName: String,
     @Value("\${encryption.key}") private val encryptionKeySource: String
 ) {
     private val encryptionKey: SecretKeySpec by lazy {
@@ -55,6 +62,13 @@ class SettingsService(
         const val OPENAI_API_KEY = "openai.api-key"
         const val OPENAI_CHAT_MODEL = "openai.chat-model"
         const val OPENAI_EMBEDDING_MODEL = "openai.embedding-model"
+        const val MAIL_HOST = "mail.host"
+        const val MAIL_PORT = "mail.port"
+        const val MAIL_USERNAME = "mail.username"
+        const val MAIL_PASSWORD = "mail.password"
+        const val MAIL_STARTTLS = "mail.starttls"
+        const val MAIL_FROM_ADDRESS = "mail.from-address"
+        const val MAIL_FROM_NAME = "mail.from-name"
     }
 
     fun get(key: String): String? {
@@ -103,6 +117,15 @@ class SettingsService(
         return getOrDefault(OPENAI_EMBEDDING_MODEL, defaultEmbeddingModel)
     }
 
+    fun getMailHost(): String = getOrDefault(MAIL_HOST, defaultMailHost)
+    fun getMailPort(): Int = getOrDefault(MAIL_PORT, defaultMailPort).toIntOrNull() ?: 25
+    fun getMailUsername(): String = getOrDefault(MAIL_USERNAME, defaultMailUsername)
+    fun getMailPassword(): String = getOrDefault(MAIL_PASSWORD, defaultMailPassword)
+    fun getMailStartTls(): Boolean = getOrDefault(MAIL_STARTTLS, defaultMailStartTls).toBooleanStrictOrNull() ?: true
+    fun getMailFromAddress(): String = getOrDefault(MAIL_FROM_ADDRESS, defaultMailFromAddress)
+    fun getMailFromName(): String = getOrDefault(MAIL_FROM_NAME, defaultMailFromName)
+    fun isMailConfigured(): Boolean = getMailHost().isNotBlank()
+
     // Get all settings with masked sensitive values
     fun getAllSettingsForDisplay(): Map<String, SettingValue> {
         val dbSettings = getAll()
@@ -133,6 +156,42 @@ class SettingsService(
             OPENAI_EMBEDDING_MODEL to SettingValue(
                 value = dbSettings[OPENAI_EMBEDDING_MODEL]?.takeIf { it.isNotBlank() } ?: defaultEmbeddingModel,
                 source = if (dbSettings[OPENAI_EMBEDDING_MODEL]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_HOST to SettingValue(
+                value = dbSettings[MAIL_HOST]?.takeIf { it.isNotBlank() } ?: defaultMailHost,
+                source = if (dbSettings[MAIL_HOST]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_PORT to SettingValue(
+                value = dbSettings[MAIL_PORT]?.takeIf { it.isNotBlank() } ?: defaultMailPort,
+                source = if (dbSettings[MAIL_PORT]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_USERNAME to SettingValue(
+                value = dbSettings[MAIL_USERNAME]?.takeIf { it.isNotBlank() } ?: defaultMailUsername,
+                source = if (dbSettings[MAIL_USERNAME]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_PASSWORD to SettingValue(
+                value = maskToken(dbSettings[MAIL_PASSWORD]?.takeIf { it.isNotBlank() } ?: defaultMailPassword),
+                source = if (dbSettings[MAIL_PASSWORD]?.isNotBlank() == true) "database" else "environment",
+                masked = true,
+                configured = (dbSettings[MAIL_PASSWORD]?.isNotBlank() == true) || defaultMailPassword.isNotBlank()
+            ),
+            MAIL_STARTTLS to SettingValue(
+                value = dbSettings[MAIL_STARTTLS]?.takeIf { it.isNotBlank() } ?: defaultMailStartTls,
+                source = if (dbSettings[MAIL_STARTTLS]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_FROM_ADDRESS to SettingValue(
+                value = dbSettings[MAIL_FROM_ADDRESS]?.takeIf { it.isNotBlank() } ?: defaultMailFromAddress,
+                source = if (dbSettings[MAIL_FROM_ADDRESS]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            MAIL_FROM_NAME to SettingValue(
+                value = dbSettings[MAIL_FROM_NAME]?.takeIf { it.isNotBlank() } ?: defaultMailFromName,
+                source = if (dbSettings[MAIL_FROM_NAME]?.isNotBlank() == true) "database" else "environment",
                 masked = false
             )
         )
