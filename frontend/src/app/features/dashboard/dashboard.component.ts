@@ -5,6 +5,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
 import { CreateSpaceModalComponent } from '../../shared/components/create-space-modal.component';
 import { SpacesService, Space, SpaceType } from '../../core/api/spaces.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { QuickShareDialogComponent } from '../../shared/components/quick-share-dialog.component';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
@@ -284,7 +285,7 @@ interface BreadcrumbItem {
         </div>
 
         <!-- Floating AI Button -->
-        @if (!showSpacePicker()) {
+        @if (!showSpacePicker() && caps.aiChat()) {
           <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
             <span class="material-icons">auto_awesome</span>
           </button>
@@ -1072,7 +1073,8 @@ export class DashboardComponent implements OnInit {
     private spacesService: SpacesService,
     private toastService: ToastService,
     private router: Router,
-    public authService: AuthService
+    public authService: AuthService,
+    protected caps: CapabilitiesService
   ) {}
 
   @HostListener('document:click')

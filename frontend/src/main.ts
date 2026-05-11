@@ -8,6 +8,7 @@ import { routes } from './app/app.routes';
 import { authInterceptor } from './app/core/interceptors/auth.interceptor';
 import { NativeTokenStore } from './app/core/auth/native-token.store';
 import { PlatformService } from './app/core/platform/platform.service';
+import { CapabilitiesService } from './app/core/capabilities/capabilities.service';
 
 bootstrapApplication(AppComponent, {
   providers: [
@@ -26,6 +27,12 @@ bootstrapApplication(AppComponent, {
         }
         return Promise.resolve();
       }
+    },
+    {
+      provide: APP_INITIALIZER,
+      multi: true,
+      deps: [CapabilitiesService],
+      useFactory: (caps: CapabilitiesService) => () => caps.load()
     }
   ]
 }).catch(err => console.error(err));

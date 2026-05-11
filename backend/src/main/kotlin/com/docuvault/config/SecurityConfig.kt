@@ -43,6 +43,7 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/capabilities").permitAll()
                     .requestMatchers("/users/accept-invitation").permitAll()
                     .requestMatchers("/shared/**").permitAll()
                     .anyRequest().authenticated()

@@ -9,6 +9,7 @@ import { ShareLinkDialogComponent } from '../../shared/components/share-link-dia
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { InboxService } from '../../core/api/inbox.service';
 import { AnnotationsService } from '../../core/api/annotations.service';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
@@ -122,25 +123,29 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   <span class="material-icons">home</span>
                   Overview
                 </a>
-                <a
-                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'chat'"
-                  routerLinkActive="active"
-                  class="nav-item"
-                >
-                  <span class="material-icons">auto_awesome</span>
-                  AI Chat
-                </a>
-                <a
-                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'inbox'"
-                  routerLinkActive="active"
-                  class="nav-item"
-                >
-                  <span class="material-icons">move_to_inbox</span>
-                  Inbox
-                  @if (unsortedCount() > 0) {
-                    <span class="inbox-badge">{{ unsortedCount() }}</span>
-                  }
-                </a>
+                @if (caps.aiChat()) {
+                  <a
+                    [routerLink]="spaceSignal()?.fullPath | spaceRoute:'chat'"
+                    routerLinkActive="active"
+                    class="nav-item"
+                  >
+                    <span class="material-icons">auto_awesome</span>
+                    AI Chat
+                  </a>
+                }
+                @if (caps.aiInbox()) {
+                  <a
+                    [routerLink]="spaceSignal()?.fullPath | spaceRoute:'inbox'"
+                    routerLinkActive="active"
+                    class="nav-item"
+                  >
+                    <span class="material-icons">move_to_inbox</span>
+                    Inbox
+                    @if (unsortedCount() > 0) {
+                      <span class="inbox-badge">{{ unsortedCount() }}</span>
+                    }
+                  </a>
+                }
                 <a
                   [routerLink]="spaceSignal()?.fullPath | spaceRoute:'settings'"
                   routerLinkActive="active"
@@ -1018,7 +1023,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private documentsService: DocumentsService,
     private sharedLinksService: SharedLinksService,
     private inboxService: InboxService,
-    private annotationsService: AnnotationsService
+    private annotationsService: AnnotationsService,
+    protected caps: CapabilitiesService
   ) {}
 
   ngOnInit(): void {
