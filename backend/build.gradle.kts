@@ -10,6 +10,7 @@ plugins {
 
 group = "com.docuvault"
 version = "0.0.1-SNAPSHOT"
+description = "DocuVault backend — self-hosted documentation platform with Git as the source of truth"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

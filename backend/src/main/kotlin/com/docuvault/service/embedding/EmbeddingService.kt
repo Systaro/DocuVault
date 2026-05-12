@@ -23,6 +23,8 @@ class EmbeddingService(
     private val spaceRepository: SpaceRepository,
     private val entityManager: EntityManager
 ) {
+    private val logger = LoggerFactory.getLogger(EmbeddingService::class.java)
+
     companion object {
         private const val CHUNK_SIZE = 500 // tokens (approximate by splitting on words)
         private const val CHUNK_OVERLAP = 50
@@ -72,7 +74,7 @@ class EmbeddingService(
                 )
                 response.embeddings.firstOrNull()?.embedding?.map { it.toFloat() }?.toFloatArray()
             } catch (e: Exception) {
-                e.printStackTrace()
+                logger.error("Failed to generate embedding", e)
                 null
             }
         }

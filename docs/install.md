@@ -175,5 +175,6 @@ if you've enabled file logging via `LOGGING_FILE_NAME`.
 
 ## Support
 
-- Bug reports / install help: antonia.engfors@systaro.de
+- Bug reports / install help: open an issue at https://github.com/dularion/DocuVault/issues
+- Security disclosure: see [SECURITY.md](../SECURITY.md)
 - Status of your install: `docker compose -f docker-compose.product.yml ps`

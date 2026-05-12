@@ -12,6 +12,7 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.embedding.EmbeddingService
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.*
@@ -26,6 +27,8 @@ class ChatService(
     private val spaceRepository: SpaceRepository,
     private val documentRepository: DocumentRepository
 ) {
+    private val logger = LoggerFactory.getLogger(ChatService::class.java)
+
     fun chat(
         userEmail: String,
         spaceId: UUID,
@@ -78,7 +81,7 @@ class ChatService(
                 )
                 completion.choices.firstOrNull()?.message?.content ?: "I couldn't generate a response."
             } catch (e: Exception) {
-                e.printStackTrace()
+                logger.error("Chat completion failed", e)
                 "An error occurred while processing your request: ${e.message}"
             }
         }

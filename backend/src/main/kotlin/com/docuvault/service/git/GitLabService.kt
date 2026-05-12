@@ -24,7 +24,7 @@ class GitLabService(
             api.projectApi.memberProjects
                 .map { it.toGitLabProject() }
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.error("Failed to list GitLab member projects", e)
             emptyList()
         }
     }
