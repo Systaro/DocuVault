@@ -2,6 +2,7 @@ import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
+import { Title } from '@angular/platform-browser';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
@@ -1019,6 +1020,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
+    private titleService: Title,
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
     private sharedLinksService: SharedLinksService,
@@ -1047,6 +1049,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.loadAnnotationCounts(this.space.id);
       this.buildPathBreadcrumbs();
       this.loadInboxCount(this.space.id);
+      this.updateTitle();
     }
   }
 
@@ -1089,6 +1092,44 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     } else {
       this.breadcrumbSegments.set([]);
     }
+
+    this.updateTitle();
+    this.expandToCurrentDoc();
+  }
+
+  /**
+   * Sets the browser tab title to "<file> · <space> — DocuVault" so the open
+   * document and space are visible before the app name.
+   */
+  private updateTitle(): void {
+    const parts: string[] = [];
+    const docPath = this.currentDocPath();
+    if (docPath) {
+      parts.push(docPath.split('/').pop()?.replace(/\.md$/, '') || docPath);
+    }
+    const space = this.spaceSignal();
+    if (space) {
+      parts.push(space.name);
+    }
+    const prefix = parts.length ? `${parts.join(' · ')} — ` : '';
+    this.titleService.setTitle(`${prefix}DocuVault`);
+  }
+
+  /**
+   * Expands every ancestor folder of the currently open document so the file
+   * tree reveals the active file instead of leaving its folders collapsed.
+   */
+  private expandToCurrentDoc(): void {
+    const path = this.currentDocPath();
+    if (!path || !path.includes('/')) return;
+    const parts = path.split('/');
+    const expanded = new Set(this.expandedFolders());
+    let prefix = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
+      expanded.add(prefix);
+    }
+    this.expandedFolders.set(expanded);
   }
 
   loadFileTree(spaceId: string): void {
@@ -1294,5 +1335,6 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     document.removeEventListener('mousemove', this.boundOnMouseMove);
     document.removeEventListener('mouseup', this.boundOnMouseUp);
+    this.titleService.setTitle('DocuVault');
   }
 }
