@@ -232,14 +232,19 @@ class DocumentController(
         // Generate embeddings asynchronously
         embeddingService.processDocument(saved.id!!, request.content)
 
-        // Commit and push if autoCommit is requested
-        if (request.autoCommit == true) {
-            gitService.commitAndPush(
-                space = space,
-                message = request.commitMessage ?: "Add ${request.path}",
-                authorName = user.name,
-                authorEmail = user.email
-            )
+        // Commit and push if autoCommit is requested — skip for non-git-backed spaces
+        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = request.commitMessage ?: "Add ${request.path}",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
         }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -307,14 +312,19 @@ class DocumentController(
         // Re-generate embeddings
         embeddingService.processDocument(saved.id!!, request.content)
 
-        // Commit and push if autoCommit is requested
-        if (request.autoCommit == true) {
-            gitService.commitAndPush(
-                space = space,
-                message = request.commitMessage ?: "Update ${documentPath}",
-                authorName = user.name,
-                authorEmail = user.email
-            )
+        // Commit and push if autoCommit is requested — skip for non-git-backed spaces
+        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = request.commitMessage ?: "Update ${documentPath}",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
         }
 
         return ResponseEntity.ok(
@@ -506,14 +516,19 @@ class DocumentController(
         // Re-generate embeddings
         embeddingService.processDocument(saved.id!!, content)
 
-        // Commit if requested
-        if (request.autoCommit == true) {
-            gitService.commitAndPush(
-                space = space,
-                message = request.commitMessage ?: "Update ${documentPath}",
-                authorName = user.name,
-                authorEmail = user.email
-            )
+        // Commit if requested — skip for non-git-backed spaces
+        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = request.commitMessage ?: "Update ${documentPath}",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
         }
 
         return ResponseEntity.ok(
