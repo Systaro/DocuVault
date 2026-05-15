@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, forkJoin, takeUntil } from 'rxjs';
@@ -565,8 +565,15 @@ export class PreviewComponent implements OnInit, OnDestroy {
     private documentsService: DocumentsService,
     private markdownService: MarkdownRenderService,
     private annotationsService: AnnotationsService,
-    private sanitizer: DomSanitizer
-  ) {}
+    private sanitizer: DomSanitizer,
+    private elementRef: ElementRef<HTMLElement>
+  ) {
+    // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
+    effect(() => {
+      this.renderedHtml();
+      setTimeout(() => this.markdownService.runMermaid(this.elementRef.nativeElement), 0);
+    });
+  }
 
   ngOnInit(): void {
     this.spaceId = this.route.snapshot.paramMap.get('spaceId') || '';

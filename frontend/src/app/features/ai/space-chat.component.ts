@@ -2,10 +2,10 @@ import { Component, OnInit, signal, computed, ViewChild, ElementRef, AfterViewCh
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { marked } from 'marked';
+import { SafeHtml } from '@angular/platform-browser';
 import { AiService, ChatHistory, ChatMessage } from '../../core/api/ai.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
+import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
 @Component({
@@ -726,7 +726,8 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
     private router: Router,
     private aiService: AiService,
     private spacesService: SpacesService,
-    private sanitizer: DomSanitizer
+    private markdownService: MarkdownRenderService,
+    private hostRef: ElementRef<HTMLElement>
   ) {}
 
   ngOnInit(): void {
@@ -885,10 +886,11 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
   renderMarkdown(content: string): SafeHtml {
     let cached = this.markdownCache.get(content);
     if (!cached) {
-      const html = marked.parse(content) as string;
-      cached = this.sanitizer.bypassSecurityTrustHtml(html);
+      cached = this.markdownService.renderInline(content);
       this.markdownCache.set(content, cached);
     }
+    // Defer mermaid rendering until Angular has flushed the new innerHTML.
+    setTimeout(() => this.markdownService.runMermaid(this.hostRef.nativeElement), 0);
     return cached;
   }
 

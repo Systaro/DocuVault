@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -808,8 +808,15 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     private sanitizer: DomSanitizer,
     private titleService: Title,
     private metaService: Meta,
-    private markdownService: MarkdownRenderService
-  ) {}
+    private markdownService: MarkdownRenderService,
+    private elementRef: ElementRef<HTMLElement>
+  ) {
+    // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
+    effect(() => {
+      this.renderedHtml();
+      setTimeout(() => this.markdownService.runMermaid(this.elementRef.nativeElement), 0);
+    });
+  }
 
   ngOnInit(): void {
     const url = this.router.url.split('?')[0].split('#')[0];
