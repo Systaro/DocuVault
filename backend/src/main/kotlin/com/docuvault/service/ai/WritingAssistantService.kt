@@ -6,12 +6,15 @@ import com.aallam.openai.api.chat.ChatRole
 import com.aallam.openai.api.model.ModelId
 import com.docuvault.config.OpenAIProvider
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 @Service
 class WritingAssistantService(
     private val openAIProvider: OpenAIProvider
 ) {
+    private val logger = LoggerFactory.getLogger(WritingAssistantService::class.java)
+
     private fun maxTokensForModel(tokens: Int): Int? {
         val model = openAIProvider.getChatModel()
         return if (model.startsWith("gpt-5")) null else tokens
@@ -45,7 +48,7 @@ class WritingAssistantService(
                 )
                 completion.choices.firstOrNull()?.message?.content
             } catch (e: Exception) {
-                e.printStackTrace()
+                logger.error("Writing-assistant improve call failed", e)
                 null
             }
         }
@@ -78,7 +81,7 @@ class WritingAssistantService(
                 )
                 completion.choices.firstOrNull()?.message?.content
             } catch (e: Exception) {
-                e.printStackTrace()
+                logger.error("Writing-assistant generateContent call failed", e)
                 null
             }
         }

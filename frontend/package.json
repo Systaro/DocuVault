@@ -1,6 +1,17 @@
 {
   "name": "docuvault",
   "version": "0.0.1",
+  "description": "DocuVault — self-hosted documentation platform with Git as the source of truth",
+  "license": "BUSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dularion/DocuVault.git",
+    "directory": "frontend"
+  },
+  "homepage": "https://github.com/dularion/DocuVault#readme",
+  "bugs": {
+    "url": "https://github.com/dularion/DocuVault/issues"
+  },
   "scripts": {
     "ng": "ng",
     "start": "ng serve --port 7031",

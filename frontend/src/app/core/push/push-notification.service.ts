@@ -49,12 +49,12 @@ export class PushNotificationService {
       console.error('Push registration error', err);
     });
 
-    PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('Push received', notification);
+    PushNotifications.addListener('pushNotificationReceived', (_notification: PushNotificationSchema) => {
+      // Notification received in foreground. The OS handles display.
     });
 
-    PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-      console.log('Push action performed', action);
+    PushNotifications.addListener('pushNotificationActionPerformed', (_action: ActionPerformed) => {
+      // User tapped a notification. Routing to the relevant view is handled elsewhere.
     });
 
     await PushNotifications.register();
