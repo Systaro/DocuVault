@@ -41,8 +41,10 @@ import { ToastService } from '../services/toast.service';
         }
       </div>
     } @else {
-      <!-- Click-capture layer: only active in comment mode, hidden when thread/popover is open -->
-      @if (annotationMode() && !activeAnnotation() && !newAnnotation()) {
+      <!-- Click-capture layer: only active in comment mode, hidden when thread/popover is open.
+           Skipped for html mode — the injected bridge script captures clicks inside the iframe instead,
+           and an outer layer here would intercept clicks before they reach the iframe. -->
+      @if (annotationMode() && !activeAnnotation() && !newAnnotation() && renderMode() !== 'html') {
         <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
       }
 
@@ -835,18 +837,38 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // HTML mode: the iframe scrolls internally — ask the bridge script to scroll to the pin
+    if (this.renderMode() === 'html') {
+      this.sendToIframe({ source: 'docuvault-annotations', type: 'scroll-to-marker', id: annotation.id });
+      const iframe = this.getIframeElement();
+      setTimeout(() => {
+        const rect = iframe?.getBoundingClientRect();
+        this.threadPosX.set(rect ? rect.left + rect.width / 2 - 160 : Math.max(20, (window.innerWidth - 340) / 2));
+        this.threadPosY.set(rect ? Math.max(20, rect.top + 40) : Math.max(20, window.innerHeight * 0.3));
+      }, 450);
+      return;
+    }
+
     const container = this.elRef.nativeElement.parentElement as HTMLElement;
     if (!container) return;
 
+    // For image mode, anchor coords are relative to the IMG (content-layer), not the container.
+    // Use the content layer's offsetTop + the image's height to compute the scroll target.
+    const isImage = this.renderMode() === 'image';
+    const refHeight = isImage ? this.contentHeight() : container.scrollHeight;
+    const refTopOffset = isImage ? this.contentTop() : 0;
+    const refWidth = isImage ? this.contentWidth() : container.scrollWidth;
+    const refLeftOffset = isImage ? this.contentLeft() : 0;
+
     // Scroll the container so the annotation's y position is visible
-    const targetScrollTop = (annotation.anchor.yPercent / 100) * container.scrollHeight - container.clientHeight / 3;
+    const targetScrollTop = refTopOffset + (annotation.anchor.yPercent / 100) * refHeight - container.clientHeight / 3;
     container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
 
     // Position the thread popover near the marker after scroll settles
     setTimeout(() => {
       const rect = container.getBoundingClientRect();
-      const markerX = rect.left + (annotation.anchor!.xPercent / 100) * rect.width;
-      const markerY = rect.top + (annotation.anchor!.yPercent / 100) * container.scrollHeight - container.scrollTop;
+      const markerX = rect.left + refLeftOffset + (annotation.anchor!.xPercent / 100) * refWidth - container.scrollLeft;
+      const markerY = rect.top + refTopOffset + (annotation.anchor!.yPercent / 100) * refHeight - container.scrollTop;
 
       let x = markerX + 20;
       let y = markerY - 20;

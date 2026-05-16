@@ -124,6 +124,13 @@ class SpaceFileController(
         document.body.appendChild(pin);markers[a.id]=pin;
       });
     }
+    if(e.data.type==='scroll-to-marker'){
+      var pin=markers[e.data.id];
+      if(pin){
+        var top=parseFloat(pin.style.top)||0;
+        window.scrollTo({top:Math.max(0,top-window.innerHeight/3),behavior:'smooth'});
+      }
+    }
     if(e.data.type==='enable-click-capture'&&!clickEnabled){
       clickEnabled=true;
       document.addEventListener('click',function(ev){
