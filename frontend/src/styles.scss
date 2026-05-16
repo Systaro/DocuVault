@@ -1118,7 +1118,7 @@ body {
 .dv-mermaid-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 30, 35, 0.85);
+  background: #ffffff;
   z-index: 10000;
   display: flex;
   flex-direction: column;
@@ -1132,8 +1132,9 @@ body {
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.25);
-  color: #fff;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  color: var(--text-primary, #1a2e30);
 
   button {
     width: 36px;
@@ -1141,13 +1142,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--border, #d4e5e7);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    background: var(--surface, #fff);
+    color: var(--text-secondary, #4a6366);
     cursor: pointer;
 
-    &:hover { background: rgba(255, 255, 255, 0.16); }
+    &:hover { background: var(--background, #f6f6f2); color: var(--text-primary, #1a2e30); }
     .material-icons { font-size: 20px; }
   }
 
@@ -1155,7 +1156,7 @@ body {
     min-width: 56px;
     text-align: center;
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-secondary, #4a6366);
   }
 }
 
