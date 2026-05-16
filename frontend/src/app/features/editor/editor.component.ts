@@ -213,15 +213,33 @@ import { marked } from 'marked';
         <!-- Scrollable preview content -->
         <div class="flex-1 overflow-y-auto editor-bg">
           @if (previewType() === 'html') {
-            <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+            <div class="html-preview-container annotation-host">
+              <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+              @if (space() && documentPath) {
+                <app-annotation-overlay
+                  [spaceId]="space()!.id"
+                  [filePath]="documentPath"
+                  [renderMode]="'html'"
+                  [permission]="annotationPermission()"
+                />
+              }
+            </div>
           } @else {
-            <div class="image-zoom-container" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
+            <div class="image-zoom-container annotation-host" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
               <img
                 [src]="previewUrl()"
                 [alt]="documentPath.split('/').pop()"
                 class="preview-image"
                 [style.width]="imageZoom() === 1 ? null : (imageZoom() * 100) + '%'"
               />
+              @if (space() && documentPath) {
+                <app-annotation-overlay
+                  [spaceId]="space()!.id"
+                  [filePath]="documentPath"
+                  [renderMode]="'image'"
+                  [permission]="annotationPermission()"
+                />
+              }
             </div>
             <div class="zoom-toolbar">
               <button class="zoom-btn" (click)="zoomOut()" [disabled]="imageZoom() <= 0.25" title="Zoom out">
@@ -431,6 +449,14 @@ import { marked } from 'marked';
     .preview-file-icon {
       font-size: 16px;
       color: var(--text-muted);
+    }
+
+    .annotation-host { position: relative; }
+
+    .html-preview-container {
+      flex: 1;
+      display: flex;
+      min-height: 100%;
     }
 
     .image-zoom-container {

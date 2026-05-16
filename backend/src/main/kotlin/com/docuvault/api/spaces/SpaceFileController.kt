@@ -108,11 +108,14 @@ class SpaceFileController(
         if(!el&&a.selector){try{el=document.querySelector(a.selector)}catch(ex){}}
         var pin=document.createElement('div');pin.className='dv-pin'+(a.resolved?' resolved':'');
         if(el){
-          var r=el.getBoundingClientRect();var br=document.body.getBoundingClientRect();
-          pin.style.left=(r.left-br.left+r.width*(a.offsetX||0)/100)+'px';
-          pin.style.top=(r.top-br.top+r.height*(a.offsetY||0)/100+window.scrollY)+'px';
+          var r=el.getBoundingClientRect();
+          // r.* is viewport-relative; add scroll to get document-absolute (body's offsetParent is the initial CB)
+          pin.style.left=(r.left+window.scrollX+r.width*(a.offsetX||0)/100)+'px';
+          pin.style.top=(r.top+window.scrollY+r.height*(a.offsetY||0)/100)+'px';
         }else{
-          pin.style.left=a.xPercent+'%';pin.style.top=a.yPercent+'%';
+          // Fallback: convert stored percentages back to absolute pixel coords against the full scrollable body
+          pin.style.left=(a.xPercent/100*document.documentElement.scrollWidth)+'px';
+          pin.style.top=(a.yPercent/100*document.documentElement.scrollHeight)+'px';
         }
         var num=document.createElement('span');num.className='dv-pin-num';num.textContent=a.index;
         pin.appendChild(num);
@@ -125,10 +128,15 @@ class SpaceFileController(
       clickEnabled=true;
       document.addEventListener('click',function(ev){
         if(ev.target.closest('.dv-pin'))return;
-        var br=document.body.getBoundingClientRect();
-        var xP=((ev.clientX-br.left)/br.width)*100;
-        var yP=((ev.clientY+window.scrollY)/document.body.scrollHeight)*100;
-        var t=ev.target.closest('[id]');
+        var sw=document.documentElement.scrollWidth,sh=document.documentElement.scrollHeight;
+        // Absolute document-space click coords
+        var ax=ev.clientX+window.scrollX,ay=ev.clientY+window.scrollY;
+        var xP=(ax/sw)*100,yP=(ay/sh)*100;
+        // Element-anchored offset (where inside the element was clicked, as % of its size)
+        var anchorEl=ev.target.closest('[id]')||ev.target;
+        var er=anchorEl.getBoundingClientRect();
+        var oX=er.width>0?((ev.clientX-er.left)/er.width)*100:0;
+        var oY=er.height>0?((ev.clientY-er.top)/er.height)*100:0;
         var sel=null;try{
           var p=ev.target;var parts=[];while(p&&p!==document.body){
             var tag=p.tagName.toLowerCase();if(p.id){parts.unshift('#'+p.id);break}
@@ -137,7 +145,8 @@ class SpaceFileController(
           if(parts.length)sel=parts.join('>')
         }catch(ex){}
         window.parent.postMessage({source:'docuvault-annotations',type:'click-position',
-          xPercent:xP,yPercent:yP,elementId:t?t.id:null,selector:sel},'*');
+          xPercent:xP,yPercent:yP,offsetX:oX,offsetY:oY,
+          elementId:anchorEl.id||null,selector:sel},'*');
       });
     }
   });

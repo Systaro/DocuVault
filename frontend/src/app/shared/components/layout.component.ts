@@ -5,6 +5,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { GlobalSearchComponent } from './global-search.component';
 import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-modal.component';
+import { APP_VERSION } from '../version';
 
 @Component({
   selector: 'app-layout',
@@ -16,6 +17,7 @@ import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-m
       <header class="app-header">
         <a routerLink="/dashboard" class="app-logo">
           <img src="assets/logo_horiz.png" alt="DocuVault" class="logo-img" [class.inverted]="themeService.darkMode()" />
+          <span class="app-version" [title]="'DocuVault ' + appVersion">{{ appVersion }}</span>
         </a>
 
         <nav class="header-nav">
@@ -118,6 +120,7 @@ import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-m
     }
 
     .app-logo {
+      position: relative;
       display: flex;
       align-items: center;
       text-decoration: none;
@@ -129,6 +132,19 @@ import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-m
         object-fit: contain;
       }
 
+      .app-version {
+        position: absolute;
+        top: -2px;
+        right: -8px;
+        transform: translateX(100%);
+        font-size: 10px;
+        font-weight: 500;
+        line-height: 1;
+        color: var(--text-secondary);
+        opacity: 0.7;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
     }
 
     .header-nav {
@@ -262,6 +278,7 @@ import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-m
 export class LayoutComponent {
   showSearch = signal(false);
   showCapture = signal(false);
+  appVersion = APP_VERSION;
 
   constructor(public authService: AuthService, public themeService: ThemeService) {}
 

@@ -17,23 +17,48 @@ import { ToastService } from '../services/toast.service';
   standalone: true,
   imports: [CommonModule, FormsModule, AnnotationMarkerComponent, AnnotationThreadComponent],
   template: `
-    <!-- Click-capture layer: only active in comment mode, hidden when thread/popover is open -->
-    @if (annotationMode() && !activeAnnotation() && !newAnnotation()) {
-      <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
-    }
+    <!-- Image mode: click + marker layer sized to the image so positions follow scroll & zoom -->
+    @if (renderMode() === 'image') {
+      <div class="annotation-content-layer"
+           [style.width.px]="contentWidth()"
+           [style.height.px]="contentHeight()"
+           [style.left.px]="contentLeft()"
+           [style.top.px]="contentTop()">
+        @if (annotationMode() && !activeAnnotation() && !newAnnotation()) {
+          <div class="annotation-click-layer-inner" (click)="onContentLayerClick($event)"></div>
+        }
+        @for (a of annotations(); track a.id; let i = $index) {
+          @if (a.anchor) {
+            <app-annotation-marker
+              [x]="a.anchor.xPercent"
+              [y]="a.anchor.yPercent"
+              [index]="i + 1"
+              [resolved]="a.resolved"
+              [active]="activeAnnotationId() === a.id"
+              (markerClick)="openThread(a, $event)"
+            />
+          }
+        }
+      </div>
+    } @else {
+      <!-- Click-capture layer: only active in comment mode, hidden when thread/popover is open -->
+      @if (annotationMode() && !activeAnnotation() && !newAnnotation()) {
+        <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
+      }
 
-    <!-- Markers (skip for html mode — iframe renders its own markers) -->
-    @if (renderMode() !== 'html') {
-      @for (a of annotations(); track a.id; let i = $index) {
-        @if (a.anchor) {
-          <app-annotation-marker
-            [x]="a.anchor.xPercent"
-            [y]="a.anchor.yPercent"
-            [index]="i + 1"
-            [resolved]="a.resolved"
-            [active]="activeAnnotationId() === a.id"
-            (markerClick)="openThread(a, $event)"
-          />
+      <!-- Markers (skip for html mode — iframe renders its own markers) -->
+      @if (renderMode() !== 'html') {
+        @for (a of annotations(); track a.id; let i = $index) {
+          @if (a.anchor) {
+            <app-annotation-marker
+              [x]="a.anchor.xPercent"
+              [y]="a.anchor.yPercent"
+              [index]="i + 1"
+              [resolved]="a.resolved"
+              [active]="activeAnnotationId() === a.id"
+              (markerClick)="openThread(a, $event)"
+            />
+          }
         }
       }
     }
@@ -144,6 +169,25 @@ import { ToastService } from '../services/toast.service';
 
     /* Full-area click layer for comment placement */
     .annotation-click-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: auto;
+      cursor: crosshair;
+      z-index: 5;
+    }
+
+    /* Image mode: layer sized to the image's rendered dimensions so markers anchor to image content, not viewport */
+    .annotation-content-layer {
+      position: absolute;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .annotation-content-layer .annotation-pin {
+      pointer-events: auto;
+    }
+
+    .annotation-click-layer-inner {
       position: absolute;
       inset: 0;
       pointer-events: auto;
@@ -474,6 +518,14 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   authorNameInput = '';
   authorName = signal<string | null>(null);
 
+  // Content-layer geometry (image mode) — tracked so markers anchor to the image, not the viewport
+  contentWidth = signal(0);
+  contentHeight = signal(0);
+  contentLeft = signal(0);
+  contentTop = signal(0);
+  private contentObserver: ResizeObserver | null = null;
+  private contentTarget: HTMLElement | null = null;
+
   // Computed
   activeAnnotation = computed(() => {
     const id = this.activeAnnotationId();
@@ -513,12 +565,78 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     setTimeout(() => document.addEventListener('mousedown', this.boundDocClick), 0);
     this.loadAnnotations();
     this.refreshInterval = setInterval(() => this.loadAnnotations(), 30000);
+
+    if (this.renderMode() === 'image') {
+      // Defer to next tick so the <img> sibling is rendered before we observe it
+      setTimeout(() => this.observeContentTarget(), 0);
+    }
   }
 
   ngOnDestroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     window.removeEventListener('message', this.boundMessageHandler);
     document.removeEventListener('mousedown', this.boundDocClick);
+    if (this.contentObserver) {
+      this.contentObserver.disconnect();
+      this.contentObserver = null;
+    }
+  }
+
+  // --- Content-layer tracking (image mode) ---
+
+  private observeContentTarget(): void {
+    const parent = this.elRef.nativeElement.parentElement as HTMLElement | null;
+    if (!parent) return;
+    const img = parent.querySelector('img') as HTMLImageElement | null;
+    if (!img) return;
+
+    this.contentTarget = img;
+
+    const update = () => this.updateContentGeometry();
+
+    if (!img.complete) {
+      img.addEventListener('load', update, { once: true });
+    }
+
+    this.contentObserver = new ResizeObserver(update);
+    this.contentObserver.observe(img);
+    this.contentObserver.observe(parent);
+    update();
+  }
+
+  private updateContentGeometry(): void {
+    const img = this.contentTarget;
+    if (!img) return;
+    const parent = this.elRef.nativeElement.parentElement as HTMLElement | null;
+    if (!parent) return;
+
+    // offsetLeft/offsetTop give the image's position inside its scrollable parent (not viewport-relative,
+    // so values stay correct regardless of scroll position).
+    this.contentLeft.set(img.offsetLeft);
+    this.contentTop.set(img.offsetTop);
+    this.contentWidth.set(img.offsetWidth);
+    this.contentHeight.set(img.offsetHeight);
+  }
+
+  onContentLayerClick(event: MouseEvent): void {
+    if (!this.canComment()) return;
+
+    const target = event.target as HTMLElement;
+    if (target.closest('.annotation-pin, .annotation-thread, .new-annotation-popover, .annotation-fab, .annotation-list')) return;
+
+    const layer = event.currentTarget as HTMLElement;
+    const rect = layer.getBoundingClientRect();
+    const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
+    const yPercent = ((event.clientY - rect.top) / rect.height) * 100;
+
+    const anchor: AnnotationAnchor = {
+      type: 'image',
+      xPercent,
+      yPercent
+    };
+
+    this.closeThread();
+    this.newAnnotation.set({ anchor, screenX: event.clientX + 16, screenY: event.clientY });
   }
 
   private boundDocClick = (event: MouseEvent) => {
@@ -623,6 +741,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         type: 'html',
         xPercent: data.xPercent,
         yPercent: data.yPercent,
+        offsetX: typeof data.offsetX === 'number' ? data.offsetX : undefined,
+        offsetY: typeof data.offsetY === 'number' ? data.offsetY : undefined,
         elementId: data.elementId || undefined,
         selector: data.selector || undefined
       };
