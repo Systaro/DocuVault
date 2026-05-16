@@ -130,12 +130,120 @@ export class MarkdownRenderService {
         node.innerHTML = svg;
         node.setAttribute('data-mermaid-rendered', 'true');
         bindFunctions?.(node);
+        this.attachExpandButton(node, source);
       } catch (err) {
         node.setAttribute('data-mermaid-rendered', 'error');
         const message = err instanceof Error ? err.message : String(err);
         node.innerHTML = `<div class="mermaid-error" style="color:#b91c1c;font-family:monospace;white-space:pre-wrap;">Mermaid error: ${this.escape(message)}</div>`;
       }
     }
+  }
+
+  private attachExpandButton(host: HTMLElement, source: string): void {
+    host.classList.add('dv-mermaid-wrap');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dv-mermaid-expand';
+    btn.title = 'Expand (fullscreen with zoom & pan)';
+    btn.innerHTML = '<span class="material-icons">open_in_full</span>';
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.openFullscreen(source);
+    });
+    host.appendChild(btn);
+  }
+
+  private async openFullscreen(source: string): Promise<void> {
+    const overlay = document.createElement('div');
+    overlay.className = 'dv-mermaid-overlay';
+
+    const header = document.createElement('div');
+    header.className = 'dv-mermaid-overlay-header';
+
+    const stage = document.createElement('div');
+    stage.className = 'dv-mermaid-overlay-stage';
+
+    overlay.appendChild(header);
+    overlay.appendChild(stage);
+    document.body.appendChild(overlay);
+
+    const id = `mermaid-fs-${++this.mermaidSeq}`;
+    try {
+      const { svg, bindFunctions } = await mermaid.render(id, source);
+      stage.innerHTML = svg;
+      bindFunctions?.(stage);
+    } catch (err) {
+      stage.innerHTML = `<div style="color:#fca5a5;font-family:monospace;">Render error: ${this.escape(String(err))}</div>`;
+    }
+
+    let scale = 1;
+    let tx = 0;
+    let ty = 0;
+    const svgEl = stage.querySelector('svg') as SVGElement | null;
+    const apply = () => {
+      if (svgEl) svgEl.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      zoomLabel.textContent = `${Math.round(scale * 100)}%`;
+    };
+
+    const zoomOut = document.createElement('button');
+    zoomOut.title = 'Zoom out';
+    zoomOut.innerHTML = '<span class="material-icons">remove</span>';
+    zoomOut.addEventListener('click', () => { scale = Math.max(0.25, scale - 0.25); apply(); });
+
+    const zoomLabel = document.createElement('span');
+    zoomLabel.className = 'dv-mermaid-zoom-level';
+    zoomLabel.textContent = '100%';
+
+    const zoomIn = document.createElement('button');
+    zoomIn.title = 'Zoom in';
+    zoomIn.innerHTML = '<span class="material-icons">add</span>';
+    zoomIn.addEventListener('click', () => { scale = Math.min(8, scale + 0.25); apply(); });
+
+    const reset = document.createElement('button');
+    reset.title = 'Reset';
+    reset.innerHTML = '<span class="material-icons">filter_center_focus</span>';
+    reset.addEventListener('click', () => { scale = 1; tx = 0; ty = 0; apply(); });
+
+    const close = document.createElement('button');
+    close.title = 'Close (Esc)';
+    close.innerHTML = '<span class="material-icons">close</span>';
+    const teardown = () => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+    };
+    close.addEventListener('click', teardown);
+
+    header.append(zoomOut, zoomLabel, zoomIn, reset, close);
+
+    stage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.15 : -0.15;
+      scale = Math.min(8, Math.max(0.25, scale + delta));
+      apply();
+    }, { passive: false });
+
+    let dragStart: { x: number; y: number; tx: number; ty: number } | null = null;
+    stage.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      dragStart = { x: e.clientX, y: e.clientY, tx, ty };
+      stage.classList.add('dragging');
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragStart) return;
+      tx = dragStart.tx + (e.clientX - dragStart.x);
+      ty = dragStart.ty + (e.clientY - dragStart.y);
+      apply();
+    });
+    document.addEventListener('mouseup', () => {
+      dragStart = null;
+      stage.classList.remove('dragging');
+    });
+
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') teardown(); };
+    document.addEventListener('keydown', onKey);
+
+    apply();
   }
 
   private escape(s: string): string {

@@ -283,7 +283,7 @@ import { marked } from 'marked';
                 <!-- Read-only render (git-synced): full markdown pipeline incl. Mermaid -->
                 <article
                   #readonlyElement
-                  class="prose prose-lg max-w-none"
+                  class="markdown-readonly"
                   [innerHTML]="readonlyHtml()"
                 ></article>
               } @else {
