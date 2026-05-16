@@ -557,6 +557,14 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         this.loadAnnotations();
       }
     });
+
+    // Mirror comment-mode state into the iframe so its click listener only acts when on.
+    effect(() => {
+      const on = this.annotationMode();
+      if (this.renderMode() === 'html' && this.iframeReady) {
+        this.sendToIframe({ source: 'docuvault-annotations', type: 'set-comment-mode', on });
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -721,6 +729,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       this.sendMarkersToIframe();
       if (this.canComment()) {
         this.sendToIframe({ source: 'docuvault-annotations', type: 'enable-click-capture' });
+        this.sendToIframe({ source: 'docuvault-annotations', type: 'set-comment-mode', on: this.annotationMode() });
       }
     }
 

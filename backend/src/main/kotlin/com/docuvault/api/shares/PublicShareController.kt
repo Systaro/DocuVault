@@ -674,7 +674,7 @@ class PublicShareController(
         val anchorFixScript = """<script>document.addEventListener('click',function(e){var a=e.target.closest('a[href^="#"]');if(!a)return;var id=a.getAttribute('href').substring(1);var t=document.getElementById(id)||document.querySelector('[name="'+id+'"]');if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth'})}});</script>"""
         val annotationBridgeScript = """<script>
 (function(){
-  var markers={},clickEnabled=false;
+  var markers={},clickEnabled=false,commentMode=false;
   var style=document.createElement('style');
   style.textContent='.dv-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;transform:translate(-50%,-100%) rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}.dv-pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15)}.dv-pin.resolved{background:#10b981}.dv-pin-num{transform:rotate(45deg);font-size:12px;font-weight:600;color:#fff;user-select:none;font-family:system-ui}.dv-placement-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);transform:translate(-50%,-50%);z-index:9998;pointer-events:none;animation:dvpulse 1.5s ease-in-out infinite}@keyframes dvpulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 6px rgba(245,158,11,0)}}';
   document.head.appendChild(style);
@@ -714,9 +714,14 @@ class PublicShareController(
         window.scrollTo({top:Math.max(0,top-window.innerHeight/3),behavior:'smooth'});
       }
     }
+    if(e.data.type==='set-comment-mode'){
+      commentMode=!!e.data.on;
+      if(!commentMode){var dx=document.getElementById('__dv_placement');if(dx)dx.remove();}
+    }
     if(e.data.type==='enable-click-capture'&&!clickEnabled){
       clickEnabled=true;
       document.addEventListener('click',function(ev){
+        if(!commentMode)return;
         if(ev.target.closest('.dv-pin'))return;
         var sw=document.documentElement.scrollWidth,sh=document.documentElement.scrollHeight;
         var ax=ev.clientX+window.scrollX,ay=ev.clientY+window.scrollY;
