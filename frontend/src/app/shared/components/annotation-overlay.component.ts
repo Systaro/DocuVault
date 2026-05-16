@@ -101,11 +101,14 @@ import { ToastService } from '../services/toast.service';
       />
     }
 
-    <!-- Yellow dot at click position during creation -->
+    <!-- Yellow dot at click position during creation. Skipped for html mode — the bridge script draws
+         the dot inside the iframe at the actual click pixel; the parent's percentages don't translate. -->
     @if (newAnnotation(); as na) {
-      <div class="annotation-placement-dot"
-           [style.left.%]="na.anchor.xPercent"
-           [style.top.%]="na.anchor.yPercent"></div>
+      @if (renderMode() !== 'html') {
+        <div class="annotation-placement-dot"
+             [style.left.%]="na.anchor.xPercent"
+             [style.top.%]="na.anchor.yPercent"></div>
+      }
     }
 
     <!-- New annotation form -->
@@ -921,6 +924,9 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   cancelNewAnnotation(): void {
+    if (this.newAnnotation() && this.renderMode() === 'html') {
+      this.sendToIframe({ source: 'docuvault-annotations', type: 'clear-placement-dot' });
+    }
     this.newAnnotation.set(null);
     this.newAnnotationText = '';
   }
