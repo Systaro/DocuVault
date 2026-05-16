@@ -743,6 +743,7 @@ class PublicShareController(
         document.body.appendChild(dot);
         window.parent.postMessage({source:'docuvault-annotations',type:'click-position',
           xPercent:xP,yPercent:yP,offsetX:oX,offsetY:oY,
+          clientX:ev.clientX,clientY:ev.clientY,
           elementId:anchorEl.id||null,selector:sel},'*');
       });
     }

@@ -762,9 +762,28 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       };
 
       this.closeThread();
+
+      // Translate the iframe-local click coords into parent-viewport coords, then offset for the popover.
       const iframe = this.getIframeElement();
-      const screenX = iframe ? iframe.getBoundingClientRect().left + iframe.clientWidth / 2 : window.innerWidth / 2;
-      const screenY = iframe ? iframe.getBoundingClientRect().top + 60 : window.innerHeight * 0.3;
+      const rect = iframe?.getBoundingClientRect();
+      let screenX: number;
+      let screenY: number;
+      if (rect && typeof data.clientX === 'number' && typeof data.clientY === 'number') {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const POPOVER_W = 280;
+        const POPOVER_H = 160;
+        screenX = rect.left + data.clientX + 16;
+        screenY = rect.top + data.clientY - 20;
+        // Edge clipping
+        if (screenX + POPOVER_W > vw) screenX = rect.left + data.clientX - POPOVER_W - 16;
+        if (screenY + POPOVER_H > vh) screenY = vh - POPOVER_H - 20;
+        if (screenY < 10) screenY = 10;
+        if (screenX < 10) screenX = 10;
+      } else {
+        screenX = rect ? rect.left + rect.width / 2 - 140 : window.innerWidth / 2;
+        screenY = rect ? rect.top + 60 : window.innerHeight * 0.3;
+      }
       this.newAnnotation.set({ anchor, screenX, screenY });
     }
   }
