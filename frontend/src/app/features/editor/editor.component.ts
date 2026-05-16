@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -16,7 +16,8 @@ import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
+import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
@@ -278,11 +279,20 @@ import { marked } from 'marked';
                 class="editor-title"
               />
 
-              <!-- TipTap Editor Container -->
-              <div
-                #editorElement
-                class="prose prose-lg max-w-none"
-              ></div>
+              @if (isGitSpace()) {
+                <!-- Read-only render (git-synced): full markdown pipeline incl. Mermaid -->
+                <article
+                  #readonlyElement
+                  class="prose prose-lg max-w-none"
+                  [innerHTML]="readonlyHtml()"
+                ></article>
+              } @else {
+                <!-- TipTap Editor Container -->
+                <div
+                  #editorElement
+                  class="prose prose-lg max-w-none"
+                ></div>
+              }
             }
             @if (space() && documentPath) {
               <app-annotation-overlay
@@ -722,6 +732,10 @@ export class EditorComponent implements OnInit, OnDestroy {
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
   annotationPermission = signal<AnnotationPermission>('VIEW');
 
+  // Read-only render (git-backed markdown). Bypasses TipTap so Mermaid blocks render as SVG.
+  readonlyHtml = signal<SafeHtml>('');
+  @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
+
   private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
   private boundImageDragMove = this.onImageDragMove.bind(this);
   private boundImageDragEnd = this.onImageDragEnd.bind(this);
@@ -768,13 +782,20 @@ export class EditorComponent implements OnInit, OnDestroy {
     private authService: AuthService,
     private sanitizer: DomSanitizer,
     private toastService: ToastService,
-    private annotationsService: AnnotationsService
+    private annotationsService: AnnotationsService,
+    private markdownService: MarkdownRenderService
   ) {
     this.autoSave$.pipe(
       debounceTime(2000),
       takeUntil(this.destroy$)
     ).subscribe(() => {
       if (!this.isGitSpace()) this.saveDocument();
+    });
+
+    // Render Mermaid diagrams after the read-only HTML is flushed to the DOM.
+    effect(() => {
+      this.readonlyHtml();
+      setTimeout(() => this.markdownService.runMermaid(this.readonlyElement?.nativeElement), 0);
     });
   }
 
@@ -1010,13 +1031,29 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   initializeEditor(content: string): void {
+    const space = this.space();
+
+    // Read-only (git-backed): render full markdown pipeline incl. Mermaid, skip TipTap entirely.
+    if (this.isGitSpace() && space) {
+      this.editor?.destroy();
+      this.editor = null as any;
+      const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
+      const rendered = this.markdownService.render(
+        content,
+        docDir,
+        `/api/spaces/${space.id}/files`,
+        null
+      );
+      this.readonlyHtml.set(rendered);
+      return;
+    }
+
     const lowlight = createLowlight(common);
 
     // Convert markdown to HTML for editor
     let htmlContent = marked.parse(content) as string;
 
     // Rewrite relative image src to serve from API, resolved relative to the document's directory
-    const space = this.space();
     if (space) {
       const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
       htmlContent = htmlContent.replace(
