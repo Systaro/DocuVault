@@ -262,7 +262,7 @@ import { marked } from 'marked';
       } @else {
         <!-- Editor Area -->
         <div class="flex-1 overflow-y-auto editor-bg">
-          <div class="max-w-4xl mx-auto px-8 py-6 paper">
+          <div class="mx-auto px-8 py-6 paper" [style.maxWidth.px]="contentWidthPx()">
             @if (loading()) {
               <div class="flex items-center justify-center py-12">
                 <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
@@ -302,6 +302,10 @@ import { marked } from 'marked';
                 [permission]="annotationPermission()"
               />
             }
+            <div class="paper-resize-handle"
+                 title="Drag to resize content width"
+                 (mousedown)="onWidthResizeStart($event)"
+                 [class.dragging]="isResizingWidth()"></div>
           </div>
         </div>
       }
@@ -434,6 +438,36 @@ import { marked } from 'marked';
       border-radius: 4px;
       box-shadow: var(--shadow-sm);
       position: relative;
+    }
+
+    .paper-resize-handle {
+      position: absolute;
+      top: 0;
+      right: -6px;
+      width: 12px;
+      height: 100%;
+      cursor: col-resize;
+      z-index: 10;
+
+      &::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        right: 5px;
+        transform: translateY(-50%);
+        width: 2px;
+        height: 48px;
+        border-radius: 2px;
+        background: var(--border, #d4e5e7);
+        opacity: 0;
+        transition: opacity 0.15s, background 0.15s;
+      }
+
+      &:hover::after,
+      &.dragging::after {
+        opacity: 1;
+        background: var(--primary, #6fb3b8);
+      }
     }
 
     .preview-topbar {
@@ -735,6 +769,51 @@ export class EditorComponent implements OnInit, OnDestroy {
   // Read-only render (git-backed markdown). Bypasses TipTap so Mermaid blocks render as SVG.
   readonlyHtml = signal<SafeHtml>('');
   @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
+
+  // Drag-resizable content width (persisted per user)
+  private static readonly CONTENT_WIDTH_KEY = 'dv-editor-content-width';
+  private static readonly CONTENT_WIDTH_DEFAULT = 896; // matches Tailwind max-w-4xl
+  contentWidthPx = signal<number>(this.loadContentWidth());
+  isResizingWidth = signal(false);
+  private widthDragStart: { startX: number; startWidth: number } | null = null;
+  private boundWidthMove = this.onWidthResizeMove.bind(this);
+  private boundWidthEnd = this.onWidthResizeEnd.bind(this);
+
+  private loadContentWidth(): number {
+    try {
+      const raw = localStorage.getItem(EditorComponent.CONTENT_WIDTH_KEY);
+      const n = raw ? parseInt(raw, 10) : NaN;
+      return Number.isFinite(n) && n >= 600 ? n : EditorComponent.CONTENT_WIDTH_DEFAULT;
+    } catch { return EditorComponent.CONTENT_WIDTH_DEFAULT; }
+  }
+
+  onWidthResizeStart(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    this.isResizingWidth.set(true);
+    this.widthDragStart = { startX: event.clientX, startWidth: this.contentWidthPx() };
+    document.addEventListener('mousemove', this.boundWidthMove);
+    document.addEventListener('mouseup', this.boundWidthEnd);
+    document.body.style.userSelect = 'none';
+  }
+
+  private onWidthResizeMove(event: MouseEvent): void {
+    if (!this.widthDragStart) return;
+    // Paper is centered, so dragging the right edge by N expands width by 2N
+    const delta = (event.clientX - this.widthDragStart.startX) * 2;
+    const viewportMax = Math.max(640, window.innerWidth - 80);
+    const next = Math.min(viewportMax, Math.max(600, this.widthDragStart.startWidth + delta));
+    this.contentWidthPx.set(next);
+  }
+
+  private onWidthResizeEnd(): void {
+    this.isResizingWidth.set(false);
+    this.widthDragStart = null;
+    document.removeEventListener('mousemove', this.boundWidthMove);
+    document.removeEventListener('mouseup', this.boundWidthEnd);
+    document.body.style.userSelect = '';
+    try { localStorage.setItem(EditorComponent.CONTENT_WIDTH_KEY, String(this.contentWidthPx())); } catch {}
+  }
 
   private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
   private boundImageDragMove = this.onImageDragMove.bind(this);
