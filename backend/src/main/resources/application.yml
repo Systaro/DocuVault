@@ -16,6 +16,18 @@ spring:
     show-sql: false
     open-in-view: false
 
+  flyway:
+    # Auto-apply any V*.sql in classpath:db/migration on startup.
+    # baseline-on-migrate=true + baseline-version=13 means existing installs
+    # (which already have V001..V013 applied via bootstrap.sql or by hand)
+    # get their flyway_schema_history table seeded at V013 on first boot —
+    # so only V014+ runs against them. Fresh installs apply bootstrap.sql
+    # first (which contains everything up to V013), then Flyway baselines.
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 13
+    validate-on-migrate: true
+
   session:
     store-type: redis
   data:

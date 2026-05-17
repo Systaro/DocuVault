@@ -38,6 +38,11 @@ dependencies {
     // Database
     runtimeOnly("org.postgresql:postgresql")
 
+    // Schema migrations — Flyway runs on startup, baselines existing installs at V013
+    // and auto-applies any new V*.sql files. See application.yml + db/migration/.
+    // Spring Boot 3.2 ships Flyway 9.x which has built-in PostgreSQL support.
+    implementation("org.flywaydb:flyway-core")
+
     // pgvector support
     implementation("com.pgvector:pgvector:0.1.4")
 
