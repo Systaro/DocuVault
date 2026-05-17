@@ -18,6 +18,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
@@ -770,22 +771,13 @@ export class EditorComponent implements OnInit, OnDestroy {
   readonlyHtml = signal<SafeHtml>('');
   @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
 
-  // Drag-resizable content width (persisted per user)
-  private static readonly CONTENT_WIDTH_KEY = 'dv-editor-content-width';
+  // Drag-resizable content width — persisted on the backend per (space, file) so the whole team sees it.
   private static readonly CONTENT_WIDTH_DEFAULT = 896; // matches Tailwind max-w-4xl
-  contentWidthPx = signal<number>(this.loadContentWidth());
+  contentWidthPx = signal<number>(EditorComponent.CONTENT_WIDTH_DEFAULT);
   isResizingWidth = signal(false);
   private widthDragStart: { startX: number; startWidth: number } | null = null;
   private boundWidthMove = this.onWidthResizeMove.bind(this);
   private boundWidthEnd = this.onWidthResizeEnd.bind(this);
-
-  private loadContentWidth(): number {
-    try {
-      const raw = localStorage.getItem(EditorComponent.CONTENT_WIDTH_KEY);
-      const n = raw ? parseInt(raw, 10) : NaN;
-      return Number.isFinite(n) && n >= 600 ? n : EditorComponent.CONTENT_WIDTH_DEFAULT;
-    } catch { return EditorComponent.CONTENT_WIDTH_DEFAULT; }
-  }
 
   onWidthResizeStart(event: MouseEvent): void {
     if (event.button !== 0) return;
@@ -812,7 +804,15 @@ export class EditorComponent implements OnInit, OnDestroy {
     document.removeEventListener('mousemove', this.boundWidthMove);
     document.removeEventListener('mouseup', this.boundWidthEnd);
     document.body.style.userSelect = '';
-    try { localStorage.setItem(EditorComponent.CONTENT_WIDTH_KEY, String(this.contentWidthPx())); } catch {}
+    this.persistContentWidth(this.contentWidthPx());
+  }
+
+  private persistContentWidth(widthPx: number): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.documentSettingsService.updateSettings(space.id, this.documentPath, { contentWidthPx: widthPx })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({ error: () => {} });
   }
 
   private imageDragState: { x: number; y: number; scrollLeft: number; scrollTop: number; el: HTMLElement } | null = null;
@@ -862,7 +862,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     private sanitizer: DomSanitizer,
     private toastService: ToastService,
     private annotationsService: AnnotationsService,
-    private markdownService: MarkdownRenderService
+    private markdownService: MarkdownRenderService,
+    private documentSettingsService: DocumentSettingsService
   ) {
     this.autoSave$.pipe(
       debounceTime(2000),
@@ -1084,6 +1085,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (!space || !this.documentPath) return;
 
     this.loading.set(true);
+    this.loadDocumentSettings(space.id, this.documentPath);
     this.documentsService.getDocument(space.id, this.documentPath).subscribe({
       next: (doc) => {
         this.document.set(doc);
@@ -1101,6 +1103,22 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.initializeNewDocument();
       }
     });
+  }
+
+  private loadDocumentSettings(spaceId: string, filePath: string): void {
+    this.documentSettingsService.getSettings(spaceId, filePath)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (settings) => {
+          const w = settings?.contentWidthPx;
+          if (typeof w === 'number' && w >= 600) {
+            this.contentWidthPx.set(w);
+          } else {
+            this.contentWidthPx.set(EditorComponent.CONTENT_WIDTH_DEFAULT);
+          }
+        },
+        error: () => this.contentWidthPx.set(EditorComponent.CONTENT_WIDTH_DEFAULT)
+      });
   }
 
   initializeNewDocument(): void {
