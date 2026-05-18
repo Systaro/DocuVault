@@ -14,10 +14,12 @@ interface DocumentRepository : JpaRepository<Document, UUID> {
     fun countBySpaceId(spaceId: UUID): Long
 
     @Query("""
-        SELECT d FROM Document d
+        SELECT DISTINCT d FROM Document d
+        LEFT JOIN DocumentEmbedding de ON de.document = d
         WHERE d.space.id IN :spaceIds
         AND (LOWER(d.title) LIKE LOWER(CONCAT('%', :query, '%'))
-             OR LOWER(d.path) LIKE LOWER(CONCAT('%', :query, '%')))
+             OR LOWER(d.path) LIKE LOWER(CONCAT('%', :query, '%'))
+             OR LOWER(de.content) LIKE LOWER(CONCAT('%', :query, '%')))
         ORDER BY d.updatedAt DESC
     """)
     fun searchByTitleOrPath(spaceIds: List<UUID>, query: String): List<Document>

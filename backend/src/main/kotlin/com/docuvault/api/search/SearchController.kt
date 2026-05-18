@@ -42,92 +42,36 @@ class SearchController(
 
         val spaceIds = spaces.mapNotNull { it.id }
         val spaceMap = spaces.associateBy { it.id }
-        val qLower = q.lowercase()
 
-        // 1) Literal title/path matches — fast, free, deterministic
-        val scored = mutableListOf<ScoredResult>()
-        val seenDocIds = mutableSetOf<UUID>()
+        // Literal substring match over title, path, and content (via the chunks
+        // already indexed for embeddings). pg_trgm GIN index on de.content keeps
+        // this sub-50ms regardless of corpus size — see V014.
+        val documents = documentRepository.searchByTitleOrPath(spaceIds, q).take(limit)
 
-        documentRepository.searchByTitleOrPath(spaceIds, q).forEach { doc ->
-            val docId = doc.id ?: return@forEach
+        val results = documents.map { doc ->
             val space = spaceMap[doc.space.id]
             val snippet = try {
                 val content = gitService.readFile(doc.space, doc.path)
-                content?.take(300)?.let { if (content.length > 300) "$it..." else it }
+                content?.take(300)?.let { truncated ->
+                    if (content.length > 300) "$truncated..." else truncated
+                }
             } catch (_: Exception) {
                 null
             }
-            val score = literalScore(doc, qLower)
-            scored += ScoredResult(doc.toResultDto(space, snippet), score)
-            seenDocIds += docId
+
+            SearchResultDto(
+                documentPath = doc.path,
+                documentTitle = doc.title ?: doc.path.substringAfterLast("/").substringBeforeLast("."),
+                spaceId = doc.space.id!!,
+                spaceName = space?.name ?: "",
+                spaceFullPath = space?.getFullPath() ?: "",
+                snippet = snippet,
+                updatedAt = doc.updatedAt.toString()
+            )
         }
 
-        // 2) Semantic vector hits (authentication -> login, etc.)
-        val repoSpaceIds = spaces.filter { it.type == SpaceType.REPOSITORY }.mapNotNull { it.id }
-        if (repoSpaceIds.isNotEmpty()) {
-            // Over-fetch since one doc can produce multiple high-rank chunks
-            val chunks = embeddingService.findSimilarAcrossSpaces(repoSpaceIds, q, limit * 3)
-            val bestChunkPerDoc = chunks
-                .distinctBy { it.documentId } // chunks come ranked, distinctBy keeps the best
-                .filter { it.documentId !in seenDocIds }
-
-            if (bestChunkPerDoc.isNotEmpty()) {
-                val semanticDocs = documentRepository
-                    .findAllById(bestChunkPerDoc.map { it.documentId })
-                    .associateBy { it.id }
-
-                bestChunkPerDoc.forEach { chunk ->
-                    val doc = semanticDocs[chunk.documentId] ?: return@forEach
-                    val space = spaceMap[doc.space.id]
-                    val snippet = chunk.content.take(300).let {
-                        if (chunk.content.length > 300) "$it..." else it
-                    }
-                    scored += ScoredResult(doc.toResultDto(space, snippet), semanticScore(chunk.distance))
-                }
-            }
-        }
-
-        val ranked = scored
-            .sortedByDescending { it.score }
-            .take(limit)
-            .map { it.result }
-
-        return ResponseEntity.ok(ranked)
+        return ResponseEntity.ok(results)
     }
-
-    /**
-     * Literal score in [0.85, 1.0]. Title hit dominates path hit so renamed files
-     * with stale-looking paths don't outrank fresh content.
-     */
-    private fun literalScore(doc: com.docuvault.domain.space.Document, qLower: String): Double {
-        val titleHit = (doc.title ?: "").lowercase().contains(qLower)
-        return if (titleHit) 1.0 else 0.85
-    }
-
-    /**
-     * Semantic score from pgvector cosine distance. OpenAI vectors are normalized, so
-     * `<=>` is in [0, 2]; (2 - d) / 2 maps that to [0, 1]. Capped under 0.85 so a
-     * direct title hit always wins over even a near-perfect semantic match.
-     */
-    private fun semanticScore(distance: Double): Double {
-        val sim = ((2.0 - distance) / 2.0).coerceIn(0.0, 1.0)
-        return sim * 0.84
-    }
-
-    private data class ScoredResult(val result: SearchResultDto, val score: Double)
-
-    private fun com.docuvault.domain.space.Document.toResultDto(
-        space: com.docuvault.domain.space.Space?,
-        snippet: String?
-    ) = SearchResultDto(
-        documentPath = this.path,
-        documentTitle = this.title ?: this.path.substringAfterLast("/").substringBeforeLast("."),
-        spaceId = this.space.id!!,
-        spaceName = space?.name ?: "",
-        spaceFullPath = space?.getFullPath() ?: "",
-        snippet = snippet,
-        updatedAt = this.updatedAt.toString()
-    )
 
     @PostMapping("/semantic")
     @Transactional(readOnly = true)

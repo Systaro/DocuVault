@@ -116,8 +116,7 @@ class EmbeddingService(
                 documentTitle = row[5] as String?,
                 chunkIndex = row[2] as Int,
                 content = row[3] as String,
-                spaceId = row[6] as UUID,
-                distance = (row[7] as Number).toDouble()
+                spaceId = row[6] as UUID
             )
         }
     }
@@ -173,6 +172,5 @@ data class CrossSpaceChunk(
     val documentTitle: String?,
     val chunkIndex: Int,
     val content: String,
-    val spaceId: UUID,
-    val distance: Double
+    val spaceId: UUID
 )
