@@ -47,11 +47,12 @@ interface DocumentEmbeddingRepository : JpaRepository<DocumentEmbedding, UUID> {
 
     @Query(
         value = """
-            SELECT de.id, de.document_id, de.chunk_index, de.content, d.path, d.title, d.space_id
+            SELECT de.id, de.document_id, de.chunk_index, de.content, d.path, d.title, d.space_id,
+                   de.embedding <=> cast(:queryEmbedding as vector) AS distance
             FROM document_embeddings de
             JOIN documents d ON de.document_id = d.id
             WHERE d.space_id IN (:spaceIds)
-            ORDER BY de.embedding <=> cast(:queryEmbedding as vector)
+            ORDER BY distance
             LIMIT :limit
         """,
         nativeQuery = true
