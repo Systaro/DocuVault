@@ -46,6 +46,7 @@ class SecurityConfig(
                     .requestMatchers("/capabilities").permitAll()
                     .requestMatchers("/users/accept-invitation").permitAll()
                     .requestMatchers("/shared/**").permitAll()
+                    .requestMatchers("/meetings/bot/**").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)

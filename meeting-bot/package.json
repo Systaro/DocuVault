@@ -1,0 +1,27 @@
+{
+  "name": "@systaro/docuvault-meeting-bot",
+  "version": "0.1.0",
+  "description": "Meeting transcription bot for DocuVault — joins a voice call, transcribes per speaker, files notes into a space's inbox.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "libsodium-wrappers": "^0.7.15",
+    "marked": "^14.1.4",
+    "openai": "^4.77.0",
+    "opusscript": "^0.1.1",
+    "prism-media": "^1.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

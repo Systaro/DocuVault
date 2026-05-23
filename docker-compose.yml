@@ -97,6 +97,25 @@ services:
     depends_on:
       - backend
 
+  # Optional Discord meeting transcription bot.
+  # Start with: docker compose --profile meeting-bot up -d
+  meeting-bot:
+    build:
+      context: ./meeting-bot
+      dockerfile: Dockerfile
+    container_name: docuvault-meeting-bot
+    profiles:
+      - meeting-bot
+    environment:
+      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DOCUVAULT_API_URL: http://backend:7030/api
+      TRANSCRIBE_MODEL: ${MEETING_TRANSCRIBE_MODEL:-gpt-4o-transcribe}
+      NOTES_MODEL: ${MEETING_NOTES_MODEL:-gpt-5.5}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   repos_data:

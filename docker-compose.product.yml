@@ -155,6 +155,26 @@ services:
     depends_on:
       - backend
 
+  # Discord meeting transcription bot — opt-in.
+  # Activate by:
+  #   1) setting DISCORD_BOT_TOKEN in .env (also set OPENAI_API_KEY)
+  #   2) running `docker compose --profile meeting-bot up -d`
+  # deploy.sh detects DISCORD_BOT_TOKEN and includes this service automatically.
+  meeting-bot:
+    image: registry.git.systaro.de/systaro/docuvault/meeting-bot:${DOCUVAULT_VERSION:-latest}
+    container_name: docuvault-meeting-bot
+    restart: unless-stopped
+    profiles:
+      - meeting-bot
+    environment:
+      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is required when enabling the meeting-bot profile}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required for transcription}
+      DOCUVAULT_API_URL: http://backend:7030/api
+      TRANSCRIBE_MODEL: ${MEETING_TRANSCRIBE_MODEL:-gpt-4o-transcribe}
+      NOTES_MODEL: ${MEETING_NOTES_MODEL:-gpt-5.5}
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   repos_data:

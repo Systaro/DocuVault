@@ -87,6 +87,16 @@ DB_USERNAME="${DB_USERNAME:-docuvault}"
 DB_NAME="${DB_NAME:-docuvault}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')}"
 
+# Meeting-bot is opt-in: deploy.sh includes it whenever DISCORD_BOT_TOKEN is
+# set in .env. Compose profile must match the one declared on the service.
+SERVICES_TO_PULL="backend frontend"
+COMPOSE_PROFILE_ARGS=""
+if [ -n "$(env_get DISCORD_BOT_TOKEN)" ]; then
+  SERVICES_TO_PULL="$SERVICES_TO_PULL meeting-bot"
+  COMPOSE_PROFILE_ARGS="--profile meeting-bot"
+  echo "==> meeting-bot enabled (DISCORD_BOT_TOKEN present in .env)"
+fi
+
 REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-registry.git.systaro.de}"
 REGISTRY_USER="${DOCUVAULT_REGISTRY_USER:-$(env_get DOCUVAULT_REGISTRY_USER)}"
 REGISTRY_TOKEN="${DOCUVAULT_REGISTRY_TOKEN:-$(env_get DOCUVAULT_REGISTRY_TOKEN)}"
@@ -159,10 +169,12 @@ if [ -n "$REGISTRY_USER" ] && [ -n "$REGISTRY_TOKEN" ]; then
 fi
 
 echo "==> Pulling images for $VERSION"
-DOCUVAULT_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" pull backend frontend
+# shellcheck disable=SC2086  # word-split COMPOSE_PROFILE_ARGS and SERVICES_TO_PULL intentionally
+DOCUVAULT_VERSION="$VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" pull $SERVICES_TO_PULL
 
-echo "==> Restarting backend and frontend"
-DOCUVAULT_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" up -d
+echo "==> Restarting services"
+# shellcheck disable=SC2086
+DOCUVAULT_VERSION="$VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d
 
 # ---------------------------------------------------------------------------
 # 3. Health check (with rollback on failure)
@@ -194,8 +206,10 @@ if ! $HEALTHY; then
 
   if [ "$PREV_VERSION" != "<none>" ] && [ -n "$PREV_VERSION" ]; then
     echo "!!! Rolling back to $PREV_VERSION"
-    DOCUVAULT_VERSION="$PREV_VERSION" docker compose -f "$COMPOSE_FILE" pull backend frontend
-    DOCUVAULT_VERSION="$PREV_VERSION" docker compose -f "$COMPOSE_FILE" up -d backend frontend
+    # shellcheck disable=SC2086
+    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" pull $SERVICES_TO_PULL
+    # shellcheck disable=SC2086
+    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d $SERVICES_TO_PULL
     echo "!!! Rolled back to $PREV_VERSION"
   else
     echo "!!! No previous version recorded — manual recovery required."

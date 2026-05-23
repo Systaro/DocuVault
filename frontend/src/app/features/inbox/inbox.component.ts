@@ -6,11 +6,12 @@ import { InboxService, InboxNote, AiSuggestion } from '../../core/api/inbox.serv
 import { SpacesService } from '../../core/api/spaces.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { DiffViewComponent } from './diff-view.component';
+import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
 
 @Component({
   selector: 'app-inbox',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, DiffViewComponent],
+  imports: [CommonModule, FormsModule, RouterLink, DiffViewComponent, MeetingInviteModalComponent],
   template: `
     <div class="inbox-container">
       <!-- Header -->
@@ -20,6 +21,10 @@ import { DiffViewComponent } from './diff-view.component';
           Inbox
         </h1>
         <div class="header-right">
+          <button class="btn btn-secondary btn-sm" (click)="showMeetingModal.set(true)">
+            <span class="material-icons">graphic_eq</span>
+            Meeting transkribieren
+          </button>
           <span class="notes-meta">{{ activeNotes().length }} {{ activeTab() === 'unsorted' ? 'unsorted' : 'filed' }}</span>
         </div>
       </div>
@@ -235,6 +240,11 @@ import { DiffViewComponent } from './diff-view.component';
       />
     }
 
+    <!-- Meeting transcription invites -->
+    @if (showMeetingModal()) {
+      <app-meeting-invite-modal [spaceId]="spaceId" (close)="showMeetingModal.set(false)" />
+    }
+
     <!-- Don't ask next time dialog -->
     @if (showDontAskDialog()) {
       <div class="modal-overlay" (click)="showDontAskDialog.set(false)">
@@ -283,6 +293,12 @@ import { DiffViewComponent } from './diff-view.component';
       .notes-meta {
         font-size: 13px;
         color: var(--text-muted);
+      }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
     }
 
@@ -651,6 +667,7 @@ export class InboxComponent implements OnInit {
 
   showDiff = signal(false);
   showDontAskDialog = signal(false);
+  showMeetingModal = signal(false);
   ruleConditionInput = '';
 
   activeNotes = computed(() =>
