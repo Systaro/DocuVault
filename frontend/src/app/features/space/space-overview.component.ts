@@ -7,6 +7,7 @@ import { DocumentsService, Document } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
@@ -29,9 +30,36 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 
     <div class="p-8">
       <div class="max-w-4xl mx-auto">
-        <!-- Header -->
+        <!-- Header with in-context breadcrumb above the title -->
         <div class="flex justify-between items-start mb-8">
-          <div class="min-w-0">
+          <div class="min-w-0 flex-1">
+            <nav class="hero-breadcrumb" aria-label="Folder path">
+              <a routerLink="/dashboard" class="hero-crumb">
+                <span class="material-icons">home</span>
+              </a>
+              <span class="hero-crumb-sep">/</span>
+              <a
+                [routerLink]="[]"
+                [queryParams]="{ path: null }"
+                queryParamsHandling="merge"
+                class="hero-crumb"
+                [class.hero-crumb-active]="!currentFolder()"
+              >
+                {{ space()?.name }}
+              </a>
+              @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
+                <span class="hero-crumb-sep">/</span>
+                <a
+                  [routerLink]="[]"
+                  [queryParams]="{ path: segment.path }"
+                  queryParamsHandling="merge"
+                  class="hero-crumb"
+                  [class.hero-crumb-active]="last"
+                >
+                  {{ prefs.prettify(segment.name, true) }}
+                </a>
+              }
+            </nav>
             <h1 class="text-2xl font-bold overview-text-primary truncate">{{ heroTitle() }}</h1>
             <p class="overview-text-secondary mt-1 truncate">{{ heroSubtitle() }}</p>
           </div>
@@ -255,7 +283,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   class="overview-doc-item flex items-center gap-3 p-4"
                 >
                   <span class="material-icons folder-icon">folder</span>
-                  <span class="font-medium overview-text-primary">{{ folder }}</span>
+                  <span class="font-medium overview-text-primary">{{ prefs.prettify(folder, true) }}</span>
                 </a>
               }
               @if (filesHere().length > 0) {
@@ -270,7 +298,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   <div class="flex items-center gap-3 min-w-0">
                     <span class="material-icons overview-text-muted">description</span>
                     <div class="min-w-0">
-                      <div class="font-medium overview-text-primary truncate">{{ doc.title || doc.path.split('/').pop() }}</div>
+                      <div class="font-medium overview-text-primary truncate">{{ doc.title || prefs.prettify(doc.path.split('/').pop() ?? '', false) }}</div>
                     </div>
                   </div>
                   @if (doc.lastSyncedAt) {
@@ -441,6 +469,44 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       color: var(--text-primary);
       outline: none;
       font-family: var(--font-body, inherit);
+    }
+
+    .hero-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .hero-crumb {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: background var(--transition-fast), color var(--transition-fast);
+
+      .material-icons { font-size: 14px; color: var(--primary); }
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+
+    .hero-crumb-active {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .hero-crumb-sep {
+      color: var(--text-muted);
+      user-select: none;
     }
 
     .sync-error-alert {
@@ -655,11 +721,11 @@ export class SpaceOverviewComponent implements OnInit {
     return slash === -1 ? '' : cur.slice(0, slash);
   });
 
-  /** Hero title: current folder's leaf name, or space name at root. */
+  /** Hero title: current folder's leaf name (prettified), or space name at root. */
   heroTitle = computed<string>(() => {
     const cur = this.currentFolder();
     if (!cur) return this.space()?.name ?? '';
-    return cur.split('/').pop() ?? cur;
+    return this.prefs.prettify(cur.split('/').pop() ?? cur, true);
   });
 
   /** Hero subtitle: space name when browsing a subfolder, description at root. */
@@ -668,11 +734,11 @@ export class SpaceOverviewComponent implements OnInit {
     return this.space()?.description || 'No description';
   });
 
-  /** Up-one-level label: parent folder name, falling back to the space name at root level. */
+  /** Up-one-level label: parent folder name (prettified), falling back to the space name at root level. */
   parentLabel = computed<string>(() => {
     const parent = this.parentFolderPath();
     if (!parent) return this.space()?.name ?? 'Back';
-    return parent.split('/').pop() ?? parent;
+    return this.prefs.prettify(parent.split('/').pop() ?? parent, true);
   });
 
   isInConflict(): boolean {
@@ -721,7 +787,8 @@ export class SpaceOverviewComponent implements OnInit {
     private documentsService: DocumentsService,
     private gitService: GitService,
     private toastService: ToastService,
-    private authService: AuthService
+    private authService: AuthService,
+    protected prefs: DisplayPrefsService
   ) {}
 
   ngOnInit(): void {

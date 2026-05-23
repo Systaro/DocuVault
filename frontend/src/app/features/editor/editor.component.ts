@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -28,6 +28,8 @@ import { GitService } from '../../core/api/git.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
 import { ToastService } from '../../shared/services/toast.service';
+import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
+import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
@@ -35,7 +37,7 @@ import { marked } from 'marked';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, ShareLinkDialogComponent, AnnotationOverlayComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -153,7 +155,19 @@ import { marked } from 'marked';
         <div class="preview-topbar">
           <div class="preview-filename">
             <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : 'image' }}</span>
-            {{ documentPath.split('/').pop() }}
+            @if (space()) {
+              <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
+              @for (seg of fileBreadcrumb(); track seg.path) {
+                <span class="editor-crumb-sep">/</span>
+                <a
+                  [routerLink]="space()!.fullPath | spaceRoute"
+                  [queryParams]="{ path: seg.path }"
+                  class="editor-crumb"
+                >{{ prefs.prettify(seg.label, true) }}</a>
+              }
+              <span class="editor-crumb-sep">/</span>
+            }
+            <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           </div>
           <div class="relative">
             <button
@@ -496,6 +510,28 @@ import { marked } from 'marked';
       color: var(--text-muted);
     }
 
+    .editor-crumb {
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 2px 4px;
+      border-radius: 4px;
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+
+    .editor-crumb-active {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .editor-crumb-sep {
+      color: var(--text-muted);
+      user-select: none;
+    }
+
     .annotation-host { position: relative; }
 
     .html-preview-container {
@@ -747,6 +783,20 @@ export class EditorComponent implements OnInit, OnDestroy {
   document = signal<DocumentContent | null>(null);
   documentTitle = '';
   documentPath = '';
+  /** Tracks documentPath as a signal so computed breadcrumbs react to changes. */
+  documentPathSignal = signal<string>('');
+
+  /** Ancestor folders of the current document, clickable to jump back into the
+   *  overview folder browser. */
+  fileBreadcrumb = computed<{ label: string; path: string }[]>(() => {
+    const p = this.documentPathSignal();
+    if (!p || !p.includes('/')) return [];
+    const parts = p.split('/');
+    return parts.slice(0, -1).map((label, i) => ({
+      label,
+      path: parts.slice(0, i + 1).join('/'),
+    }));
+  });
   loading = signal(true);
   saving = signal(false);
   lastSaved = signal(false);
@@ -863,7 +913,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     private toastService: ToastService,
     private annotationsService: AnnotationsService,
     private markdownService: MarkdownRenderService,
-    private documentSettingsService: DocumentSettingsService
+    private documentSettingsService: DocumentSettingsService,
+    protected prefs: DisplayPrefsService
   ) {
     this.autoSave$.pipe(
       debounceTime(2000),
@@ -1014,7 +1065,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.subscribe(params => {
       const path = params.get('path');
       if (path) {
-        this.documentPath = path;
+        this.documentPath = path; this.documentPathSignal.set(path);
         const ext = path.split('.').pop()?.toLowerCase() || '';
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
           this.isPreviewFile.set(true);
@@ -1248,7 +1299,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
-          this.documentPath = path;
+          this.documentPath = path; this.documentPathSignal.set(path);
           this.saving.set(false);
           this.lastSaved.set(true);
           this.hasChanges.set(false);
@@ -1284,7 +1335,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (doc) => {
         this.document.set(doc);
-        this.documentPath = path;
+        this.documentPath = path; this.documentPathSignal.set(path);
         this.saving.set(false);
         this.lastSaved.set(true);
         this.hasChanges.set(false);

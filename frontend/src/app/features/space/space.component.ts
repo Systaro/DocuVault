@@ -11,6 +11,7 @@ import { SharedLinksService, SharedLink } from '../../core/api/shared-links.serv
 import { InboxService } from '../../core/api/inbox.service';
 import { AnnotationsService } from '../../core/api/annotations.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
+import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
@@ -22,46 +23,6 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     <app-layout>
       @if (spaceSignal()) {
         <div class="space-container">
-          <!-- Breadcrumb -->
-          <div class="breadcrumb-bar">
-            <button
-              type="button"
-              class="menu-toggle-btn"
-              [attr.aria-label]="mobileSidebarOpen() ? 'Close menu' : 'Open menu'"
-              [attr.aria-expanded]="mobileSidebarOpen()"
-              (click)="toggleMobileSidebar($event)"
-            >
-              <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
-            </button>
-            <div class="breadcrumb">
-              <a routerLink="/dashboard" class="breadcrumb-item">
-                <span class="material-icons">home</span>
-              </a>
-              @for (crumb of pathBreadcrumbs(); track crumb.path) {
-                <span class="material-icons breadcrumb-sep">chevron_right</span>
-                <a [routerLink]="crumb.path | spaceRoute" class="breadcrumb-item">{{ crumb.name }}</a>
-              }
-              <span class="material-icons breadcrumb-sep">chevron_right</span>
-              <a [routerLink]="spaceSignal()?.fullPath | spaceRoute" class="breadcrumb-item" [class.active]="!currentDocPath()">
-                {{ spaceSignal()?.name }}
-              </a>
-              @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
-                <span class="material-icons breadcrumb-sep">chevron_right</span>
-                @if (last) {
-                  <span class="breadcrumb-item active">
-                    <span class="material-icons breadcrumb-file-icon">{{ segment.isFile ? 'description' : 'folder' }}</span>
-                    {{ segment.label }}
-                  </span>
-                } @else {
-                  <span class="breadcrumb-item">
-                    <span class="material-icons breadcrumb-file-icon">folder</span>
-                    {{ segment.label }}
-                  </span>
-                }
-              }
-            </div>
-          </div>
-
           <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
             @if (mobileSidebarOpen()) {
               <div class="sidebar-backdrop" (click)="mobileSidebarOpen.set(false)"></div>
@@ -69,6 +30,14 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             <!-- Sidebar -->
             <aside class="sidebar" [class.mobile-open]="mobileSidebarOpen()">
               <div class="sidebar-header">
+                <button
+                  type="button"
+                  class="menu-toggle-btn-inline"
+                  [attr.aria-label]="mobileSidebarOpen() ? 'Close menu' : 'Open menu'"
+                  (click)="toggleMobileSidebar($event)"
+                >
+                  <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
+                </button>
                 <span class="material-icons">folder_special</span>
                 Project Files
                 @if (sharedFilePaths().has('')) {
@@ -146,12 +115,16 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                 }
               </div>
 
-              <!-- New Document Button -->
+              <!-- Pretty names toggle -->
               <div class="sidebar-footer">
-                <button (click)="createNewDocument()" class="btn btn-secondary btn-full">
-                  <span class="material-icons">note_add</span>
-                  New Document
-                </button>
+                <label class="pretty-toggle">
+                  <span class="material-icons">{{ prefs.prettyNames() ? 'auto_fix_high' : 'text_fields' }}</span>
+                  <span class="pretty-toggle-label">Pretty names</span>
+                  <input type="checkbox" [checked]="prefs.prettyNames()" (change)="prefs.toggle()" />
+                  <span class="pretty-toggle-switch" [class.on]="prefs.prettyNames()">
+                    <span class="pretty-toggle-knob"></span>
+                  </span>
+                </label>
               </div>
             </aside>
 
@@ -209,7 +182,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                       (click)="$event.stopPropagation()"
                     />
                   } @else {
-                    <span class="tree-name">{{ node.name }}</span>
+                    <span class="tree-name">{{ prefs.prettify(node.name, true) }}</span>
                     @if (sharedFilePaths().has(node.path)) {
                       <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
@@ -288,7 +261,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                       <span class="material-icons">check</span>
                     </button>
                   } @else {
-                    <span class="tree-name">{{ node.name }}</span>
+                    <span class="tree-name">{{ prefs.prettify(node.name) }}</span>
                     @if (sharedFilePaths().has(node.path)) {
                       <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
@@ -898,6 +871,70 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       border-top: 1px solid var(--border);
     }
 
+    .pretty-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+
+      .material-icons { font-size: 18px; color: var(--text-muted); }
+      .pretty-toggle-label { flex: 1; }
+
+      input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
+    .pretty-toggle-switch {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      background: var(--border);
+      border-radius: 999px;
+      transition: background var(--transition);
+
+      .pretty-toggle-knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        background: #fff;
+        border-radius: 50%;
+        transition: left var(--transition);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      }
+
+      &.on {
+        background: var(--primary);
+        .pretty-toggle-knob { left: 16px; }
+      }
+    }
+
+    .menu-toggle-btn-inline {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-secondary);
+      padding: 0;
+      margin-right: 4px;
+      align-items: center;
+
+      .material-icons { font-size: 20px; }
+    }
+
+    @media (max-width: 768px) {
+      .menu-toggle-btn-inline {
+        display: inline-flex;
+      }
+    }
+
     .btn-full {
       width: 100%;
     }
@@ -1039,7 +1076,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private sharedLinksService: SharedLinksService,
     private inboxService: InboxService,
     private annotationsService: AnnotationsService,
-    protected caps: CapabilitiesService
+    protected caps: CapabilitiesService,
+    protected prefs: DisplayPrefsService
   ) {}
 
   ngOnInit(): void {
