@@ -60,16 +60,18 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                 }
               }
             </div>
-            <div class="breadcrumb-actions">
-              <div class="search-box">
-                <span class="material-icons">search</span>
-                <input type="text" placeholder="Search files..." />
+            @if (currentDocPath()) {
+              <div class="breadcrumb-actions">
+                <div class="search-box">
+                  <span class="material-icons">search</span>
+                  <input type="text" placeholder="Search files..." />
+                </div>
+                <button class="btn btn-primary btn-sm" (click)="createNewDocument()">
+                  <span class="material-icons">add</span>
+                  New
+                </button>
               </div>
-              <button class="btn btn-primary btn-sm" (click)="createNewDocument()">
-                <span class="material-icons">add</span>
-                New
-              </button>
-            </div>
+            }
           </div>
 
           <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
@@ -205,6 +207,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   (click)="openFolder(node.path)"
                   class="tree-item"
                   [class.expanded]="expandedFolders().has(node.path)"
+                  [class.active]="currentFolderPath() === node.path"
                   [style.padding-left.px]="12 + level * 16"
                 >
                   <span class="material-icons expand-icon">chevron_right</span>
@@ -985,6 +988,10 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   unsortedCount = signal(0);
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
+
+  /** Path of the folder currently shown in the overview's middle pane, or
+   *  null when not browsing a folder (doc editor, inbox, root etc.). */
+  currentFolderPath = signal<string | null>(null);
   currentDocPath = signal<string | null>(null);
   renamingPath = signal<string | null>(null);
   renamingValue = '';
@@ -1074,6 +1081,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     const isDoc = this.router.url.includes('/doc');
 
     this.currentDocPath.set(isDoc ? path : null);
+    this.currentFolderPath.set(!isDoc ? path : null);
 
     if (path) {
       const parts = path.split('/');

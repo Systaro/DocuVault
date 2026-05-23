@@ -29,11 +29,20 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
       <div class="max-w-4xl mx-auto">
         <!-- Header -->
         <div class="flex justify-between items-start mb-8">
-          <div>
-            <h1 class="text-2xl font-bold overview-text-primary">{{ space()?.name }}</h1>
-            <p class="overview-text-secondary mt-1">{{ space()?.description || 'No description' }}</p>
+          <div class="min-w-0">
+            <h1 class="text-2xl font-bold overview-text-primary truncate">{{ heroTitle() }}</h1>
+            <p class="overview-text-secondary mt-1 truncate">{{ heroSubtitle() }}</p>
           </div>
-          <div class="flex gap-2">
+          <div class="flex gap-2 flex-shrink-0">
+            <label class="btn btn-secondary upload-hero-btn"
+                   [class.opacity-50]="isInConflict()"
+                   [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Upload files'">
+              <input type="file" multiple (change)="onFileInputChange($event)" [disabled]="isInConflict()" class="sr-only" />
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+              Upload
+            </label>
             @if (space()?.gitlabUrl) {
               <button
                 (click)="syncRepository()"
@@ -137,59 +146,28 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
           </div>
         }
 
-        <!-- Stats -->
-        <div class="grid grid-cols-3 gap-4 mb-8">
-          <div class="card p-4">
-            <div class="text-2xl font-bold overview-text-primary">{{ documents().length }}</div>
-            <div class="text-sm overview-text-secondary">Documents</div>
-          </div>
-          <div class="card p-4">
-            <div class="text-2xl font-bold overview-text-primary">{{ space()?.branch || 'N/A' }}</div>
-            <div class="text-sm overview-text-secondary">Branch</div>
-          </div>
-          <div class="card p-4">
-            <div class="text-2xl font-bold overview-text-primary">
-              {{ space()?.lastSyncedAt ? formatDate(space()!.lastSyncedAt!) : 'Never' }}
+        <!-- Stats: only on space root, irrelevant inside subfolders -->
+        @if (!currentFolder()) {
+          <div class="grid grid-cols-3 gap-4 mb-8">
+            <div class="card p-4">
+              <div class="text-2xl font-bold overview-text-primary">{{ documents().length }}</div>
+              <div class="text-sm overview-text-secondary">Documents</div>
             </div>
-            <div class="text-sm overview-text-secondary">Last Synced</div>
+            <div class="card p-4">
+              <div class="text-2xl font-bold overview-text-primary">{{ space()?.branch || 'N/A' }}</div>
+              <div class="text-sm overview-text-secondary">Branch</div>
+            </div>
+            <div class="card p-4">
+              <div class="text-2xl font-bold overview-text-primary">
+                {{ space()?.lastSyncedAt ? formatDate(space()!.lastSyncedAt!) : 'Never' }}
+              </div>
+              <div class="text-sm overview-text-secondary">Last Synced</div>
+            </div>
           </div>
-        </div>
+        }
 
         <!-- Folder browser -->
         <div class="card">
-          <div class="p-4 overview-section-header flex items-center justify-between gap-4">
-            <div class="folder-breadcrumbs">
-              <a
-                [routerLink]="[]"
-                [queryParams]="{ path: null }"
-                queryParamsHandling="merge"
-                class="folder-crumb"
-                [class.folder-crumb-active]="!currentFolder()"
-              >
-                <span class="material-icons">folder_open</span>
-                {{ space()?.name }}
-              </a>
-              @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
-                <span class="folder-sep">/</span>
-                <a
-                  [routerLink]="[]"
-                  [queryParams]="{ path: segment.path }"
-                  queryParamsHandling="merge"
-                  class="folder-crumb"
-                  [class.folder-crumb-active]="last"
-                >
-                  {{ segment.name }}
-                </a>
-              }
-            </div>
-            <label class="upload-btn" [class.opacity-50]="isInConflict()" [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Upload files'">
-              <input type="file" multiple (change)="onFileInputChange($event)" [disabled]="isInConflict()" class="sr-only" />
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-              </svg>
-              Upload
-            </label>
-          </div>
           @if (uploading()) {
             <div class="upload-progress-bar">
               <div class="upload-progress-fill"></div>
@@ -220,12 +198,15 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
                   [routerLink]="[]"
                   [queryParams]="{ path: parentFolderPath() || null }"
                   queryParamsHandling="merge"
-                  class="overview-doc-item flex items-center gap-3 p-4"
+                  class="overview-doc-item folder-up flex items-center gap-3 p-4"
                   title="Up one level"
                 >
                   <span class="material-icons overview-text-muted">arrow_upward</span>
-                  <span class="font-medium overview-text-secondary">..</span>
+                  <span class="font-medium overview-text-secondary">{{ parentLabel() }}</span>
                 </a>
+              }
+              @if (subfolders().length > 0) {
+                <div class="list-group-label">Folders</div>
               }
               @for (folder of subfolders(); track folder) {
                 <a
@@ -237,6 +218,9 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
                   <span class="material-icons folder-icon">folder</span>
                   <span class="font-medium overview-text-primary">{{ folder }}</span>
                 </a>
+              }
+              @if (filesHere().length > 0) {
+                <div class="list-group-label">Files</div>
               }
               @for (doc of filesHere(); track doc.id) {
                 <a
@@ -334,6 +318,32 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 
     .folder-icon {
       color: var(--primary);
+    }
+
+    .list-group-label {
+      padding: 14px 16px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+
+      &:first-child {
+        border-top: none;
+      }
+    }
+
+    .folder-up {
+      background: rgba(0, 0, 0, 0.015);
+    }
+
+    /* Make the <label>-wrapped Upload button behave like a real .btn. */
+    .upload-hero-btn {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
     }
 
     .sync-error-alert {
@@ -535,6 +545,26 @@ export class SpaceOverviewComponent implements OnInit {
     if (!cur) return '';
     const slash = cur.lastIndexOf('/');
     return slash === -1 ? '' : cur.slice(0, slash);
+  });
+
+  /** Hero title: current folder's leaf name, or space name at root. */
+  heroTitle = computed<string>(() => {
+    const cur = this.currentFolder();
+    if (!cur) return this.space()?.name ?? '';
+    return cur.split('/').pop() ?? cur;
+  });
+
+  /** Hero subtitle: space name when browsing a subfolder, description at root. */
+  heroSubtitle = computed<string>(() => {
+    if (this.currentFolder()) return this.space()?.name ?? '';
+    return this.space()?.description || 'No description';
+  });
+
+  /** Up-one-level label: parent folder name, falling back to the space name at root level. */
+  parentLabel = computed<string>(() => {
+    const parent = this.parentFolderPath();
+    if (!parent) return this.space()?.name ?? 'Back';
+    return parent.split('/').pop() ?? parent;
   });
 
   isInConflict(): boolean {
