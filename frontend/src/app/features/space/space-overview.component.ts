@@ -1,5 +1,6 @@
 import { Component, OnInit, signal, computed, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, Document } from '../../core/api/documents.service';
@@ -7,11 +8,12 @@ import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrRes
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
+import { spaceRoute } from '../../shared/utils/route-utils';
 
 @Component({
   selector: 'app-space-overview',
   standalone: true,
-  imports: [CommonModule, RouterLink, SpaceRoutePipe],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe],
   template: `
     @if (isDragOver()) {
       <div class="drop-overlay">
@@ -33,16 +35,39 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
             <h1 class="text-2xl font-bold overview-text-primary truncate">{{ heroTitle() }}</h1>
             <p class="overview-text-secondary mt-1 truncate">{{ heroSubtitle() }}</p>
           </div>
-          <div class="flex gap-2 flex-shrink-0">
-            <label class="btn btn-secondary upload-hero-btn"
-                   [class.opacity-50]="isInConflict()"
-                   [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Upload files'">
-              <input type="file" multiple (change)="onFileInputChange($event)" [disabled]="isInConflict()" class="sr-only" />
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-              </svg>
-              Upload
-            </label>
+          <div class="flex gap-2 flex-shrink-0 items-center">
+            <!-- Hidden file input wired to "Upload file" menu item -->
+            <input #fileInput type="file" multiple class="sr-only"
+                   (change)="onFileInputChange($event); fileInput.value = ''" [disabled]="isInConflict()" />
+
+            <div class="new-menu-wrapper" (click)="$event.stopPropagation()">
+              <button
+                class="btn btn-primary"
+                [disabled]="isInConflict()"
+                [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Create new'"
+                (click)="showNewMenu.set(!showNewMenu())"
+              >
+                <span class="material-icons" style="font-size:18px;margin-right:4px;">add</span>
+                New
+                <span class="material-icons" style="font-size:18px;margin-left:4px;">arrow_drop_down</span>
+              </button>
+              @if (showNewMenu()) {
+                <div class="new-menu">
+                  <button class="new-menu-item" (click)="startNewDocument(); showNewMenu.set(false)">
+                    <span class="material-icons">description</span>
+                    New document
+                  </button>
+                  <button class="new-menu-item" (click)="fileInput.click(); showNewMenu.set(false)">
+                    <span class="material-icons">upload_file</span>
+                    Upload file
+                  </button>
+                  <button class="new-menu-item" (click)="startNewFolder(); showNewMenu.set(false)">
+                    <span class="material-icons">create_new_folder</span>
+                    New folder
+                  </button>
+                </div>
+              }
+            </div>
             @if (space()?.gitlabUrl) {
               <button
                 (click)="syncRepository()"
@@ -193,6 +218,20 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
             </div>
           } @else {
             <div class="overview-doc-list">
+              @if (creatingFolderInline()) {
+                <div class="inline-new-folder flex items-center gap-3 p-4">
+                  <span class="material-icons folder-icon">folder</span>
+                  <input
+                    type="text"
+                    [(ngModel)]="newFolderName"
+                    placeholder="Folder name"
+                    class="inline-folder-input"
+                    (keydown.enter)="submitNewFolder()"
+                    (keydown.escape)="cancelNewFolder()"
+                    (blur)="submitNewFolder()"
+                  />
+                </div>
+              }
               @if (currentFolder()) {
                 <a
                   [routerLink]="[]"
@@ -338,12 +377,70 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
       background: rgba(0, 0, 0, 0.015);
     }
 
-    /* Make the <label>-wrapped Upload button behave like a real .btn. */
-    .upload-hero-btn {
-      display: inline-flex;
+    /* + New dropdown */
+    .new-menu-wrapper {
+      position: relative;
+    }
+
+    .new-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 200px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg, 8px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+      z-index: 30;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .new-menu-item {
+      display: flex;
       align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: none;
+      border: none;
       cursor: pointer;
-      user-select: none;
+      text-align: left;
+      font-size: 13px;
+      color: var(--text-primary);
+      border-radius: 6px;
+      font-family: var(--font-body, inherit);
+
+      .material-icons { font-size: 18px; color: var(--text-muted); }
+
+      &:hover {
+        background: var(--background);
+        .material-icons { color: var(--primary); }
+      }
+    }
+
+    .inline-new-folder {
+      background: rgba(111, 179, 184, 0.06);
+      border-top: 1px solid var(--border);
+
+      &:first-child { border-top: none; }
+
+      .folder-icon {
+        font-size: 18px;
+        color: var(--primary);
+      }
+    }
+
+    .inline-folder-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: var(--text-primary);
+      outline: none;
+      font-family: var(--font-body, inherit);
     }
 
     .sync-error-alert {
@@ -500,6 +597,17 @@ export class SpaceOverviewComponent implements OnInit {
   lastPushError = signal<string | null>(null);
   pushing = signal(false);
   openingConflictMr = signal(false);
+
+  /** + New dropdown state — closed by default, toggled by the button. */
+  showNewMenu = signal(false);
+  /** Inline "new folder" input visible when the user picks New folder from the menu. */
+  creatingFolderInline = signal(false);
+  newFolderName = '';
+
+  @HostListener('document:click')
+  onDocClick(): void {
+    this.showNewMenu.set(false);
+  }
 
   /** Current folder path within the space — '' means the space root.
    *  Driven by the `path` query param, so any folder URL is shareable. */
@@ -662,6 +770,51 @@ export class SpaceOverviewComponent implements OnInit {
     this.documentsService.getDocuments(spaceId).subscribe({
       next: (docs) => this.documents.set(docs)
     });
+  }
+
+  // --- "+ New" menu actions ---
+
+  startNewDocument(): void {
+    const space = this.space();
+    if (!space) return;
+    this.router.navigate(spaceRoute(space.fullPath, 'doc'));
+  }
+
+  startNewFolder(): void {
+    this.newFolderName = '';
+    this.creatingFolderInline.set(true);
+    setTimeout(() => {
+      (document.querySelector('.inline-new-folder input') as HTMLInputElement | null)?.focus();
+    });
+  }
+
+  submitNewFolder(): void {
+    const space = this.space();
+    const name = this.newFolderName.trim();
+    if (!space || !name) {
+      this.cancelNewFolder();
+      return;
+    }
+    const cur = this.currentFolder();
+    const fullPath = cur ? `${cur}/${name}` : name;
+    this.documentsService.createFolder(space.id, fullPath).subscribe({
+      next: () => {
+        this.toastService.success('Folder created', fullPath);
+        this.creatingFolderInline.set(false);
+        this.newFolderName = '';
+        // Navigate into the new folder so the user sees it.
+        this.router.navigate(spaceRoute(space.fullPath), { queryParams: { path: fullPath } });
+        this.loadDocuments(space.id);
+      },
+      error: (err) => {
+        this.toastService.error('Failed', err?.error?.message ?? 'Could not create folder.');
+      }
+    });
+  }
+
+  cancelNewFolder(): void {
+    this.creatingFolderInline.set(false);
+    this.newFolderName = '';
   }
 
   syncRepository(): void {

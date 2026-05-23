@@ -60,18 +60,6 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                 }
               }
             </div>
-            @if (currentDocPath()) {
-              <div class="breadcrumb-actions">
-                <div class="search-box">
-                  <span class="material-icons">search</span>
-                  <input type="text" placeholder="Search files..." />
-                </div>
-                <button class="btn btn-primary btn-sm" (click)="createNewDocument()">
-                  <span class="material-icons">add</span>
-                  New
-                </button>
-              </div>
-            }
           </div>
 
           <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
@@ -87,19 +75,16 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   <span class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
                 }
                 <button
-                  class="sidebar-action-btn"
-                  title="New root folder"
-                  (click)="startCreateFolder('')"
-                >
-                  <span class="material-icons">create_new_folder</span>
-                </button>
-                <button
                   class="sidebar-share-btn"
                   title="Share entire repository"
                   (click)="openShareDialog('', true)"
                 >
                   <span class="material-icons">share</span>
                 </button>
+              </div>
+              <div class="sidebar-search">
+                <span class="material-icons">search</span>
+                <input type="text" placeholder="Search files…" [(ngModel)]="fileTreeFilter" />
               </div>
               @if (creatingFolderUnder() === '') {
                 <div class="tree-new-folder-row" [style.padding-left.px]="12">
@@ -573,6 +558,34 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       display: none;
     }
 
+    .sidebar-search {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      margin: 0 var(--spacing-sm) var(--spacing-sm);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+
+      .material-icons { font-size: 16px; }
+
+      input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        font-size: 13px;
+        color: var(--text-primary);
+        font-family: var(--font-body, inherit);
+
+        &::placeholder {
+          color: var(--text-muted);
+        }
+      }
+    }
+
     .sidebar-nav {
       padding: var(--spacing-sm);
       border-bottom: 1px solid var(--border);
@@ -992,6 +1005,9 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   /** Path of the folder currently shown in the overview's middle pane, or
    *  null when not browsing a folder (doc editor, inbox, root etc.). */
   currentFolderPath = signal<string | null>(null);
+
+  /** Sidebar file-tree filter (placeholder until full search lands). */
+  fileTreeFilter = '';
   currentDocPath = signal<string | null>(null);
   renamingPath = signal<string | null>(null);
   renamingValue = '';
@@ -1084,11 +1100,14 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.currentFolderPath.set(!isDoc ? path : null);
 
     if (path) {
-      const parts = path.split('/');
+      // For a doc path, drop the file segment so the topbar breadcrumb doesn't
+      // duplicate the editor's own filename header. Folder paths show in full.
+      const allParts = path.split('/');
+      const parts = isDoc ? allParts.slice(0, -1) : allParts;
       const segments = parts.map((part, i) => ({
-        label: isDoc && i === parts.length - 1 ? part.replace(/\.md$/, '') : part,
+        label: part,
         path: parts.slice(0, i + 1).join('/'),
-        isFile: isDoc && i === parts.length - 1
+        isFile: false
       }));
       this.breadcrumbSegments.set(segments);
     } else {
