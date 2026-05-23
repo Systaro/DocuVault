@@ -437,12 +437,15 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       border-radius: var(--radius-lg, 8px);
       padding: 24px 32px;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+      min-width: 0;
+      overflow: hidden;
     }
 
     .note-full-content {
       font-size: 14px;
       color: var(--text-primary);
       line-height: 1.7;
+      overflow-wrap: anywhere;
 
       h1 { font-size: 18px; font-weight: 700; margin: 0 0 12px; color: var(--text-primary); }
       h2 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: var(--text-primary); }
@@ -451,11 +454,25 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       em { color: var(--text-secondary); }
       strong { font-weight: 600; }
       ul, ol { margin: 0 0 10px 0; padding-left: 22px; }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(0,0,0,0.04);
+        padding: 12px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        margin: 0 0 10px;
+      }
       code {
         background: rgba(0,0,0,0.05);
         padding: 1px 5px;
         border-radius: 4px;
         font-size: 12px;
+        word-break: break-word;
+      }
+      pre code {
+        background: none;
+        padding: 0;
       }
     }
 
