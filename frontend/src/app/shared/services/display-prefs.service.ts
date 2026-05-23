@@ -2,8 +2,9 @@ import { Injectable, effect, signal } from '@angular/core';
 
 /**
  * Per-user display preferences for the space browser. Currently exposes the
- * "pretty names" toggle that strips file extensions, replaces _/- with spaces,
- * and lowercases names for display only — raw paths in Git stay untouched.
+ * "pretty names" toggle that strips file extensions and replaces _/- with
+ * spaces for display only — original casing and the raw paths in Git stay
+ * untouched.
  *
  * Persisted to localStorage so the choice survives reloads.
  */
@@ -31,15 +32,15 @@ export class DisplayPrefsService {
 
   /**
    * Render a raw file/folder name as a friendlier label. For files the
-   * extension is dropped. For both: underscores and dashes become spaces and
-   * the whole string is lowercased. Returns the input unchanged when the
-   * toggle is off.
+   * extension is dropped. For both: underscores and dashes become spaces.
+   * Original casing is preserved (so `iOS_App` stays `iOS App`).
+   * Returns the input unchanged when the toggle is off.
    */
   prettify(name: string, isFolder = false): string {
     if (!name) return '';
     if (!this.prettyNames()) return name;
     let out = isFolder ? name : name.replace(/\.[^.]+$/, '');
-    out = out.replace(/[_-]+/g, ' ').toLowerCase().trim();
+    out = out.replace(/[_-]+/g, ' ').trim();
     return out || name;
   }
 
