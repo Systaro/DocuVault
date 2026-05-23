@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, HostListener } from '@angular/core';
+import { Component, OnInit, signal, computed, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
@@ -155,10 +155,33 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
           </div>
         </div>
 
-        <!-- Recent Documents -->
+        <!-- Folder browser -->
         <div class="card">
-          <div class="p-4 overview-section-header flex items-center justify-between">
-            <h2 class="font-semibold overview-text-primary">Recent Documents</h2>
+          <div class="p-4 overview-section-header flex items-center justify-between gap-4">
+            <div class="folder-breadcrumbs">
+              <a
+                [routerLink]="[]"
+                [queryParams]="{ path: null }"
+                queryParamsHandling="merge"
+                class="folder-crumb"
+                [class.folder-crumb-active]="!currentFolder()"
+              >
+                <span class="material-icons">folder_open</span>
+                {{ space()?.name }}
+              </a>
+              @for (segment of breadcrumbSegments(); track segment.path; let last = $last) {
+                <span class="folder-sep">/</span>
+                <a
+                  [routerLink]="[]"
+                  [queryParams]="{ path: segment.path }"
+                  queryParamsHandling="merge"
+                  class="folder-crumb"
+                  [class.folder-crumb-active]="last"
+                >
+                  {{ segment.name }}
+                </a>
+              }
+            </div>
             <label class="upload-btn" [class.opacity-50]="isInConflict()" [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Upload files'">
               <input type="file" multiple (change)="onFileInputChange($event)" [disabled]="isInConflict()" class="sr-only" />
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -186,21 +209,45 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
                 Create your first document
               </a>
             </div>
+          } @else if (subfolders().length === 0 && filesHere().length === 0) {
+            <div class="p-8 text-center">
+              <p class="overview-text-secondary">This folder is empty.</p>
+            </div>
           } @else {
             <div class="overview-doc-list">
-              @for (doc of documents().slice(0, 10); track doc.id) {
+              @if (currentFolder()) {
+                <a
+                  [routerLink]="[]"
+                  [queryParams]="{ path: parentFolderPath() || null }"
+                  queryParamsHandling="merge"
+                  class="overview-doc-item flex items-center gap-3 p-4"
+                  title="Up one level"
+                >
+                  <span class="material-icons overview-text-muted">arrow_upward</span>
+                  <span class="font-medium overview-text-secondary">..</span>
+                </a>
+              }
+              @for (folder of subfolders(); track folder) {
+                <a
+                  [routerLink]="[]"
+                  [queryParams]="{ path: currentFolder() ? currentFolder() + '/' + folder : folder }"
+                  queryParamsHandling="merge"
+                  class="overview-doc-item flex items-center gap-3 p-4"
+                >
+                  <span class="material-icons folder-icon">folder</span>
+                  <span class="font-medium overview-text-primary">{{ folder }}</span>
+                </a>
+              }
+              @for (doc of filesHere(); track doc.id) {
                 <a
                   [routerLink]="space()?.fullPath | spaceRoute:'doc'"
                   [queryParams]="{ path: doc.path }"
                   class="overview-doc-item flex items-center justify-between gap-4 p-4"
                 >
                   <div class="flex items-center gap-3 min-w-0">
-                    <svg class="w-5 h-5 flex-shrink-0 overview-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
+                    <span class="material-icons overview-text-muted">description</span>
                     <div class="min-w-0">
-                      <div class="font-medium overview-text-primary truncate">{{ doc.title || doc.path }}</div>
-                      <div class="text-sm overview-text-muted truncate">{{ doc.path }}</div>
+                      <div class="font-medium overview-text-primary truncate">{{ doc.title || doc.path.split('/').pop() }}</div>
                     </div>
                   </div>
                   @if (doc.lastSyncedAt) {
@@ -246,6 +293,47 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
       &:hover {
         background: var(--background);
       }
+    }
+
+    .folder-breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-width: 0;
+      font-size: 14px;
+    }
+
+    .folder-crumb {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 3px 6px;
+      border-radius: 4px;
+      transition: background var(--transition-fast), color var(--transition-fast);
+
+      .material-icons { font-size: 18px; color: var(--primary); }
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+
+    .folder-crumb-active {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .folder-sep {
+      color: var(--text-muted);
+      user-select: none;
+    }
+
+    .folder-icon {
+      color: var(--primary);
     }
 
     .sync-error-alert {
@@ -403,6 +491,52 @@ export class SpaceOverviewComponent implements OnInit {
   pushing = signal(false);
   openingConflictMr = signal(false);
 
+  /** Current folder path within the space — '' means the space root.
+   *  Driven by the `path` query param, so any folder URL is shareable. */
+  currentFolder = signal<string>('');
+
+  /** Direct subfolders at the current level (one segment deeper). */
+  subfolders = computed<string[]>(() => {
+    const cur = this.currentFolder();
+    const prefix = cur ? cur + '/' : '';
+    const set = new Set<string>();
+    for (const d of this.documents()) {
+      if (cur && !d.path.startsWith(prefix)) continue;
+      const rest = cur ? d.path.slice(prefix.length) : d.path;
+      const slash = rest.indexOf('/');
+      if (slash > 0) set.add(rest.slice(0, slash));
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  });
+
+  /** Documents directly at this folder level (no further nesting). */
+  filesHere = computed<Document[]>(() => {
+    const cur = this.currentFolder();
+    const prefix = cur ? cur + '/' : '';
+    return this.documents()
+      .filter((d) => {
+        if (cur && !d.path.startsWith(prefix)) return false;
+        const rest = cur ? d.path.slice(prefix.length) : d.path;
+        return !rest.includes('/');
+      })
+      .sort((a, b) => (a.title || a.path).localeCompare(b.title || b.path));
+  });
+
+  /** Breadcrumb segments above the listing — each entry links one level deeper. */
+  breadcrumbSegments = computed<{ name: string; path: string }[]>(() => {
+    const cur = this.currentFolder();
+    if (!cur) return [];
+    const parts = cur.split('/');
+    return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
+  });
+
+  parentFolderPath = computed<string>(() => {
+    const cur = this.currentFolder();
+    if (!cur) return '';
+    const slash = cur.lastIndexOf('/');
+    return slash === -1 ? '' : cur.slice(0, slash);
+  });
+
   isInConflict(): boolean {
     return this.space()?.syncStatus === 'IN_CONFLICT';
   }
@@ -462,6 +596,10 @@ export class SpaceOverviewComponent implements OnInit {
       if (fullPath) {
         this.loadSpaceByPath(fullPath);
       }
+    });
+    // Track ?path=… so subfolder URLs are bookmarkable and route changes reflow.
+    this.route.queryParamMap.subscribe((q) => {
+      this.currentFolder.set((q.get('path') ?? '').replace(/^\/+|\/+$/g, ''));
     });
   }
 
