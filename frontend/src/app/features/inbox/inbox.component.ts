@@ -87,8 +87,10 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
               </div>
             } @else {
               <div class="suggestion-content">
-                <!-- Note content -->
-                <div class="note-full-content" [innerHTML]="selectedNote()!.content"></div>
+                <!-- Note content on a paper-like sheet -->
+                <div class="note-sheet">
+                  <div class="note-full-content" [innerHTML]="selectedNote()!.content"></div>
+                </div>
 
                 <div class="suggestion-divider"></div>
 
@@ -137,9 +139,9 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                   }
                 } @else {
                   <div class="suggestion-empty">
-                    <button class="btn btn-secondary btn-sm" (click)="requestSuggestion()">
+                    <button class="btn btn-secondary" (click)="requestSuggestion()">
                       <span class="material-icons">auto_awesome</span>
-                      Generate AI suggestion
+                      Analyze where to put this
                     </button>
                   </div>
                 }
@@ -429,10 +431,32 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       gap: 16px;
     }
 
+    .note-sheet {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg, 8px);
+      padding: 24px 32px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
     .note-full-content {
       font-size: 14px;
       color: var(--text-primary);
       line-height: 1.7;
+
+      h1 { font-size: 18px; font-weight: 700; margin: 0 0 12px; color: var(--text-primary); }
+      h2 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: var(--text-primary); }
+      p  { margin: 0 0 10px; }
+      p:last-child { margin-bottom: 0; }
+      em { color: var(--text-secondary); }
+      strong { font-weight: 600; }
+      ul, ol { margin: 0 0 10px 0; padding-left: 22px; }
+      code {
+        background: rgba(0,0,0,0.05);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
     }
 
     .suggestion-divider {
@@ -724,13 +748,9 @@ export class InboxComponent implements OnInit {
     this.selectedNote.set(note);
     this.showDiff.set(false);
 
-    const suggestion = this.inboxService.parseSuggestion(note);
-    this.currentSuggestion.set(suggestion);
-
-    // Auto-generate suggestion if not yet available
-    if (!suggestion) {
-      this.requestSuggestion();
-    }
+    // Show existing suggestion if there is one, otherwise wait for the user
+    // to click "Analyze where to put this" — AI runs only on demand.
+    this.currentSuggestion.set(this.inboxService.parseSuggestion(note));
   }
 
   requestSuggestion(): void {

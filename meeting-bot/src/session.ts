@@ -5,6 +5,7 @@ import { DocuVaultClient } from './docuvault.js';
 import { transcribePcm } from './transcribe.js';
 import {
   formatTranscript,
+  formatTranscriptParagraphs,
   generateMeetingNote,
   markdownToHtml,
   type TranscriptLine,
@@ -87,9 +88,8 @@ export class MeetingSession {
     const rawTranscriptMd =
       `# Roh-Transkript — ${this.label}\n\n` +
       `_Teilnehmer: ${participants.join(', ')}_\n\n` +
-      '```\n' +
-      transcript +
-      '\n```\n';
+      formatTranscriptParagraphs(lines) +
+      '\n';
 
     const notes = [markdownToHtml(meetingNoteMd), markdownToHtml(rawTranscriptMd)];
     await this.client.submitNotes(notes, participants.join(', '));

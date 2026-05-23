@@ -10,9 +10,17 @@ export interface TranscriptLine {
   text: string;
 }
 
-/** Renders transcript lines as `[mm:ss] Speaker: text`. */
+/** Renders transcript lines as a single string (`[mm:ss] Speaker: text` per line). */
 export function formatTranscript(lines: TranscriptLine[]): string {
   return lines.map((l) => `[${formatTimestamp(l.tsMs)}] ${l.speaker}: ${l.text}`).join('\n');
+}
+
+/** Renders transcript lines as Markdown paragraphs — one utterance per paragraph
+ *  so the inbox view can wrap long lines instead of overflowing. */
+export function formatTranscriptParagraphs(lines: TranscriptLine[]): string {
+  return lines
+    .map((l) => `**[${formatTimestamp(l.tsMs)}]** ${l.speaker}: ${l.text}`)
+    .join('\n\n');
 }
 
 function formatTimestamp(ms: number): string {
