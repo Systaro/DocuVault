@@ -202,7 +202,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             @if (node.isDirectory) {
               <div class="tree-folder-row">
                 <button
-                  (click)="toggleFolder(node.path)"
+                  (click)="openFolder(node.path)"
                   class="tree-item"
                   [class.expanded]="expandedFolders().has(node.path)"
                   [style.padding-left.px]="12 + level * 16"
@@ -1066,17 +1066,21 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private updateBreadcrumb(): void {
-    // Get query params from the current child route
+    // Get query params from the current child route.
     const childRoute = this.route.firstChild;
     const path = childRoute?.snapshot.queryParamMap.get('path') || null;
-    this.currentDocPath.set(path);
+    // The `path` query param is shared by two routes: /doc (file path) and
+    // the space overview itself (folder path). Distinguish via the URL.
+    const isDoc = this.router.url.includes('/doc');
+
+    this.currentDocPath.set(isDoc ? path : null);
 
     if (path) {
       const parts = path.split('/');
       const segments = parts.map((part, i) => ({
-        label: i === parts.length - 1 ? part.replace(/\.md$/, '') : part,
+        label: isDoc && i === parts.length - 1 ? part.replace(/\.md$/, '') : part,
         path: parts.slice(0, i + 1).join('/'),
-        isFile: i === parts.length - 1
+        isFile: isDoc && i === parts.length - 1
       }));
       this.breadcrumbSegments.set(segments);
     } else {
@@ -1084,7 +1088,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     this.updateTitle();
-    this.expandToCurrentDoc();
+    this.expandToCurrentPath(path, isDoc);
   }
 
   /**
@@ -1106,16 +1110,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Expands every ancestor folder of the currently open document so the file
-   * tree reveals the active file instead of leaving its folders collapsed.
+   * Expands every folder along the current path so the sidebar reveals it.
+   * For a doc path we stop one segment short (the last segment is the file);
+   * for a folder path we expand the whole chain including the last segment.
    */
-  private expandToCurrentDoc(): void {
-    const path = this.currentDocPath();
-    if (!path || !path.includes('/')) return;
+  private expandToCurrentPath(path: string | null, isDoc: boolean): void {
+    if (!path) return;
     const parts = path.split('/');
+    if (isDoc && parts.length < 2) return;
+    const stopAt = isDoc ? parts.length - 1 : parts.length;
     const expanded = new Set(this.expandedFolders());
     let prefix = '';
-    for (let i = 0; i < parts.length - 1; i++) {
+    for (let i = 0; i < stopAt; i++) {
       prefix = prefix ? `${prefix}/${parts[i]}` : parts[i];
       expanded.add(prefix);
     }
@@ -1143,6 +1149,20 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       expanded.add(path);
     }
     this.expandedFolders.set(expanded);
+  }
+
+  /**
+   * Sidebar click on a folder: toggles its expand state AND navigates the
+   * middle pane (space overview) to browse that folder. The overview reads
+   * the `?path=` query param on the space root route. Re-expansion after
+   * navigation is handled by updateBreadcrumb, so the currently-browsed
+   * folder always stays expanded.
+   */
+  openFolder(path: string): void {
+    this.toggleFolder(path);
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.router.navigate(spaceRoute(space.fullPath), { queryParams: { path } });
   }
 
   createNewDocument(): void {
