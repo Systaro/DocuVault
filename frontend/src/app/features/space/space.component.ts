@@ -5,7 +5,7 @@ import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, Nav
 import { Title } from '@angular/platform-browser';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space } from '../../core/api/spaces.service';
-import { DocumentsService, FileNode } from '../../core/api/documents.service';
+import { DocumentsService, FileNode, Document } from '../../core/api/documents.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { InboxService } from '../../core/api/inbox.service';
@@ -262,7 +262,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                       <span class="material-icons">check</span>
                     </button>
                   } @else {
-                    <span class="tree-name">{{ prefs.prettify(node.name) }}</span>
+                    <span class="tree-name">{{ displayName(node) }}</span>
                     @if (sharedFilePaths().has(node.path)) {
                       <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
@@ -1044,9 +1044,22 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   spaceSignal = signal<Space | null>(null);
   fileTree = signal<FileNode[]>([]);
+  /** path → first-H1 title, used to label sidebar tree rows the same way the
+   *  folder-overview pane does. Falls back to the prettified filename when a
+   *  title isn't available for that path. */
+  documentTitles = signal<Map<string, string>>(new Map());
   unsortedCount = signal(0);
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
+
+  /** Returns the best display label for a tree node — Document.title if known,
+   *  otherwise the prettified raw filename. Same fallback rule the overview
+   *  pane uses for file rows. */
+  displayName(node: FileNode): string {
+    const title = this.documentTitles().get(node.path);
+    if (title) return title;
+    return this.prefs.prettify(node.name, node.isDirectory);
+  }
 
   /** Path of the folder currently shown in the overview's middle pane, or
    *  null when not browsing a folder (doc editor, inbox, root etc.). */
@@ -1205,6 +1218,16 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   loadFileTree(spaceId: string): void {
     this.documentsService.getFileTree(spaceId).subscribe({
       next: (tree) => this.fileTree.set(tree)
+    });
+    this.documentsService.getDocuments(spaceId).subscribe({
+      next: (docs: Document[]) => {
+        const map = new Map<string, string>();
+        for (const d of docs) {
+          if (d.title) map.set(d.path, d.title);
+        }
+        this.documentTitles.set(map);
+      },
+      error: () => this.documentTitles.set(new Map())
     });
   }
 
