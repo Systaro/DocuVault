@@ -41,6 +41,23 @@ import { marked } from 'marked';
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
+      <div class="editor-breadcrumb-row">
+        @if (space()) {
+          <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
+          @for (seg of fileBreadcrumb(); track seg.path) {
+            <span class="editor-crumb-sep">/</span>
+            <a
+              [routerLink]="space()!.fullPath | spaceRoute"
+              [queryParams]="{ path: seg.path }"
+              class="editor-crumb"
+            >{{ prefs.prettify(seg.label, true) }}</a>
+          }
+          @if (documentPath) {
+            <span class="editor-crumb-sep">/</span>
+            <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
+          }
+        }
+      </div>
       <div class="editor-toolbar">
         @if (!isGitSpace()) {
           <!-- Editing toolbar for non-git spaces -->
@@ -386,6 +403,18 @@ import { marked } from 'marked';
       display: flex;
       align-items: center;
       justify-content: space-between;
+    }
+
+    .editor-breadcrumb-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     .editor-icon-btn {
