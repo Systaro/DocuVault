@@ -5,7 +5,6 @@
 !.env.example.product
 
 # Internal / operator-only docs (kept locally, not published)
-CLAUDE.md
 docs/productization-plan.md
 docs/designs/
 
