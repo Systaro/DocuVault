@@ -171,7 +171,7 @@ import { marked } from 'marked';
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar">
           <div class="preview-filename">
-            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : 'image' }}</span>
+            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -253,6 +253,18 @@ import { marked } from 'marked';
                   [spaceId]="space()!.id"
                   [filePath]="documentPath"
                   [renderMode]="'html'"
+                  [permission]="annotationPermission()"
+                />
+              }
+            </div>
+          } @else if (previewType() === 'pdf') {
+            <div class="pdf-preview-container annotation-host">
+              <iframe [src]="safePreviewUrl()" class="preview-iframe"></iframe>
+              @if (space() && documentPath) {
+                <app-annotation-overlay
+                  [spaceId]="space()!.id"
+                  [filePath]="documentPath"
+                  [renderMode]="'pdf'"
                   [permission]="annotationPermission()"
                 />
               }
@@ -563,7 +575,8 @@ import { marked } from 'marked';
 
     .annotation-host { position: relative; }
 
-    .html-preview-container {
+    .html-preview-container,
+    .pdf-preview-container {
       flex: 1;
       display: flex;
       min-height: 100%;
@@ -807,6 +820,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
   ]);
   private static readonly HTML_EXTENSIONS = new Set(['html', 'htm']);
+  private static readonly PDF_EXTENSIONS = new Set(['pdf']);
 
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
@@ -838,7 +852,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   deleting = signal(false);
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
-  previewType = signal<'image' | 'html'>('image');
+  previewType = signal<'image' | 'html' | 'pdf'>('image');
   previewUrl = signal('');
   safePreviewUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
@@ -1115,6 +1129,16 @@ export class EditorComponent implements OnInit, OnDestroy {
             this.previewUrl.set(url);
             this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
           }
+        } else if (EditorComponent.PDF_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.previewType.set('pdf');
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            const url = `/api/spaces/${space.id}/files/${path}`;
+            this.previewUrl.set(url);
+            this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+          }
         } else {
           this.isPreviewFile.set(false);
           if (this.space()) {
@@ -1150,7 +1174,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         if (this.isPreviewFile()) {
           const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
           this.previewUrl.set(url);
-          if (this.previewType() === 'html') {
+          if (this.previewType() === 'html' || this.previewType() === 'pdf') {
             this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
           }
         } else if (this.documentPath) {

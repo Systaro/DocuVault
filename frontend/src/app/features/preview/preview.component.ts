@@ -199,7 +199,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
             [class.active]="currentPath() === node.path"
             (click)="navigateToFile(node)"
           >
-            <span class="material-icons tree-icon file-icon">{{ getFileIcon(node.name) }}</span>
+            <img class="tree-icon file-icon-img" [src]="getFileIcon(node.name)" [alt]="node.name" />
             <span class="tree-name">{{ node.name }}</span>
           </div>
         }
@@ -396,6 +396,13 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 
     .folder-icon { color: #6fb3b8; }
     .file-icon { color: #9ca3af; }
+
+    .file-icon-img {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
 
     .tree-name {
       overflow: hidden;

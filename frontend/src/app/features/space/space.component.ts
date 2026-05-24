@@ -14,6 +14,7 @@ import { CapabilitiesService } from '../../core/capabilities/capabilities.servic
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
+import { getFileIcon } from '../../shared/utils/file-utils';
 
 @Component({
   selector: 'app-space',
@@ -240,7 +241,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   [class.active]="currentDocPath() === node.path"
                   [style.padding-left.px]="40 + level * 16"
                 >
-                  <span class="material-icons file-icon">description</span>
+                  <img class="file-icon-img" [src]="getFileIcon(node.name)" [alt]="node.name" />
                   @if (renamingPath() === node.path) {
                     <input
                       class="rename-input"
@@ -675,6 +676,13 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         color: var(--text-muted);
       }
 
+      .file-icon-img {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+
       .tree-name {
         flex: 1;
         overflow: hidden;
@@ -1026,6 +1034,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
   `]
 })
 export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
+  readonly getFileIcon = getFileIcon;
   private static readonly SIDEBAR_WIDTH_KEY = 'docuvault-sidebar-width';
   private static readonly DEFAULT_WIDTH = 280;
   private static readonly MIN_WIDTH = 200;
