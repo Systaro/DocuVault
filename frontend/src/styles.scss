@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+@import 'highlight.js/styles/github.css';
+
 // ============================================
 // CSS VARIABLES - NOTEHUB DESIGN SYSTEM
 // ============================================
@@ -934,8 +936,8 @@ body {
   outline: none;
   min-height: 300px;
   padding: 24px;
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 14.5px;
+  line-height: 1.65;
   color: var(--text-primary);
 
   > * + * {
@@ -986,24 +988,30 @@ body {
   }
 
   code {
-    background: var(--primary-light);
+    background: #f3f4f6;
     padding: 2px 6px;
     border-radius: var(--radius-sm);
-    font-family: 'Monaco', 'Menlo', monospace;
-    font-size: 0.9em;
-    color: var(--primary-dark);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.875em;
+    color: #374151;
   }
 
   pre {
-    background: var(--background);
-    padding: 16px;
+    background: #f6f8fa;
+    color: #24292f;
+    padding: 14px 18px;
     border-radius: var(--radius-md);
     overflow-x: auto;
     margin-bottom: 16px;
+    line-height: 1.55;
+    font-size: 13px;
+    border: 1px solid #eaecef;
 
     code {
       background: none;
       padding: 0;
+      font-size: inherit;
+      color: inherit;
     }
   }
 
@@ -1296,7 +1304,7 @@ body {
 // SHARED MARKDOWN VIEWER STYLES
 // ============================================
 .markdown-container {
-  max-width: 800px;
+  max-width: 960px;
   width: 100%;
   margin: 24px auto;
   padding: 48px;
@@ -1306,8 +1314,8 @@ body {
 
   article {
     color: #1f2937;
-    font-size: 16px;
-    line-height: 1.75;
+    font-size: 14.5px;
+    line-height: 1.65;
   }
 
   :is(h1, h2, h3, h4, h5, h6) {
@@ -1348,28 +1356,31 @@ body {
 
   code {
     background: #f3f4f6;
-    padding: 0.2em 0.4em;
+    padding: 0.15em 0.4em;
     border-radius: 4px;
     font-size: 0.875em;
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    color: #d6336c;
+    color: #374151;
   }
 
   pre {
-    background: #1f2937;
-    color: #e5e7eb;
-    padding: 16px 20px;
+    background: #f6f8fa;
+    color: #24292f;
+    padding: 14px 18px;
     border-radius: 8px;
     overflow-x: auto;
     margin: 0 0 1em;
-    line-height: 1.6;
+    line-height: 1.55;
+    font-size: 13px;
+    border: 1px solid #eaecef;
 
     code {
       background: none;
       padding: 0;
       border-radius: 0;
-      font-size: 0.875em;
+      font-size: inherit;
       color: inherit;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     }
   }
 

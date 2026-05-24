@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked, Renderer } from 'marked';
 import mermaid from 'mermaid';
+import hljs from 'highlight.js/lib/common';
 import { resolveRelativePath } from '../utils/file-utils';
 
 @Injectable({ providedIn: 'root' })
@@ -42,19 +43,9 @@ export class MarkdownRenderService {
     // the text node — mermaid reads textContent, which un-escapes for us.
     renderer.code = (code: string, lang: string | undefined) => {
       if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
-        const escaped = code
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-        return `<pre class="mermaid">${escaped}</pre>`;
+        return `<pre class="mermaid">${this.escape(code)}</pre>`;
       }
-      // Fallback to marked's default code rendering.
-      const langClass = lang ? ` class="language-${lang}"` : '';
-      const escaped = code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      return `<pre><code${langClass}>${escaped}</code></pre>\n`;
+      return this.renderCodeBlock(code, lang);
     };
 
     let html = marked.parse(content, { renderer }) as string;
@@ -96,8 +87,7 @@ export class MarkdownRenderService {
       if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
         return `<pre class="mermaid">${this.escape(code)}</pre>`;
       }
-      const langClass = lang ? ` class="language-${lang}"` : '';
-      return `<pre><code${langClass}>${this.escape(code)}</code></pre>\n`;
+      return this.renderCodeBlock(code, lang);
     };
     const html = marked.parse(content, { renderer }) as string;
     return this.sanitizer.bypassSecurityTrustHtml(html);
@@ -248,5 +238,28 @@ export class MarkdownRenderService {
 
   private escape(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  private renderCodeBlock(code: string, lang: string | undefined): string {
+    const language = (lang ?? '').trim();
+    if (language && hljs.getLanguage(language)) {
+      try {
+        const { value } = hljs.highlight(code, { language, ignoreIllegals: true });
+        return `<pre><code class="hljs language-${language}">${value}</code></pre>\n`;
+      } catch {
+        // fall through to auto / plain
+      }
+    }
+    if (language) {
+      return `<pre><code class="hljs language-${language}">${this.escape(code)}</code></pre>\n`;
+    }
+    // No explicit language — try to auto-detect, but only commit if the
+    // highlighter is reasonably confident, to avoid mangling tree-shaped
+    // ASCII art and other prose-y blocks.
+    const auto = hljs.highlightAuto(code);
+    if (auto.relevance >= 5 && auto.language) {
+      return `<pre><code class="hljs language-${auto.language}">${auto.value}</code></pre>\n`;
+    }
+    return `<pre><code class="hljs">${this.escape(code)}</code></pre>\n`;
   }
 }
