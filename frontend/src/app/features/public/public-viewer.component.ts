@@ -114,10 +114,48 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
         <div class="resize-handle" (mousedown)="startResize($event)"></div>
         <main class="folder-content">
           @if (!currentSubPath()) {
-            <div class="folder-welcome">
-              <span class="material-icons welcome-icon">folder_open</span>
-              <h2>{{ metadata()?.fileName || metadata()?.spaceName }}</h2>
-              <p>Select a file from the navigation to view its contents.</p>
+            <div class="folder-browser">
+              @if (currentFolderPath()) {
+                <nav class="folder-browser-crumbs">
+                  <a (click)="setCurrentFolder('')" class="folder-browser-crumb">{{ metadata()?.fileName || metadata()?.spaceName }}</a>
+                  @for (seg of folderBrowserCrumbs(); track seg.path; let last = $last) {
+                    <span class="folder-browser-crumb-sep">/</span>
+                    @if (last) {
+                      <span class="folder-browser-crumb folder-browser-crumb--active">{{ seg.name }}</span>
+                    } @else {
+                      <a (click)="setCurrentFolder(seg.path)" class="folder-browser-crumb">{{ seg.name }}</a>
+                    }
+                  }
+                </nav>
+              }
+              <h2 class="folder-browser-title">
+                <span class="material-icons">folder_open</span>
+                {{ folderBrowserTitle() }}
+              </h2>
+              <div class="folder-browser-listing">
+                @if (currentFolderPath()) {
+                  <a class="folder-browser-row folder-browser-row--up" (click)="setCurrentFolder(parentFolderPath())">
+                    <span class="material-icons">arrow_upward</span>
+                    <span class="folder-browser-name">Up to {{ parentFolderLabel() }}</span>
+                  </a>
+                }
+                @if (currentFolderItems().length === 0) {
+                  <div class="folder-browser-empty">This folder is empty.</div>
+                }
+                @for (item of currentFolderItems(); track item.path) {
+                  @if (item.isDirectory) {
+                    <a class="folder-browser-row folder-browser-row--folder" (click)="setCurrentFolder(item.path)">
+                      <span class="material-icons folder-icon">folder</span>
+                      <span class="folder-browser-name">{{ item.name }}</span>
+                    </a>
+                  } @else {
+                    <a class="folder-browser-row folder-browser-row--file" (click)="navigateToFile(item)">
+                      <img class="folder-browser-row-icon" [src]="getFileIcon(item.name)" [alt]="item.name" />
+                      <span class="folder-browser-name">{{ item.name }}</span>
+                    </a>
+                  }
+                }
+              </div>
             </div>
           } @else if (subFileLoading()) {
             <div class="loading-state">
@@ -650,6 +688,118 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
       font-size: 14px;
     }
 
+    /* Folder browser (shown when no file is selected in a folder share) */
+    .folder-browser {
+      max-width: 960px;
+      width: 100%;
+      margin: 24px auto;
+      padding: 32px 40px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .folder-browser-crumbs {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .folder-browser-crumb {
+      color: #4a9da3;
+      text-decoration: none;
+      cursor: pointer;
+
+      &:hover { text-decoration: underline; }
+    }
+
+    .folder-browser-crumb--active {
+      color: #111827;
+      cursor: default;
+
+      &:hover { text-decoration: none; }
+    }
+
+    .folder-browser-crumb-sep { color: #d1d5db; }
+
+    .folder-browser-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 22px;
+      font-weight: 600;
+      color: #111827;
+      margin: 0 0 20px;
+
+      .material-icons {
+        color: #6fb3b8;
+        font-size: 28px;
+      }
+    }
+
+    .folder-browser-listing {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .folder-browser-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      color: #1f2937;
+      text-decoration: none;
+      border-bottom: 1px solid #f3f4f6;
+      transition: background 0.12s;
+
+      &:last-child { border-bottom: none; }
+      &:hover { background: #f9fafb; }
+
+      .material-icons {
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+
+      .folder-icon { color: #f9a825; }
+    }
+
+    .folder-browser-row--up {
+      color: #6b7280;
+      font-size: 13px;
+      background: #f9fafb;
+
+      .material-icons { color: #9ca3af; font-size: 18px; }
+    }
+
+    .folder-browser-row-icon {
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .folder-browser-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .folder-browser-empty {
+      padding: 24px;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
     /* Shared states */
     .loading-state, .error-state, .download-state {
       display: flex;
@@ -764,9 +914,55 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   fileTree = signal<FileNode[]>([]);
   expandedFolders = signal<Set<string>>(new Set());
   currentSubPath = signal('');
+  /** Path of the folder currently shown in the main pane when no file is open. '' = share root. */
+  currentFolderPath = signal('');
   subFileLoading = signal(false);
   sidebarWidth = signal(280);
   private resizing = false;
+
+  /** FileNode list at currentFolderPath() inside fileTree(). Empty if not found. */
+  currentFolderItems = computed<FileNode[]>(() => {
+    const path = this.currentFolderPath();
+    if (!path) return this.fileTree();
+    const segments = path.split('/').filter(Boolean);
+    let nodes: FileNode[] = this.fileTree();
+    for (const seg of segments) {
+      const next: FileNode | undefined = nodes.find((n) => n.isDirectory && n.name === seg);
+      if (!next || !next.children) return [];
+      nodes = next.children;
+    }
+    return nodes;
+  });
+
+  folderBrowserCrumbs = computed<{ name: string; path: string }[]>(() => {
+    const cur = this.currentFolderPath();
+    if (!cur) return [];
+    const parts = cur.split('/').filter(Boolean);
+    return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
+  });
+
+  parentFolderPath(): string {
+    const cur = this.currentFolderPath();
+    if (!cur) return '';
+    const slash = cur.lastIndexOf('/');
+    return slash === -1 ? '' : cur.slice(0, slash);
+  }
+
+  setCurrentFolder(path: string): void {
+    this.currentFolderPath.set(path);
+  }
+
+  folderBrowserTitle = computed<string>(() => {
+    const cur = this.currentFolderPath();
+    if (!cur) return this.metadata()?.fileName || this.metadata()?.spaceName || '';
+    return cur.split('/').pop() || cur;
+  });
+
+  parentFolderLabel = computed<string>(() => {
+    const parent = this.parentFolderPath();
+    if (!parent) return this.metadata()?.fileName || this.metadata()?.spaceName || 'back';
+    return parent.split('/').pop() || parent;
+  });
 
   // Annotations
   annotationPermission = computed<AnnotationPermission>(() => {
