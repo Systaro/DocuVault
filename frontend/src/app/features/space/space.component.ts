@@ -239,7 +239,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   [queryParams]="{ path: node.path }"
                   class="tree-item file"
                   [class.active]="currentDocPath() === node.path"
-                  [style.padding-left.px]="12 + level * 16"
+                  [style.padding-left.px]="32 + level * 16"
                 >
                   <img class="file-icon-img" [src]="getFileIcon(node.name)" [alt]="node.name" />
                   @if (renamingPath() === node.path) {
