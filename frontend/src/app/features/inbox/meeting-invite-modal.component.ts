@@ -1,7 +1,8 @@
-import { Component, EventEmitter, Input, OnInit, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnDestroy, OnInit, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MeetingService, MeetingInvite } from '../../core/api/meeting.service';
+import { Subscription } from 'rxjs';
+import { MeetingService, MeetingInvite, meetingPhaseLabel } from '../../core/api/meeting.service';
 import { ToastService } from '../../shared/services/toast.service';
 
 /**
@@ -86,6 +87,18 @@ import { ToastService } from '../../shared/services/toast.service';
                     @if (inv.noteCount > 0) { · {{ inv.noteCount }} Notizen }
                     @if (inv.participants) { · {{ inv.participants }} }
                   </span>
+                  @if (inv.status === 'ACTIVE') {
+                    <div class="live-progress">
+                      <span class="material-icons spinning">graphic_eq</span>
+                      <span class="live-text">{{ phaseLabel(inv) }}</span>
+                      @if (inv.progressTotal) {
+                        <span class="live-count">{{ inv.progressCurrent ?? 0 }}/{{ inv.progressTotal }}</span>
+                        <span class="live-bar">
+                          <span class="live-bar-fill" [style.width.%]="progressPct(inv)"></span>
+                        </span>
+                      }
+                    </div>
+                  }
                   @if (inv.error) {
                     <span class="invite-error">{{ inv.error }}</span>
                   }
@@ -183,6 +196,28 @@ import { ToastService } from '../../shared/services/toast.service';
     .invite-sub { font-size: 11px; color: var(--text-muted); }
     .invite-error { font-size: 11px; color: #dc2626; }
 
+    .live-progress {
+      display: flex; align-items: center; gap: 6px;
+      margin-top: 4px;
+      font-size: 11px; font-weight: 600; color: var(--primary-dark);
+    }
+    .live-progress .material-icons { font-size: 14px; color: var(--primary); }
+    .live-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .live-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .live-bar {
+      flex: 1; min-width: 40px; max-width: 120px; height: 4px;
+      background: var(--surface-raised, rgba(0,0,0,0.08));
+      border-radius: 999px; overflow: hidden;
+    }
+    .live-bar-fill {
+      display: block; height: 100%;
+      background: var(--primary);
+      border-radius: 999px;
+      transition: width var(--transition, 0.2s) ease;
+    }
+    .spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
     .status {
       font-size: 11px; font-weight: 600;
       padding: 2px 9px; border-radius: 999px; white-space: nowrap;
@@ -194,7 +229,7 @@ import { ToastService } from '../../shared/services/toast.service';
     .status-cancelled { background: var(--surface-raised, rgba(0,0,0,0.05)); color: var(--text-muted); }
   `]
 })
-export class MeetingInviteModalComponent implements OnInit {
+export class MeetingInviteModalComponent implements OnInit, OnDestroy {
   @Input() spaceId = '';
   @Output() close = new EventEmitter<void>();
 
@@ -204,6 +239,8 @@ export class MeetingInviteModalComponent implements OnInit {
   invites = signal<MeetingInvite[]>([]);
   createdInvite = signal<MeetingInvite | null>(null);
 
+  private streamSub?: Subscription;
+
   constructor(
     private meetingService: MeetingService,
     private toastService: ToastService,
@@ -211,6 +248,15 @@ export class MeetingInviteModalComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadInvites();
+    if (this.spaceId) {
+      this.streamSub = this.meetingService
+        .streamInvites(this.spaceId)
+        .subscribe((invite) => this.mergeInvite(invite));
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.streamSub?.unsubscribe();
   }
 
   loadInvites(): void {
@@ -223,6 +269,26 @@ export class MeetingInviteModalComponent implements OnInit {
       },
       error: () => this.loading.set(false),
     });
+  }
+
+  /** Folds a live invite update into the list, replacing or prepending it. */
+  private mergeInvite(updated: MeetingInvite): void {
+    this.invites.update((list) => {
+      const idx = list.findIndex((i) => i.id === updated.id);
+      if (idx === -1) return [updated, ...list];
+      const next = [...list];
+      next[idx] = { ...next[idx], ...updated };
+      return next;
+    });
+  }
+
+  phaseLabel(invite: MeetingInvite): string {
+    return meetingPhaseLabel(invite);
+  }
+
+  progressPct(invite: MeetingInvite): number {
+    if (!invite.progressTotal) return 0;
+    return Math.round(((invite.progressCurrent ?? 0) / invite.progressTotal) * 100);
   }
 
   create(): void {

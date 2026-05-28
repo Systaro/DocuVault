@@ -2,6 +2,7 @@ package com.docuvault.service.meeting
 
 import com.docuvault.domain.meeting.MeetingInvite
 import com.docuvault.domain.meeting.MeetingInviteStatus
+import com.docuvault.domain.meeting.MeetingPhase
 import com.docuvault.domain.meeting.MeetingPlatform
 import com.docuvault.infrastructure.repository.MeetingInviteRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
@@ -126,6 +127,24 @@ class MeetingService(
         invite.noteCount = accepted.size
         invite.participants = participants?.take(4000)
         logger.info("Meeting invite ${invite.id} completed with ${accepted.size} note(s)")
+        return meetingInviteRepository.save(invite)
+    }
+
+    /** Bot reports a live progress update while transcribing. Best-effort: never
+     *  changes the invite's [MeetingInviteStatus], only its phase/progress. */
+    @Transactional
+    fun recordProgress(
+        rawToken: String,
+        phase: MeetingPhase,
+        current: Int?,
+        total: Int?,
+        message: String?
+    ): MeetingInvite {
+        val invite = authenticate(rawToken)
+        invite.phase = phase
+        invite.progressCurrent = current
+        invite.progressTotal = total
+        invite.progressMessage = message?.take(500)
         return meetingInviteRepository.save(invite)
     }
 

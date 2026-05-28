@@ -193,6 +193,7 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction): Promi
   });
 
   await setRecordingNickname(interaction.guild, true);
+  void client.progress('RECORDING', { message: 'Aufnahme läuft' });
 
   // Public announcement to the channel so everyone in the call sees it.
   await textChannel.send(
@@ -229,6 +230,9 @@ async function finishMeeting(
   meetings.delete(guildId);
   clearTimeout(meeting.safetyTimer);
   meeting.recorder.stop();
+  void new DocuVaultClient(meeting.token).progress('PROCESSING', {
+    message: 'Aufnahme wird beendet…',
+  });
 
   // Status updates that only the /stop invoker needs to see go via editReply.
   const ack = async (message: string): Promise<void> => {

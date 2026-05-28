@@ -8,6 +8,15 @@ export interface ClaimResult {
   inboxUrl: string;
 }
 
+/** Live transcription stage reported to DocuVault, mirrors the backend enum. */
+export type MeetingPhase = 'RECORDING' | 'PROCESSING' | 'TRANSCRIBING' | 'SUMMARIZING';
+
+export interface ProgressUpdate {
+  current?: number;
+  total?: number;
+  message?: string;
+}
+
 /**
  * Thin client for the DocuVault meeting-bot API. The meeting token is the only
  * credential — it is scoped to one space and one meeting, server-side.
@@ -23,6 +32,19 @@ export class DocuVaultClient {
   /** Submits the finished notes (HTML) to the space inbox. */
   submitNotes(notes: string[], participants: string): Promise<unknown> {
     return this.post('/meetings/bot/notes', { notes, participants });
+  }
+
+  /**
+   * Reports a live progress update so the DocuVault UI can show transcription
+   * status in real time. Best-effort — progress reporting must never break the
+   * actual transcription, so failures are swallowed.
+   */
+  async progress(phase: MeetingPhase, update: ProgressUpdate = {}): Promise<void> {
+    try {
+      await this.post('/meetings/bot/progress', { phase, ...update });
+    } catch (err) {
+      console.error('Failed to report progress to DocuVault:', err);
+    }
   }
 
   /** Records an unrecoverable error against the invite. Never throws. */

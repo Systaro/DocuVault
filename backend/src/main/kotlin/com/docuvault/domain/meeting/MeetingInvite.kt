@@ -27,6 +27,22 @@ enum class MeetingInviteStatus {
     CANCELLED
 }
 
+/** Fine-grained sub-stage of an [MeetingInviteStatus.ACTIVE] invite, reported
+ *  live by the bot so the UI can show what it is doing right now. */
+enum class MeetingPhase {
+    /** Bot is in the call capturing audio. */
+    RECORDING,
+
+    /** Recording stopped, bot is preparing the captured utterances. */
+    PROCESSING,
+
+    /** Bot is running speech-to-text over the utterances. */
+    TRANSCRIBING,
+
+    /** Bot is generating the AI meeting note from the transcript. */
+    SUMMARIZING
+}
+
 @Entity
 @Table(name = "meeting_invites")
 data class MeetingInvite(
@@ -70,6 +86,23 @@ data class MeetingInvite(
 
     @Column(name = "note_count", nullable = false)
     var noteCount: Int = 0,
+
+    /** Current sub-stage while ACTIVE; null otherwise. Reported live by the bot. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    var phase: MeetingPhase? = null,
+
+    /** Items processed so far in the current phase (e.g. utterances transcribed). */
+    @Column(name = "progress_current")
+    var progressCurrent: Int? = null,
+
+    /** Total items in the current phase, if known. */
+    @Column(name = "progress_total")
+    var progressTotal: Int? = null,
+
+    /** Human-readable status line the bot is currently showing (German). */
+    @Column(name = "progress_message", length = 500)
+    var progressMessage: String? = null,
 
     @Column(columnDefinition = "TEXT")
     var error: String? = null,

@@ -65,13 +65,31 @@ export class MeetingSession {
     const ordered = [...this.utterances].sort((a, b) => a.startMs - b.startMs);
     const lines: TranscriptLine[] = [];
 
-    for (const utterance of ordered) {
+    const total = ordered.length;
+    // Report at most ~15 updates so a long meeting doesn't flood the API.
+    const step = Math.max(1, Math.floor(total / 15));
+    void this.client.progress('TRANSCRIBING', {
+      current: 0,
+      total,
+      message: `Transkribiere ${total} Wortbeiträge…`,
+    });
+
+    for (let i = 0; i < ordered.length; i++) {
+      const utterance = ordered[i];
       const text = await transcribePcm(utterance.pcmPath).catch((err) => {
         console.error(`Transcription failed for ${utterance.pcmPath}:`, err);
         return '';
       });
       if (text) {
         lines.push({ tsMs: utterance.startMs, speaker: utterance.speaker, text });
+      }
+      const done = i + 1;
+      if (done === total || done % step === 0) {
+        void this.client.progress('TRANSCRIBING', {
+          current: done,
+          total,
+          message: `Transkribiere Wortbeiträge… (${done}/${total})`,
+        });
       }
     }
 
@@ -84,6 +102,7 @@ export class MeetingSession {
     const transcript = formatTranscript(lines);
     const participants = this.speakerList;
 
+    void this.client.progress('SUMMARIZING', { message: 'Erstelle Protokoll…' });
     const meetingNoteMd = await generateMeetingNote(this.label, participants, transcript);
     const rawTranscriptMd =
       `# Roh-Transkript — ${this.label}\n\n` +

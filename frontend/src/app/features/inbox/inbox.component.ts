@@ -1,9 +1,11 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InboxService, InboxNote, AiSuggestion } from '../../core/api/inbox.service';
 import { SpacesService } from '../../core/api/spaces.service';
+import { MeetingService, MeetingInvite, meetingPhaseLabel } from '../../core/api/meeting.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { DiffViewComponent } from './diff-view.component';
 import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
@@ -21,6 +23,13 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
           Inbox
         </h1>
         <div class="header-right">
+          @if (liveMeeting(); as lm) {
+            <button class="live-pill" (click)="showMeetingModal.set(true)" [title]="lm.label">
+              <span class="live-dot"></span>
+              <span class="material-icons spinning">graphic_eq</span>
+              <span class="live-pill-text">{{ liveLabel(lm) }}</span>
+            </button>
+          }
           <button class="btn btn-secondary btn-sm" (click)="showMeetingModal.set(true)">
             <span class="material-icons">graphic_eq</span>
             Meeting transkribieren
@@ -304,6 +313,40 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       }
     }
 
+    .live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 260px;
+      padding: 5px 12px;
+      border: 1px solid var(--primary);
+      border-radius: 999px;
+      background: rgba(111, 179, 184, 0.1);
+      color: var(--primary-dark);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition);
+
+      &:hover { background: rgba(111, 179, 184, 0.18); }
+
+      .material-icons { font-size: 15px; color: var(--primary); }
+      .live-pill-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #dc2626;
+      flex-shrink: 0;
+      animation: live-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes live-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
     .inbox-tabs {
       display: flex;
       gap: 4px;
@@ -447,32 +490,48 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       line-height: 1.7;
       overflow-wrap: anywhere;
 
-      h1 { font-size: 18px; font-weight: 700; margin: 0 0 12px; color: var(--text-primary); }
-      h2 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: var(--text-primary); }
-      p  { margin: 0 0 10px; }
-      p:last-child { margin-bottom: 0; }
-      em { color: var(--text-secondary); }
-      strong { font-weight: 600; }
-      ul, ol { margin: 0 0 10px 0; padding-left: 22px; }
-      pre {
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: rgba(0,0,0,0.04);
-        padding: 12px 14px;
-        border-radius: 6px;
-        font-size: 12px;
-        margin: 0 0 10px;
-      }
-      code {
-        background: rgba(0,0,0,0.05);
-        padding: 1px 5px;
-        border-radius: 4px;
-        font-size: 12px;
-        word-break: break-word;
-      }
-      pre code {
-        background: none;
-        padding: 0;
+      /* Note body is injected via [innerHTML], so these nodes lack the
+         component's encapsulation attribute — ::ng-deep lets the prose styles
+         reach them and override Tailwind preflight's heading/list reset. */
+      ::ng-deep {
+        h1 { font-size: 18px; font-weight: 700; margin: 0 0 12px; color: var(--text-primary); }
+        h2 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; color: var(--text-primary); }
+        h3 { font-size: 13.5px; font-weight: 600; margin: 14px 0 6px; color: var(--text-primary); }
+        p  { margin: 0 0 10px; }
+        p:last-child { margin-bottom: 0; }
+        em { color: var(--text-secondary); }
+        strong { font-weight: 600; }
+        ul { list-style: disc; margin: 0 0 10px; padding-left: 22px; }
+        ol { list-style: decimal; margin: 0 0 10px; padding-left: 22px; }
+        li { margin: 3px 0; }
+        a { color: var(--primary-dark); text-decoration: underline; }
+        blockquote {
+          border-left: 3px solid var(--primary);
+          padding-left: 12px;
+          margin: 0 0 10px;
+          color: var(--text-secondary);
+          font-style: italic;
+        }
+        pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+          background: rgba(0,0,0,0.04);
+          padding: 12px 14px;
+          border-radius: 6px;
+          font-size: 12px;
+          margin: 0 0 10px;
+        }
+        code {
+          background: rgba(0,0,0,0.05);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 12px;
+          word-break: break-word;
+        }
+        pre code {
+          background: none;
+          padding: 0;
+        }
       }
     }
 
@@ -693,8 +752,11 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
     }
   `]
 })
-export class InboxComponent implements OnInit {
+export class InboxComponent implements OnInit, OnDestroy {
   spaceId = '';
+
+  liveMeeting = signal<MeetingInvite | null>(null);
+  private streamSub?: Subscription;
 
   activeTab = signal<'unsorted' | 'filed'>('unsorted');
   loading = signal(false);
@@ -719,6 +781,7 @@ export class InboxComponent implements OnInit {
     private route: ActivatedRoute,
     private spacesService: SpacesService,
     private inboxService: InboxService,
+    private meetingService: MeetingService,
     private toastService: ToastService
   ) {}
 
@@ -733,10 +796,38 @@ export class InboxComponent implements OnInit {
           next: (space) => {
             this.spaceId = space.id;
             this.loadNotes();
+            this.watchMeetings();
           }
         });
       }
     });
+  }
+
+  ngOnDestroy(): void {
+    this.streamSub?.unsubscribe();
+  }
+
+  /** Keeps the header's live indicator in sync with the active meeting, if any. */
+  private watchMeetings(): void {
+    // Seed from current state: a meeting may already be running when we arrive,
+    // and the SSE stream only emits on subsequent changes.
+    this.meetingService.listInvites(this.spaceId).subscribe((invites) => {
+      const active = invites.find((i) => i.status === 'ACTIVE');
+      if (active && !this.liveMeeting()) this.liveMeeting.set(active);
+    });
+
+    this.streamSub?.unsubscribe();
+    this.streamSub = this.meetingService.streamInvites(this.spaceId).subscribe((invite) => {
+      if (invite.status === 'ACTIVE') {
+        this.liveMeeting.set(invite);
+      } else if (this.liveMeeting()?.id === invite.id) {
+        this.liveMeeting.set(null);
+      }
+    });
+  }
+
+  liveLabel(invite: MeetingInvite): string {
+    return meetingPhaseLabel(invite);
   }
 
   switchTab(tab: 'unsorted' | 'filed'): void {
