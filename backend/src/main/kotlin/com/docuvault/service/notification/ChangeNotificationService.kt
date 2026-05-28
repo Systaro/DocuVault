@@ -32,6 +32,7 @@ class ChangeNotificationService(
     private val userRepository: UserRepository,
     private val pushSenders: List<PushSender>,
     private val emailService: EmailService,
+    private val subscriptionService: NotificationSubscriptionService,
     @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(ChangeNotificationService::class.java)
@@ -111,9 +112,16 @@ class ChangeNotificationService(
         val author = event.triggeredBy?.name ?: event.commitAuthorName ?: "Someone"
         val subject = "${space.name}: $author ${verb(event.changeType)} ${event.filePath}" +
             if (group.size > 1) " (+${group.size - 1} more)" else ""
-        val html = NotificationEmail.buildInstant(spaceName = space.name, author = author, changes = group, publicUrl = publicUrl)
+        val view = DigestSpaceView(
+            spaceId = space.id!!,
+            spaceName = space.name,
+            changes = group.map { DigestChange(it.changeType, it.filePath, it.oldPath, author) }
+        )
+        val token = subscriptionService.tokenFor(user)
+        val html = NotificationEmail.buildInstant(view = view, author = author, publicUrl = publicUrl, token = token)
+        val headers = NotificationEmail.unsubscribeHeaders(publicUrl, token, space.id!!)
 
-        val result = runCatching { emailService.sendHtml(user.email, subject, html) }
+        val result = runCatching { emailService.sendHtml(user.email, subject, html, headers) }
         dispatchRepository.save(
             NotificationDispatch(
                 event = event,
@@ -169,5 +177,6 @@ class ChangeNotificationService(
             .filter { it.enabled }
             .filter { it.pushMode == PushMode.INSTANT || it.emailMode != EmailMode.NONE }
             .filter { it.id !in excluded }
+            .filter { subscriptionService.isSubscribed(it.id!!, space) }
     }
 }

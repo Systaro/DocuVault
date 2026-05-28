@@ -32,6 +32,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/reset-password.component').then(m => m.ResetPasswordComponent)
   },
   {
+    path: 'unsubscribe',
+    loadComponent: () => import('./features/public/unsubscribe.component').then(m => m.UnsubscribeComponent)
+  },
+  {
     path: 'share',
     children: [
       {

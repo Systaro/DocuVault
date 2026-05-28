@@ -51,7 +51,7 @@ class EmailService(
     }
 
     @Async
-    fun sendHtml(to: String, subject: String, htmlBody: String) {
+    fun sendHtml(to: String, subject: String, htmlBody: String, headers: Map<String, String> = emptyMap()) {
         try {
             val sender = buildSender()
             val mimeMessage = sender.createMimeMessage()
@@ -60,6 +60,7 @@ class EmailService(
             helper.setTo(to)
             helper.setSubject(subject)
             helper.setText(htmlBody, true)
+            headers.forEach { (name, value) -> mimeMessage.setHeader(name, value) }
             sender.send(mimeMessage)
             logger.info("HTML email sent successfully: $subject")
         } catch (e: Exception) {

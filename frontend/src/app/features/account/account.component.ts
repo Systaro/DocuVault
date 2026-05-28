@@ -5,11 +5,12 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ApiTokensService, ApiToken } from '../../core/api/api-tokens.service';
 import { UsersService } from '../../core/api/users.service';
 import { LayoutComponent } from '../../shared/components/layout.component';
+import { NotificationSettingsComponent } from './notification-settings.component';
 
 @Component({
   selector: 'app-account',
   standalone: true,
-  imports: [CommonModule, FormsModule, LayoutComponent],
+  imports: [CommonModule, FormsModule, LayoutComponent, NotificationSettingsComponent],
   template: `
     <app-layout>
       <div class="account-page">
@@ -127,6 +128,9 @@ import { LayoutComponent } from '../../shared/components/layout.component';
             </form>
           </div>
         </div>
+
+        <!-- Notifications Section -->
+        <app-notification-settings></app-notification-settings>
 
         <!-- API Tokens Section -->
         <div class="card">

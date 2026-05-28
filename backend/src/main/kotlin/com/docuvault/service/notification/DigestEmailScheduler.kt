@@ -2,6 +2,7 @@ package com.docuvault.service.notification
 
 import com.docuvault.domain.space.NotificationChannel
 import com.docuvault.domain.space.NotificationDispatch
+import com.docuvault.domain.space.Space
 import com.docuvault.domain.space.SpaceChangeEvent
 import com.docuvault.domain.user.EmailMode
 import com.docuvault.domain.user.User
@@ -25,6 +26,7 @@ class DigestEmailScheduler(
     private val dispatchRepository: NotificationDispatchRepository,
     private val spacePermissionRepository: SpacePermissionRepository,
     private val userRepository: UserRepository,
+    private val subscriptionService: NotificationSubscriptionService,
     private val emailService: EmailService,
     @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
@@ -37,7 +39,8 @@ class DigestEmailScheduler(
         windowHours = 1,
         targetMode = EmailMode.HOURLY,
         channel = NotificationChannel.EMAIL_HOURLY,
-        periodLabel = "hourly"
+        headingLabel = "Hourly",
+        windowLabel = "hour"
     )
 
     /** 08:00 server time — sends to users with emailMode=DAILY. */
@@ -47,14 +50,18 @@ class DigestEmailScheduler(
         windowHours = 24,
         targetMode = EmailMode.DAILY,
         channel = NotificationChannel.EMAIL_DAILY,
-        periodLabel = "24h"
+        headingLabel = "Daily",
+        windowLabel = "24 hours"
     )
+
+    private data class PendingSpace(val space: Space, val events: List<SpaceChangeEvent>)
 
     private fun sendDigest(
         windowHours: Long,
         targetMode: EmailMode,
         channel: NotificationChannel,
-        periodLabel: String
+        headingLabel: String,
+        windowLabel: String
     ) {
         val to = Instant.now()
         val from = to.minus(windowHours, ChronoUnit.HOURS)
@@ -65,56 +72,82 @@ class DigestEmailScheduler(
             return
         }
 
+        // Build, per recipient, the set of spaces + still-undispatched events they should see.
+        // One consolidated email per user across all the spaces they're subscribed to.
+        val perUser = LinkedHashMap<User, MutableList<PendingSpace>>()
+
         for ((_, spaceEvents) in events.groupBy { it.space.id!! }) {
             val space = spaceEvents.first().space
-            val recipients = digestRecipientsFor(space, spaceEvents, targetMode)
-            if (recipients.isEmpty()) continue
+            for (user in candidatesFor(space, targetMode)) {
+                if (!subscriptionService.isSubscribed(user.id!!, space)) continue
+                // Don't notify someone about their own commits.
+                val visible = spaceEvents.filter { it.triggeredBy?.id != user.id }
+                val undispatched = visible.filter {
+                    !dispatchRepository.existsByEventIdAndUserIdAndChannel(it.id!!, user.id!!, channel)
+                }
+                if (undispatched.isEmpty()) continue
+                perUser.getOrPut(user) { mutableListOf() }.add(PendingSpace(space, undispatched))
+            }
+        }
 
-            val html = NotificationEmail.buildDigest(space.name, spaceEvents, periodLabel, publicUrl)
-            val subject = "${space.name}: ${spaceEvents.size} change${if (spaceEvents.size == 1) "" else "s"} in last $periodLabel"
-
-            for (user in recipients) {
-                if (spaceEvents.all { evt ->
-                        dispatchRepository.existsByEventIdAndUserIdAndChannel(evt.id!!, user.id!!, channel)
-                    }) continue
-
-                val result = runCatching { emailService.sendHtml(user.email, subject, html) }
-                if (result.isSuccess) {
-                    spaceEvents.forEach { evt ->
-                        dispatchRepository.save(
-                            NotificationDispatch(
-                                event = evt,
-                                user = user,
-                                channel = channel,
-                                success = true
-                            )
+        for ((user, pendingSpaces) in perUser) {
+            val token = subscriptionService.tokenFor(user)
+            val views = pendingSpaces.map { ps ->
+                DigestSpaceView(
+                    spaceId = ps.space.id!!,
+                    spaceName = ps.space.name,
+                    changes = ps.events.map { evt ->
+                        DigestChange(
+                            changeType = evt.changeType,
+                            path = evt.filePath,
+                            oldPath = evt.oldPath,
+                            author = evt.triggeredBy?.name ?: evt.commitAuthorName ?: "Unknown"
                         )
                     }
-                } else {
-                    logger.warn("Failed to send {} digest to {} for space {}: {}", targetMode, user.email, space.name, result.exceptionOrNull()?.message)
-                    spaceEvents.firstOrNull()?.let { evt ->
+                )
+            }
+            val totalChanges = views.sumOf { it.changes.size }
+            val html = NotificationEmail.buildDigest(views, headingLabel, publicUrl, token)
+            val subject = digestSubject(views, totalChanges, windowLabel)
+            val headers = NotificationEmail.unsubscribeHeaders(publicUrl, token)
+
+            val result = runCatching { emailService.sendHtml(user.email, subject, html, headers) }
+            if (result.isSuccess) {
+                pendingSpaces.forEach { ps ->
+                    ps.events.forEach { evt ->
                         dispatchRepository.save(
-                            NotificationDispatch(
-                                event = evt,
-                                user = user,
-                                channel = channel,
-                                success = false,
-                                error = result.exceptionOrNull()?.message?.take(500)
-                            )
+                            NotificationDispatch(event = evt, user = user, channel = channel, success = true)
                         )
                     }
+                }
+            } else {
+                logger.warn("Failed to send {} digest to {}: {}", targetMode, user.email, result.exceptionOrNull()?.message)
+                pendingSpaces.firstOrNull()?.events?.firstOrNull()?.let { evt ->
+                    dispatchRepository.save(
+                        NotificationDispatch(
+                            event = evt,
+                            user = user,
+                            channel = channel,
+                            success = false,
+                            error = result.exceptionOrNull()?.message?.take(500)
+                        )
+                    )
                 }
             }
         }
     }
 
-    private fun digestRecipientsFor(
-        space: com.docuvault.domain.space.Space,
-        events: List<SpaceChangeEvent>,
-        targetMode: EmailMode
-    ): List<User> {
-        val triggeringUserIds = events.mapNotNull { it.triggeredBy?.id }.toSet()
+    private fun digestSubject(views: List<DigestSpaceView>, total: Int, windowLabel: String): String {
+        val plural = if (total == 1) "" else "s"
+        return if (views.size == 1) {
+            "${views[0].spaceName}: $total change$plural in last $windowLabel"
+        } else {
+            "DocuVault digest: $total change$plural across ${views.size} spaces (last $windowLabel)"
+        }
+    }
 
+    /** Members of the space, members of its parent group, plus org/super admins — on this cadence. */
+    private fun candidatesFor(space: Space, targetMode: EmailMode): List<User> {
         val candidates = mutableSetOf<User>()
         candidates += spacePermissionRepository.findAllBySpaceId(space.id!!).map { it.user }
         space.parent?.let {
@@ -123,10 +156,8 @@ class DigestEmailScheduler(
         candidates += userRepository.findAll().filter {
             it.role == UserRole.SUPER_ADMIN || it.role == UserRole.ORG_ADMIN
         }
-
         return candidates
             .filter { it.enabled }
             .filter { it.emailMode == targetMode }
-            .filter { it.id !in triggeringUserIds }
     }
 }

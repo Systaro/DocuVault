@@ -45,6 +45,7 @@ class SecurityConfig(
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/capabilities").permitAll()
                     .requestMatchers("/users/accept-invitation").permitAll()
+                    .requestMatchers("/notifications/unsubscribe", "/notifications/unsubscribe/info").permitAll()
                     .requestMatchers("/shared/**").permitAll()
                     .requestMatchers("/meetings/bot/**").permitAll()
                     .anyRequest().authenticated()

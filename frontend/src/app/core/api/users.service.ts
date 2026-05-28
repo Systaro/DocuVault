@@ -28,6 +28,35 @@ export interface Invitation {
   createdAt: string;
 }
 
+export interface SpaceNotificationPref {
+  spaceId: string;
+  name: string;
+  fullPath: string;
+  type: string;
+  parentId: string | null;
+  enabled: boolean;
+  override: boolean | null;
+}
+
+export interface NotificationPreferences {
+  pushMode: string;
+  emailMode: string;
+  spaces: SpaceNotificationPref[];
+}
+
+export interface UnsubscribeInfo {
+  email: string;
+  spaceId: string | null;
+  spaceName: string | null;
+  emailMode: string;
+}
+
+export interface UnsubscribeResult {
+  scope: string;
+  spaceName?: string;
+  message: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class UsersService {
   constructor(private http: HttpClient) {}
@@ -88,6 +117,34 @@ export class UsersService {
 
   changePassword(currentPassword: string, newPassword: string): Observable<void> {
     return this.http.post<void>('/api/users/me/change-password', { currentPassword, newPassword });
+  }
+
+  getNotificationPreferences(): Observable<NotificationPreferences> {
+    return this.http.get<NotificationPreferences>('/api/users/me/notifications');
+  }
+
+  updateNotificationPreferences(pushMode: string, emailMode: string): Observable<NotificationPreferences> {
+    return this.http.put<NotificationPreferences>('/api/users/me/notifications', { pushMode, emailMode });
+  }
+
+  setSpaceNotification(spaceId: string, enabled: boolean): Observable<void> {
+    return this.http.put<void>(`/api/users/me/notifications/spaces/${spaceId}`, { enabled });
+  }
+
+  clearSpaceNotification(spaceId: string): Observable<void> {
+    return this.http.delete<void>(`/api/users/me/notifications/spaces/${spaceId}`);
+  }
+
+  getUnsubscribeInfo(token: string, spaceId?: string): Observable<UnsubscribeInfo> {
+    const params: Record<string, string> = { t: token };
+    if (spaceId) params['s'] = spaceId;
+    return this.http.get<UnsubscribeInfo>('/api/notifications/unsubscribe/info', { params });
+  }
+
+  unsubscribe(token: string, spaceId?: string): Observable<UnsubscribeResult> {
+    const params: Record<string, string> = { t: token };
+    if (spaceId) params['s'] = spaceId;
+    return this.http.post<UnsubscribeResult>('/api/notifications/unsubscribe', {}, { params });
   }
 
   acceptInvitation(token: string, name: string, password: string): Observable<User> {

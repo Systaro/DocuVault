@@ -42,6 +42,7 @@ class UserController(
     private val emailService: EmailService,
     private val authenticationManager: AuthenticationManager,
     private val userDetailsService: UserDetailsService,
+    private val subscriptionService: com.docuvault.service.notification.NotificationSubscriptionService,
     @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
 ) {
     private val publicHost: String get() = publicUrl.replace(Regex("^https?://"), "").trimEnd('/')
@@ -103,7 +104,25 @@ class UserController(
     fun getNotificationPreferences(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<NotificationPreferencesDto> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(NotificationPreferencesDto(pushMode = user.pushMode.name, emailMode = user.emailMode.name))
+
+        val overrides = subscriptionService.overridesForUser(user.id!!)
+        val spaces = spaceRepository.findAllByUserId(user.id!!)
+            .sortedBy { it.getFullPath() }
+            .map {
+                SpaceNotificationDto(
+                    spaceId = it.id!!,
+                    name = it.name,
+                    fullPath = it.getFullPath(),
+                    type = it.type.name,
+                    parentId = it.parent?.id,
+                    enabled = subscriptionService.resolve(it, overrides),
+                    override = overrides[it.id]
+                )
+            }
+
+        return ResponseEntity.ok(
+            NotificationPreferencesDto(pushMode = user.pushMode.name, emailMode = user.emailMode.name, spaces = spaces)
+        )
     }
 
     @PutMapping("/me/notifications")
@@ -122,6 +141,42 @@ class UserController(
         user.updatedAt = Instant.now()
         userRepository.save(user)
         return ResponseEntity.ok(NotificationPreferencesDto(pushMode = user.pushMode.name, emailMode = user.emailMode.name))
+    }
+
+    @PutMapping("/me/notifications/spaces/{spaceId}")
+    @Transactional
+    fun setSpaceNotification(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @PathVariable spaceId: UUID,
+        @RequestBody request: SpaceNotificationToggle
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+        if (!canManageSpaceNotification(user, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+
+        subscriptionService.setOverride(user, space, request.enabled)
+        return ResponseEntity.noContent().build()
+    }
+
+    @DeleteMapping("/me/notifications/spaces/{spaceId}")
+    @Transactional
+    fun clearSpaceNotification(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @PathVariable spaceId: UUID
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+        if (!canManageSpaceNotification(user, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+
+        subscriptionService.clearOverride(user.id!!, spaceId)
+        return ResponseEntity.noContent().build()
+    }
+
+    private fun canManageSpaceNotification(user: User, spaceId: UUID): Boolean {
+        if (user.role == UserRole.SUPER_ADMIN || user.role == UserRole.ORG_ADMIN) return true
+        return spacePermissionRepository.findByUserIdAndSpaceId(user.id!!, spaceId) != null
     }
 
     @GetMapping
@@ -557,7 +612,22 @@ data class NotificationPreferencesDto(
     @field:jakarta.validation.constraints.NotBlank
     val pushMode: String,
     @field:jakarta.validation.constraints.NotBlank
-    val emailMode: String
+    val emailMode: String,
+    val spaces: List<SpaceNotificationDto> = emptyList()
+)
+
+data class SpaceNotificationDto(
+    val spaceId: UUID,
+    val name: String,
+    val fullPath: String,
+    val type: String,
+    val parentId: UUID?,
+    val enabled: Boolean,
+    val override: Boolean?
+)
+
+data class SpaceNotificationToggle(
+    val enabled: Boolean
 )
 
 data class AdminUpdateUserRequest(

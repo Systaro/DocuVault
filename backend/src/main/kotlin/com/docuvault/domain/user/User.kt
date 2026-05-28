@@ -30,7 +30,10 @@ data class User(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "email_mode", nullable = false)
-    var emailMode: EmailMode = EmailMode.NONE,
+    var emailMode: EmailMode = EmailMode.DAILY,
+
+    @Column(name = "notification_token", unique = true)
+    var notificationToken: String? = null,
 
     @Column(nullable = false)
     var enabled: Boolean = true,
