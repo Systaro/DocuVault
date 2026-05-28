@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Stock Spring Boot console logging (colored pattern + default conversion rules). -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- Central log shipping is opt-in: the LOGSTASH appender only exists when
+         LOGSTASH_DESTINATION is set (systaro prod sets it; self-hosted/customer
+         installs leave it unset and ship nothing). environment = active Spring
+         profile, which drives the ES index name logstash-docuvault-<env>-<date>. -->
+    <springProperty scope="context" name="logstashDestination" source="logstash.destination" defaultValue=""/>
+    <springProperty scope="context" name="logstashEnvironment" source="spring.profiles.active" defaultValue="default"/>
+
+    <logger name="com.docuvault" level="INFO"/>
+
+    <if condition='!property("logstashDestination").isEmpty()'>
+        <then>
+            <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+                <destination>${logstashDestination}</destination>
+                <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                    <customFields>{"appname":"docuvault","environment":"${logstashEnvironment}","localhostname":"${HOSTNAME}"}</customFields>
+                </encoder>
+            </appender>
+            <root level="ERROR">
+                <appender-ref ref="CONSOLE"/>
+                <appender-ref ref="LOGSTASH"/>
+            </root>
+        </then>
+        <else>
+            <root level="ERROR">
+                <appender-ref ref="CONSOLE"/>
+            </root>
+        </else>
+    </if>
+</configuration>

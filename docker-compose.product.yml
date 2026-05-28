@@ -131,6 +131,9 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-docuvault}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      # Optional central log shipping (logback -> logstash TCP). Disabled by
+      # default; set LOGSTASH_DESTINATION=host:port to opt in.
+      LOGSTASH_DESTINATION: ${LOGSTASH_DESTINATION:-}
     volumes:
       - repos_data:/data/repos
     depends_on:

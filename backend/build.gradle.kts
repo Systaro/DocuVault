@@ -73,6 +73,12 @@ dependencies {
     // Firebase Admin SDK (FCM push notifications)
     implementation("com.google.firebase:firebase-admin:9.4.3")
 
+    // Central log shipping — logback JSON encoder + TCP appender to logstash.
+    // Wired up in logback-spring.xml; only active when LOGSTASH_DESTINATION is set.
+    // janino is required for the <if> conditional in the logback config.
+    runtimeOnly("net.logstash.logback:logstash-logback-encoder:7.4")
+    runtimeOnly("org.codehaus.janino:janino:3.1.12")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")

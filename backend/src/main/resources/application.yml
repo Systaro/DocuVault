@@ -123,6 +123,12 @@ logging:
     com.docuvault: INFO
     org.springframework.security: INFO
 
+# Central log shipping (logback -> logstash TCP). Empty = disabled (no shipping).
+# Set LOGSTASH_DESTINATION=host:port (e.g. logs-new.systaro.de:5000) to enable.
+# See logback-spring.xml.
+logstash:
+  destination: ${LOGSTASH_DESTINATION:}
+
 ---
 spring:
   config:
