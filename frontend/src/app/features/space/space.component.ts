@@ -1052,10 +1052,12 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
 
-  /** Returns the best display label for a tree node — Document.title if known,
-   *  otherwise the prettified raw filename. Same fallback rule the overview
-   *  pane uses for file rows. */
+  /** Display label for a tree node. Titles/prettified names are a "pretty names"
+   *  feature: with the toggle ON we show Document.title when known, otherwise the
+   *  prettified filename (same fallback the overview pane uses). With the toggle
+   *  OFF we show the raw filename — extension and all. */
   displayName(node: FileNode): string {
+    if (!this.prefs.prettyNames()) return node.name;
     const title = this.documentTitles().get(node.path);
     if (title) return title;
     return this.prefs.prettify(node.name, node.isDirectory);

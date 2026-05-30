@@ -129,14 +129,19 @@ object NotificationEmail {
         val overflow = changes.size - shown.size
         val rows = shown.joinToString("\n") { fileRow(it, color) }
         val more = if (overflow > 0)
-            """<tr><td style="padding:2px 32px 2px 44px;color:#aaa;font-size:12px;">+$overflow more</td></tr>"""
+            """<tr><td colspan="3" style="padding:2px 32px 2px 44px;color:#aaa;font-size:12px;">+$overflow more</td></tr>"""
         else ""
+        // Nest the rows table inside a <td> of a single <tr> so it stays within the
+        // outer 640px card. Emitting a bare <table> between outer-table rows makes
+        // clients close the outer table and the rows escape the card.
         return """
         <tr><td style="padding:10px 32px 2px;color:$color;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">${verb(type)}</td></tr>
-        <table width="100%" cellpadding="0" cellspacing="0">
-          $rows
-          $more
-        </table>
+        <tr><td style="padding:0;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+            $rows
+            $more
+          </table>
+        </td></tr>
         """.trimIndent()
     }
 
@@ -194,7 +199,12 @@ object NotificationEmail {
     private fun wrap(heading: String, subheading: String, body: String, publicUrl: String, token: String): String = """
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light only">
+  <meta name="supported-color-schemes" content="light">
+</head>
 <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 20px;">
     <tr><td align="center">
