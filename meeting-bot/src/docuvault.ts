@@ -4,6 +4,8 @@ export interface ClaimResult {
   spaceId: string;
   spaceName: string;
   label: string;
+  /** ISO-639-1 spoken language to pin for speech-to-text and the meeting note. */
+  language: string;
   /** Direct URL to the target space's inbox view. */
   inboxUrl: string;
 }

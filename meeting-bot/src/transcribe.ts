@@ -11,8 +11,12 @@ const MIN_UTTERANCE_SECONDS = 0.4;
 /**
  * Transcribes one raw PCM utterance. Returns an empty string for clips that are
  * too short to carry speech.
+ *
+ * @param language ISO-639-1 code pinned on the request. Pinning is what stops
+ *   Whisper from auto-detecting (and mis-detecting) the language on short, quiet
+ *   utterances — which is what produced spurious foreign-script lines.
  */
-export async function transcribePcm(pcmPath: string): Promise<string> {
+export async function transcribePcm(pcmPath: string, language: string): Promise<string> {
   const wavPath = pcmPath.replace(/\.pcm$/, '.wav');
   const seconds = await pcmToMonoWav(pcmPath, wavPath);
 
@@ -25,6 +29,7 @@ export async function transcribePcm(pcmPath: string): Promise<string> {
     const result = await openai.audio.transcriptions.create({
       file: createReadStream(wavPath),
       model: config.transcribeModel,
+      language,
     });
     return result.text.trim();
   } finally {

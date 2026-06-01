@@ -83,7 +83,7 @@ class MeetingController(
         }
         val platform = request.platform ?: MeetingPlatform.DISCORD
         val (invite, rawToken) = meetingService.createInvite(
-            spaceId, userDetails.username, request.label, platform
+            spaceId, userDetails.username, request.label, platform, request.language
         )
         // The raw token is returned exactly once, on creation.
         return ResponseEntity.status(HttpStatus.CREATED).body(invite.toDto(rawToken))
@@ -134,6 +134,7 @@ class MeetingBotController(
                 spaceId = invite.space.id!!,
                 spaceName = invite.space.name,
                 label = invite.label,
+                language = invite.language,
                 inboxUrl = inboxUrl
             )
         )
@@ -188,7 +189,9 @@ class MeetingBotController(
 
 data class CreateInviteRequest(
     @field:NotBlank val label: String,
-    val platform: MeetingPlatform? = null
+    val platform: MeetingPlatform? = null,
+    /** ISO-639-1 spoken language; defaults to German server-side when omitted. */
+    val language: String? = null
 )
 
 data class ClaimRequest(
@@ -218,6 +221,7 @@ data class MeetingInviteDto(
     val spaceId: UUID,
     val label: String,
     val platform: MeetingPlatform,
+    val language: String,
     val status: MeetingInviteStatus,
     val tokenPrefix: String,
     /** Full token — only populated in the response to invite creation. */
@@ -240,6 +244,8 @@ data class ClaimResponse(
     val spaceId: UUID,
     val spaceName: String,
     val label: String,
+    /** ISO-639-1 spoken language to pin for speech-to-text and the meeting note. */
+    val language: String,
     /** Ready-to-open URL of the target inbox; built from app.public-url. */
     val inboxUrl: String
 )
@@ -249,6 +255,7 @@ fun MeetingInvite.toDto(rawToken: String? = null) = MeetingInviteDto(
     spaceId = this.space.id!!,
     label = this.label,
     platform = this.platform,
+    language = this.language,
     status = this.status,
     tokenPrefix = this.tokenPrefix,
     token = rawToken,

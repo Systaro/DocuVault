@@ -66,6 +66,12 @@ data class MeetingInvite(
     @Column(nullable = false)
     val platform: MeetingPlatform = MeetingPlatform.DISCORD,
 
+    /** ISO-639-1 spoken language the bot pins for speech-to-text and writes the
+     *  meeting note in. Pinning prevents Whisper from misdetecting the language
+     *  on short, quiet utterances (which produced spurious foreign-script text). */
+    @Column(nullable = false, length = 10)
+    val language: String = "de",
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     var status: MeetingInviteStatus = MeetingInviteStatus.PENDING,

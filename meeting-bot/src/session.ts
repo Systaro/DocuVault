@@ -8,6 +8,7 @@ import {
   formatTranscriptParagraphs,
   generateMeetingNote,
   markdownToHtml,
+  noteLocale,
   type TranscriptLine,
 } from './meetingNotes.js';
 
@@ -36,6 +37,8 @@ export class MeetingSession {
     readonly label: string,
     readonly spaceName: string,
     readonly inboxUrl: string,
+    /** ISO-639-1 language pinned for transcription and the generated note. */
+    readonly language: string,
   ) {}
 
   async init(): Promise<void> {
@@ -76,7 +79,7 @@ export class MeetingSession {
 
     for (let i = 0; i < ordered.length; i++) {
       const utterance = ordered[i];
-      const text = await transcribePcm(utterance.pcmPath).catch((err) => {
+      const text = await transcribePcm(utterance.pcmPath, this.language).catch((err) => {
         console.error(`Transcription failed for ${utterance.pcmPath}:`, err);
         return '';
       });
@@ -103,10 +106,11 @@ export class MeetingSession {
     const participants = this.speakerList;
 
     void this.client.progress('SUMMARIZING', { message: 'Erstelle Protokoll…' });
-    const meetingNoteMd = await generateMeetingNote(this.label, participants, transcript);
+    const meetingNoteMd = await generateMeetingNote(this.label, participants, transcript, this.language);
+    const t = noteLocale(this.language);
     const rawTranscriptMd =
-      `# Roh-Transkript — ${this.label}\n\n` +
-      `_Teilnehmer: ${participants.join(', ')}_\n\n` +
+      `# ${t.rawTranscript} — ${this.label}\n\n` +
+      `_${t.participants}: ${participants.join(', ')}_\n\n` +
       formatTranscriptParagraphs(lines) +
       '\n';
 

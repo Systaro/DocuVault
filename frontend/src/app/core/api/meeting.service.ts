@@ -11,6 +11,8 @@ export interface MeetingInvite {
   spaceId: string;
   label: string;
   platform: MeetingPlatform;
+  /** ISO-639-1 spoken language pinned for transcription and the meeting note. */
+  language: string;
   status: MeetingInviteStatus;
   tokenPrefix: string;
   /** Full token — only present in the response to invite creation. */
@@ -57,9 +59,14 @@ export class MeetingService {
   createInvite(
     spaceId: string,
     label: string,
+    language = 'de',
     platform: MeetingPlatform = 'DISCORD',
   ): Observable<MeetingInvite> {
-    return this.http.post<MeetingInvite>(`/api/spaces/${spaceId}/meetings`, { label, platform });
+    return this.http.post<MeetingInvite>(`/api/spaces/${spaceId}/meetings`, {
+      label,
+      language,
+      platform,
+    });
   }
 
   cancelInvite(spaceId: string, inviteId: string): Observable<void> {

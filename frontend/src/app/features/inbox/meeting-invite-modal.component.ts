@@ -41,11 +41,24 @@ import { ToastService } from '../../shared/services/toast.service';
             placeholder="Meeting-Bezeichnung, z. B. Sprint Planning"
             (keyup.enter)="create()"
           />
+          <select
+            class="input lang-select"
+            [(ngModel)]="languageInput"
+            title="Gesprochene Sprache des Meetings — fixiert die Transkription und die Sprache des Protokolls."
+          >
+            @for (lang of languages; track lang.code) {
+              <option [value]="lang.code">{{ lang.label }}</option>
+            }
+          </select>
           <button class="btn btn-primary" [disabled]="creating() || !labelInput.trim()" (click)="create()">
             <span class="material-icons">add</span>
             {{ creating() ? 'Erzeuge…' : 'Token erzeugen' }}
           </button>
         </div>
+        <p class="lang-hint">
+          <span class="material-icons">translate</span>
+          Sprache fixiert die Transkription — verhindert falsch erkannte Sprache bei kurzen Wortbeiträgen.
+        </p>
 
         <!-- Freshly created token -->
         @if (createdInvite(); as inv) {
@@ -84,6 +97,7 @@ import { ToastService } from '../../shared/services/toast.service';
                   <span class="invite-label">{{ inv.label }}</span>
                   <span class="invite-sub">
                     {{ inv.createdAt | date:'d. MMM, HH:mm' }}
+                    · {{ langLabel(inv.language) }}
                     @if (inv.noteCount > 0) { · {{ inv.noteCount }} Notizen }
                     @if (inv.participants) { · {{ inv.participants }} }
                   </span>
@@ -153,6 +167,13 @@ import { ToastService } from '../../shared/services/toast.service';
     }
     .create-row { display: flex; gap: 8px; }
     .create-row .input { flex: 1; }
+    .create-row .lang-select { flex: 0 0 auto; width: auto; min-width: 116px; }
+
+    .lang-hint {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--text-muted); margin: 0;
+    }
+    .lang-hint .material-icons { font-size: 14px; }
 
     .token-box {
       background: rgba(111, 179, 184, 0.08);
@@ -233,7 +254,18 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
   @Input() spaceId = '';
   @Output() close = new EventEmitter<void>();
 
+  /** Spoken languages offered for transcription. Mirrors SUPPORTED_LANGUAGES on
+   *  the backend (MeetingService). */
+  readonly languages: ReadonlyArray<{ code: string; label: string }> = [
+    { code: 'de', label: 'Deutsch' },
+    { code: 'en', label: 'English' },
+    { code: 'fr', label: 'Français' },
+    { code: 'es', label: 'Español' },
+    { code: 'it', label: 'Italiano' },
+  ];
+
   labelInput = '';
+  languageInput = 'de';
   loading = signal(false);
   creating = signal(false);
   invites = signal<MeetingInvite[]>([]);
@@ -296,7 +328,7 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
     if (!label || this.creating()) return;
 
     this.creating.set(true);
-    this.meetingService.createInvite(this.spaceId, label).subscribe({
+    this.meetingService.createInvite(this.spaceId, label, this.languageInput).subscribe({
       next: (invite) => {
         this.createdInvite.set(invite);
         this.labelInput = '';
@@ -326,6 +358,10 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
       () => this.toastService.success('Kopiert', 'In die Zwischenablage kopiert.'),
       () => this.toastService.error('Fehler', 'Kopieren nicht möglich.'),
     );
+  }
+
+  langLabel(code: string): string {
+    return this.languages.find((l) => l.code === code)?.label ?? code.toUpperCase();
   }
 
   statusLabel(status: MeetingInvite['status']): string {

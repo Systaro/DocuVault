@@ -33,6 +33,10 @@ class MeetingService(
         const val TOKEN_PREFIX = "dvm_"
         private const val TOKEN_BYTE_LENGTH = 32
         private const val DEFAULT_VALID_HOURS = 24L
+
+        /** ISO-639-1 codes offered for meeting transcription. Keep in sync with
+         *  the language dropdown in the frontend meeting-invite modal. */
+        private val SUPPORTED_LANGUAGES = setOf("de", "en", "fr", "es", "it")
     }
 
     private val logger = LoggerFactory.getLogger(MeetingService::class.java)
@@ -50,7 +54,8 @@ class MeetingService(
         spaceId: UUID,
         creatorEmail: String,
         label: String,
-        platform: MeetingPlatform
+        platform: MeetingPlatform,
+        language: String?
     ): Pair<MeetingInvite, String> {
         val space = spaceRepository.findById(spaceId)
             .orElseThrow { IllegalArgumentException("Space not found") }
@@ -66,11 +71,19 @@ class MeetingService(
             createdBy = creator,
             label = label.ifBlank { "Meeting" },
             platform = platform,
+            language = normalizeLanguage(language),
             tokenHash = hashToken(rawToken),
             tokenPrefix = rawToken.take(12),
             expiresAt = Instant.now().plus(DEFAULT_VALID_HOURS, ChronoUnit.HOURS)
         )
         return Pair(meetingInviteRepository.save(invite), rawToken)
+    }
+
+    /** Falls back to German for blank or unsupported codes so the bot never
+     *  receives a language it can't pin on the transcription call. */
+    private fun normalizeLanguage(language: String?): String {
+        val code = language?.trim()?.lowercase()
+        return if (code in SUPPORTED_LANGUAGES) code!! else "de"
     }
 
     /** Cancels a still-pending invite. Returns false if missing, wrong space, or already used. */
