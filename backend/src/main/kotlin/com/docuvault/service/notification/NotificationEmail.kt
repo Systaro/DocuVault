@@ -137,7 +137,7 @@ object NotificationEmail {
         return """
         <tr><td style="padding:10px 32px 2px;color:$color;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">${verb(type)}</td></tr>
         <tr><td style="padding:0;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;">
             $rows
             $more
           </table>
@@ -152,9 +152,9 @@ object NotificationEmail {
             prettyPath(change.path)
         }
         return """<tr>
-            |<td width="8" style="padding:4px 0 4px 32px;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:$color;"></span></td>
-            |<td style="padding:4px 12px 4px 6px;font-size:13px;color:#333;">$label</td>
-            |<td style="padding:4px 32px 4px 12px;font-size:12px;color:#999;text-align:right;white-space:nowrap;">${escapeHtml(change.author)}</td>
+            |<td width="8" style="padding:4px 0 4px 32px;vertical-align:top;"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:$color;margin-top:6px;"></span></td>
+            |<td style="padding:4px 12px 4px 6px;font-size:13px;color:#333;word-break:break-all;overflow-wrap:anywhere;">$label</td>
+            |<td width="110" style="padding:4px 32px 4px 12px;font-size:12px;color:#999;text-align:right;vertical-align:top;word-break:break-word;">${escapeHtml(change.author)}</td>
             |</tr>""".trimMargin()
     }
 
