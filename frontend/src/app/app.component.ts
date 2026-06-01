@@ -1,14 +1,16 @@
 import { Component, effect, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ToastComponent } from './shared/components/toast.component';
+import { BackendStatusBannerComponent } from './shared/components/backend-status-banner.component';
 import { AuthService } from './core/auth/auth.service';
 import { PushNotificationService } from './core/push/push-notification.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, ToastComponent],
+  imports: [RouterOutlet, ToastComponent, BackendStatusBannerComponent],
   template: `
+    <app-backend-status-banner></app-backend-status-banner>
     <router-outlet></router-outlet>
     <app-toast-container></app-toast-container>
   `
