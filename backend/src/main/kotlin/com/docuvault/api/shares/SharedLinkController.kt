@@ -37,7 +37,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -82,7 +82,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -107,7 +107,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -132,7 +132,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -156,7 +156,7 @@ class SharedLinkController(
         val space = spaceRepository.findById(spaceId).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
