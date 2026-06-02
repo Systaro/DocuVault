@@ -244,7 +244,7 @@ import { marked } from 'marked';
           </div>
         </div>
         <!-- Scrollable preview content -->
-        <div class="flex-1 overflow-y-auto editor-bg">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
           @if (previewType() === 'html') {
             <div class="html-preview-container annotation-host">
               <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -305,7 +305,7 @@ import { marked } from 'marked';
         </div>
       } @else {
         <!-- Editor Area -->
-        <div class="flex-1 overflow-y-auto editor-bg">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
           <div class="mx-auto px-8 py-6 paper" [style.maxWidth.px]="contentWidthPx()">
             @if (loading()) {
               <div class="flex items-center justify-center py-12">
@@ -815,6 +815,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   });
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
+  @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
 
   private static readonly IMAGE_EXTENSIONS = new Set([
     'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
@@ -1108,7 +1109,13 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.route.queryParamMap.subscribe(params => {
       const path = params.get('path');
       if (path) {
+        const pathChanged = path !== this.documentPath;
         this.documentPath = path; this.documentPathSignal.set(path);
+        // Switching to a different document must start at the top, not inherit
+        // the previous document's scroll offset (the container is reused).
+        if (pathChanged) {
+          setTimeout(() => this.scrollContainer?.nativeElement.scrollTo({ top: 0 }));
+        }
         const ext = path.split('.').pop()?.toLowerCase() || '';
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
           this.isPreviewFile.set(true);
