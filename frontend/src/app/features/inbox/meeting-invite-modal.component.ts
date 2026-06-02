@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, OnDestroy, OnInit, Output, signal } fro
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { MeetingService, MeetingInvite, meetingPhaseLabel } from '../../core/api/meeting.service';
+import { MeetingService, MeetingInvite, MeetingPlatform, meetingPhaseLabel } from '../../core/api/meeting.service';
 import { ToastService } from '../../shared/services/toast.service';
 
 /**
@@ -27,10 +27,32 @@ import { ToastService } from '../../shared/services/toast.service';
           </button>
         </div>
 
-        <p class="intro">
-          Erzeuge ein Einmal-Token, gib es dem DocuVault-Bot in Discord
-          (<code>/transcribe</code>), und das Protokoll landet danach in der Inbox dieses Spaces.
-        </p>
+        <!-- Platform selector -->
+        <div class="platform-toggle">
+          <button
+            class="platform-btn"
+            [class.active]="platform() === 'DISCORD'"
+            (click)="setPlatform('DISCORD')"
+          >Discord</button>
+          <button
+            class="platform-btn"
+            [class.active]="platform() === 'TEAMS'"
+            (click)="setPlatform('TEAMS')"
+          >Microsoft Teams</button>
+        </div>
+
+        @if (platform() === 'DISCORD') {
+          <p class="intro">
+            Erzeuge ein Einmal-Token, gib es dem DocuVault-Bot in Discord
+            (<code>/transcribe</code>), und das Protokoll landet danach in der Inbox dieses Spaces.
+          </p>
+        } @else {
+          <p class="intro">
+            Füge den Teams-Meeting-Link ein. Der DocuVault-Bot tritt dem Meeting bei —
+            lasse ihn aus der Teams-Lobby zu — und das Protokoll landet danach in der
+            Inbox dieses Spaces.
+          </p>
+        }
 
         <!-- Create form -->
         <div class="create-row">
@@ -50,37 +72,64 @@ import { ToastService } from '../../shared/services/toast.service';
               <option [value]="lang.code">{{ lang.label }}</option>
             }
           </select>
-          <button class="btn btn-primary" [disabled]="creating() || !labelInput.trim()" (click)="create()">
+          <button class="btn btn-primary" [disabled]="!canCreate()" (click)="create()">
             <span class="material-icons">add</span>
-            {{ creating() ? 'Erzeuge…' : 'Token erzeugen' }}
+            @if (platform() === 'TEAMS') {
+              {{ creating() ? 'Lade ein…' : 'Bot einladen' }}
+            } @else {
+              {{ creating() ? 'Erzeuge…' : 'Token erzeugen' }}
+            }
           </button>
         </div>
+        @if (platform() === 'TEAMS') {
+          <input
+            type="url"
+            class="input url-input"
+            [(ngModel)]="meetingUrlInput"
+            placeholder="Teams-Meeting-Link (https://teams.microsoft.com/l/meetup-join/…)"
+            (keyup.enter)="create()"
+          />
+        }
         <p class="lang-hint">
           <span class="material-icons">translate</span>
           Sprache fixiert die Transkription — verhindert falsch erkannte Sprache bei kurzen Wortbeiträgen.
         </p>
 
-        <!-- Freshly created token -->
+        <!-- Freshly created invite -->
         @if (createdInvite(); as inv) {
-          <div class="token-box">
-            <div class="token-box-head">
-              <span class="material-icons">vpn_key</span>
-              Token für „{{ inv.label }}" — nur jetzt sichtbar
+          @if (inv.platform === 'TEAMS') {
+            <div class="token-box">
+              <div class="token-box-head">
+                <span class="material-icons">groups</span>
+                „{{ inv.label }}" — Bot tritt bei
+              </div>
+              <div class="cmd-hint">
+                Der Bot tritt dem Teams-Meeting bei. Bitte lasse
+                <strong>„{{ teamsBotName }}"</strong> aus der Teams-Lobby zu — danach
+                transkribiert er automatisch und legt das Protokoll hier ab.
+              </div>
             </div>
-            <div class="token-line">
-              <code class="token">{{ inv.token }}</code>
-              <button class="btn btn-ghost btn-sm" (click)="copy(inv.token!)">
-                <span class="material-icons">content_copy</span>
-              </button>
+          } @else {
+            <div class="token-box">
+              <div class="token-box-head">
+                <span class="material-icons">vpn_key</span>
+                Token für „{{ inv.label }}" — nur jetzt sichtbar
+              </div>
+              <div class="token-line">
+                <code class="token">{{ inv.token }}</code>
+                <button class="btn btn-ghost btn-sm" (click)="copy(inv.token!)">
+                  <span class="material-icons">content_copy</span>
+                </button>
+              </div>
+              <div class="cmd-hint">
+                In Discord eingeben:
+                <code>/transcribe token:{{ inv.token }}</code>
+                <button class="btn btn-ghost btn-sm" (click)="copy('/transcribe token:' + inv.token)">
+                  <span class="material-icons">content_copy</span>
+                </button>
+              </div>
             </div>
-            <div class="cmd-hint">
-              In Discord eingeben:
-              <code>/transcribe token:{{ inv.token }}</code>
-              <button class="btn btn-ghost btn-sm" (click)="copy('/transcribe token:' + inv.token)">
-                <span class="material-icons">content_copy</span>
-              </button>
-            </div>
-          </div>
+          }
         }
 
         <!-- Invite history -->
@@ -168,6 +217,21 @@ import { ToastService } from '../../shared/services/toast.service';
     .create-row { display: flex; gap: 8px; }
     .create-row .input { flex: 1; }
     .create-row .lang-select { flex: 0 0 auto; width: auto; min-width: 116px; }
+    .url-input { width: 100%; }
+
+    .platform-toggle { display: flex; gap: 6px; }
+    .platform-btn {
+      flex: 1; padding: 7px 12px; cursor: pointer;
+      font-size: 13px; font-weight: 500;
+      color: var(--text-secondary);
+      background: var(--surface-raised, rgba(0,0,0,0.04));
+      border: 1px solid var(--border); border-radius: var(--radius, 8px);
+    }
+    .platform-btn.active {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: rgba(99,102,241,0.10);
+    }
 
     .lang-hint {
       display: flex; align-items: center; gap: 6px;
@@ -264,8 +328,15 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
     { code: 'it', label: 'Italiano' },
   ];
 
+  /** Guest name the Teams bot joins under — matches TEAMS_BOT_NAME on the bot
+   *  (default in meeting-bot config.ts) so the lobby-admit hint names it right. */
+  readonly teamsBotName = 'DocuVault Notetaker';
+
   labelInput = '';
   languageInput = 'de';
+  meetingUrlInput = '';
+  /** Signal so the template's platform-conditional sections react to the toggle. */
+  platform = signal<MeetingPlatform>('DISCORD');
   loading = signal(false);
   creating = signal(false);
   invites = signal<MeetingInvite[]>([]);
@@ -323,23 +394,53 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
     return Math.round(((invite.progressCurrent ?? 0) / invite.progressTotal) * 100);
   }
 
+  /** Switches the form between the Discord (token) and Teams (link) flows. */
+  setPlatform(platform: MeetingPlatform): void {
+    this.platform.set(platform);
+    this.createdInvite.set(null);
+  }
+
+  /** Recognises the Teams join links the bot can open. Mirrors the backend check. */
+  private isTeamsUrl(url: string): boolean {
+    const lower = url.trim().toLowerCase();
+    return lower.startsWith('https://') &&
+      (lower.includes('teams.microsoft.com') || lower.includes('teams.live.com'));
+  }
+
+  /** Plain method (re-evaluated each change-detection cycle) so the create
+   *  button reflects live form state — a computed() over these plain-property
+   *  inputs would memoize and never update. */
+  canCreate(): boolean {
+    if (this.creating() || !this.labelInput.trim()) return false;
+    if (this.platform() === 'TEAMS') return this.isTeamsUrl(this.meetingUrlInput);
+    return true;
+  }
+
   create(): void {
     const label = this.labelInput.trim();
-    if (!label || this.creating()) return;
+    if (!this.canCreate()) return;
+    const isTeams = this.platform() === 'TEAMS';
+    const meetingUrl = isTeams ? this.meetingUrlInput.trim() : undefined;
 
     this.creating.set(true);
-    this.meetingService.createInvite(this.spaceId, label, this.languageInput).subscribe({
-      next: (invite) => {
-        this.createdInvite.set(invite);
-        this.labelInput = '';
-        this.creating.set(false);
-        this.loadInvites();
-      },
-      error: () => {
-        this.toastService.error('Fehler', 'Meeting-Token konnte nicht erstellt werden.');
-        this.creating.set(false);
-      },
-    });
+    this.meetingService
+      .createInvite(this.spaceId, label, this.languageInput, this.platform(), meetingUrl)
+      .subscribe({
+        next: (invite) => {
+          this.createdInvite.set(invite);
+          this.labelInput = '';
+          this.meetingUrlInput = '';
+          this.creating.set(false);
+          this.loadInvites();
+        },
+        error: () => {
+          const msg = isTeams
+            ? 'Meeting-Einladung konnte nicht erstellt werden.'
+            : 'Meeting-Token konnte nicht erstellt werden.';
+          this.toastService.error('Fehler', msg);
+          this.creating.set(false);
+        },
+      });
   }
 
   cancel(invite: MeetingInvite): void {

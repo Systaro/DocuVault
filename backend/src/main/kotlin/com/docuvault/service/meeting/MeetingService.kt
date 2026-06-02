@@ -55,7 +55,8 @@ class MeetingService(
         creatorEmail: String,
         label: String,
         platform: MeetingPlatform,
-        language: String?
+        language: String?,
+        meetingUrl: String? = null
     ): Pair<MeetingInvite, String> {
         val space = spaceRepository.findById(spaceId)
             .orElseThrow { IllegalArgumentException("Space not found") }
@@ -74,9 +75,23 @@ class MeetingService(
             language = normalizeLanguage(language),
             tokenHash = hashToken(rawToken),
             tokenPrefix = rawToken.take(12),
+            meetingUrl = meetingUrl?.trim()?.takeIf { it.isNotBlank() },
             expiresAt = Instant.now().plus(DEFAULT_VALID_HOURS, ChronoUnit.HOURS)
         )
         return Pair(meetingInviteRepository.save(invite), rawToken)
+    }
+
+    /**
+     * Teams invites the browser bot can still join: PENDING, not expired, with a
+     * join URL. The bot polls this to learn which meetings to dispatch into.
+     * Claiming flips PENDING→ACTIVE, so an in-flight meeting won't reappear here.
+     */
+    fun listPendingTeamsInvites(): List<MeetingInvite> {
+        val now = Instant.now()
+        return meetingInviteRepository
+            .findByPlatformAndStatus(MeetingPlatform.TEAMS, MeetingInviteStatus.PENDING)
+            .filter { !it.meetingUrl.isNullOrBlank() }
+            .filter { it.expiresAt?.isAfter(now) ?: true }
     }
 
     /** Falls back to German for blank or unsupported codes so the bot never
@@ -97,12 +112,25 @@ class MeetingService(
         return true
     }
 
-    // --- Bot-facing operations (authenticated by the meeting token itself) ---
+    // --- Bot-facing operations ---
+    //
+    // Two credential models resolve to the same entity-level transitions below:
+    //  • Discord — the per-invite dvm_ token (the bot holds it); `authenticate`.
+    //  • Teams   — the service-level dispatch token + an invite id (server-to-
+    //    server, no human ever holds a token); `requireTeamsInvite`. The Teams
+    //    bot never gets a dvm_ token, so none is minted or stored in plaintext.
 
     /** Bot joined a call: marks the invite ACTIVE and records which channel. */
     @Transactional
-    fun claimInvite(rawToken: String, meetingChannel: String?): MeetingInvite {
-        val invite = authenticate(rawToken)
+    fun claimInvite(rawToken: String, meetingChannel: String?): MeetingInvite =
+        claimEntity(authenticate(rawToken), meetingChannel)
+
+    /** Teams dispatch variant — resolves the invite by id. */
+    @Transactional
+    fun claimTeamsInvite(inviteId: UUID, meetingChannel: String?): MeetingInvite =
+        claimEntity(requireTeamsInvite(inviteId), meetingChannel)
+
+    private fun claimEntity(invite: MeetingInvite, meetingChannel: String?): MeetingInvite {
         if (invite.status == MeetingInviteStatus.CANCELLED) {
             throw IllegalArgumentException("This meeting invite was cancelled")
         }
@@ -121,8 +149,19 @@ class MeetingService(
      * space run automatically via [InboxService.createNote].
      */
     @Transactional
-    fun submitNotes(rawToken: String, notes: List<String>, participants: String?): MeetingInvite {
-        val invite = authenticate(rawToken)
+    fun submitNotes(rawToken: String, notes: List<String>, participants: String?): MeetingInvite =
+        submitNotesEntity(authenticate(rawToken), notes, participants)
+
+    /** Teams dispatch variant — resolves the invite by id. */
+    @Transactional
+    fun submitTeamsNotes(inviteId: UUID, notes: List<String>, participants: String?): MeetingInvite =
+        submitNotesEntity(requireTeamsInvite(inviteId), notes, participants)
+
+    private fun submitNotesEntity(
+        invite: MeetingInvite,
+        notes: List<String>,
+        participants: String?
+    ): MeetingInvite {
         if (invite.status == MeetingInviteStatus.CANCELLED) {
             throw IllegalArgumentException("This meeting invite was cancelled")
         }
@@ -152,8 +191,25 @@ class MeetingService(
         current: Int?,
         total: Int?,
         message: String?
+    ): MeetingInvite = recordProgressEntity(authenticate(rawToken), phase, current, total, message)
+
+    /** Teams dispatch variant — resolves the invite by id. */
+    @Transactional
+    fun recordTeamsProgress(
+        inviteId: UUID,
+        phase: MeetingPhase,
+        current: Int?,
+        total: Int?,
+        message: String?
+    ): MeetingInvite = recordProgressEntity(requireTeamsInvite(inviteId), phase, current, total, message)
+
+    private fun recordProgressEntity(
+        invite: MeetingInvite,
+        phase: MeetingPhase,
+        current: Int?,
+        total: Int?,
+        message: String?
     ): MeetingInvite {
-        val invite = authenticate(rawToken)
         invite.phase = phase
         invite.progressCurrent = current
         invite.progressTotal = total
@@ -163,13 +219,39 @@ class MeetingService(
 
     /** Bot hit an unrecoverable error: records it against the invite. */
     @Transactional
-    fun failInvite(rawToken: String, errorMessage: String?): MeetingInvite {
-        val invite = authenticate(rawToken)
+    fun failInvite(rawToken: String, errorMessage: String?): MeetingInvite =
+        failEntity(authenticate(rawToken), errorMessage)
+
+    /** Teams dispatch variant — resolves the invite by id. */
+    @Transactional
+    fun failTeamsInvite(inviteId: UUID, errorMessage: String?): MeetingInvite =
+        failEntity(requireTeamsInvite(inviteId), errorMessage)
+
+    private fun failEntity(invite: MeetingInvite, errorMessage: String?): MeetingInvite {
         if (invite.status == MeetingInviteStatus.COMPLETED) return invite
         invite.status = MeetingInviteStatus.FAILED
         invite.error = errorMessage?.take(4000)
         logger.warn("Meeting invite ${invite.id} failed: $errorMessage")
         return meetingInviteRepository.save(invite)
+    }
+
+    /** Resolves a TEAMS invite by id for the dispatch-token-authenticated bot.
+     *  Rejects unknown ids and non-Teams invites (the dispatch credential must
+     *  never reach Discord invites). Expiry only blocks still-PENDING invites,
+     *  mirroring [authenticate]. */
+    private fun requireTeamsInvite(inviteId: UUID): MeetingInvite {
+        val invite = meetingInviteRepository.findById(inviteId).orElse(null)
+            ?: throw IllegalArgumentException("Meeting invite not found")
+        if (invite.platform != MeetingPlatform.TEAMS) {
+            throw IllegalArgumentException("Not a Teams meeting invite")
+        }
+        val expiresAt = invite.expiresAt
+        if (expiresAt != null && expiresAt.isBefore(Instant.now()) &&
+            invite.status == MeetingInviteStatus.PENDING
+        ) {
+            throw IllegalArgumentException("This meeting invite has expired")
+        }
+        return invite
     }
 
     private fun authenticate(rawToken: String): MeetingInvite {

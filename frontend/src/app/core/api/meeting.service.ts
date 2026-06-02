@@ -18,6 +18,8 @@ export interface MeetingInvite {
   /** Full token — only present in the response to invite creation. */
   token: string | null;
   meetingChannel: string | null;
+  /** Teams join link, for Teams invites. */
+  meetingUrl: string | null;
   participants: string | null;
   noteCount: number;
   /** Live sub-stage while ACTIVE; null otherwise. */
@@ -61,11 +63,13 @@ export class MeetingService {
     label: string,
     language = 'de',
     platform: MeetingPlatform = 'DISCORD',
+    meetingUrl?: string,
   ): Observable<MeetingInvite> {
     return this.http.post<MeetingInvite>(`/api/spaces/${spaceId}/meetings`, {
       label,
       language,
       platform,
+      meetingUrl,
     });
   }
 

@@ -87,14 +87,15 @@ DB_USERNAME="${DB_USERNAME:-docuvault}"
 DB_NAME="${DB_NAME:-docuvault}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')}"
 
-# Meeting-bot is opt-in: deploy.sh includes it whenever DISCORD_BOT_TOKEN is
-# set in .env. Compose profile must match the one declared on the service.
+# Meeting-bot is opt-in: deploy.sh includes it whenever an adapter credential is
+# set in .env — DISCORD_BOT_TOKEN (Discord) or MEETING_BOT_DISPATCH_TOKEN (Teams).
+# Compose profile must match the one declared on the service.
 SERVICES_TO_PULL="backend frontend"
 COMPOSE_PROFILE_ARGS=""
-if [ -n "$(env_get DISCORD_BOT_TOKEN)" ]; then
+if [ -n "$(env_get DISCORD_BOT_TOKEN)" ] || [ -n "$(env_get MEETING_BOT_DISPATCH_TOKEN)" ]; then
   SERVICES_TO_PULL="$SERVICES_TO_PULL meeting-bot"
   COMPOSE_PROFILE_ARGS="--profile meeting-bot"
-  echo "==> meeting-bot enabled (DISCORD_BOT_TOKEN present in .env)"
+  echo "==> meeting-bot enabled (Discord and/or Teams adapter present in .env)"
 fi
 
 REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-registry.git.systaro.de}"

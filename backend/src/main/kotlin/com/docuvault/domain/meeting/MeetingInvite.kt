@@ -86,6 +86,12 @@ data class MeetingInvite(
     @Column(name = "meeting_channel", length = 500)
     var meetingChannel: String? = null,
 
+    /** Teams meeting join link the browser bot is dispatched to. Supplied at
+     *  invite creation for [MeetingPlatform.TEAMS]; null for Discord (whose bot
+     *  is triggered from inside the call and needs no URL). */
+    @Column(name = "meeting_url", columnDefinition = "TEXT")
+    var meetingUrl: String? = null,
+
     /** Comma-separated speaker display names, recorded by the bot. */
     @Column(columnDefinition = "TEXT")
     var participants: String? = null,

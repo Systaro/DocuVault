@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.*
 
@@ -82,8 +83,17 @@ class MeetingController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
         val platform = request.platform ?: MeetingPlatform.DISCORD
+        val meetingUrl = request.meetingUrl?.trim()?.takeIf { it.isNotBlank() }
+        if (platform == MeetingPlatform.TEAMS) {
+            if (meetingUrl == null) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Teams meeting link is required")
+            }
+            if (!isTeamsMeetingUrl(meetingUrl)) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "That does not look like a Teams meeting link")
+            }
+        }
         val (invite, rawToken) = meetingService.createInvite(
-            spaceId, userDetails.username, request.label, platform, request.language
+            spaceId, userDetails.username, request.label, platform, request.language, meetingUrl
         )
         // The raw token is returned exactly once, on creation.
         return ResponseEntity.status(HttpStatus.CREATED).body(invite.toDto(rawToken))
@@ -118,7 +128,8 @@ class MeetingController(
 class MeetingBotController(
     private val meetingService: MeetingService,
     private val streamService: MeetingStreamService,
-    @Value("\${app.public-url}") private val publicUrl: String
+    @Value("\${app.public-url}") private val publicUrl: String,
+    @Value("\${app.meeting-bot.dispatch-token:}") private val dispatchToken: String
 ) {
     @PostMapping("/claim")
     fun claim(
@@ -126,18 +137,7 @@ class MeetingBotController(
         @RequestBody request: ClaimRequest
     ): ResponseEntity<ClaimResponse> {
         val invite = meetingService.claimInvite(bearerToken(authHeader), request.meetingChannel)
-        streamService.publish(invite.space.id!!, invite.toDto())
-        val base = publicUrl.trimEnd('/')
-        val inboxUrl = "$base/${invite.space.getFullPath()}/inbox"
-        return ResponseEntity.ok(
-            ClaimResponse(
-                spaceId = invite.space.id!!,
-                spaceName = invite.space.name,
-                label = invite.label,
-                language = invite.language,
-                inboxUrl = inboxUrl
-            )
-        )
+        return ResponseEntity.ok(publishClaim(invite))
     }
 
     @PostMapping("/progress")
@@ -148,9 +148,7 @@ class MeetingBotController(
         val invite = meetingService.recordProgress(
             bearerToken(authHeader), request.phase, request.current, request.total, request.message
         )
-        val dto = invite.toDto()
-        streamService.publish(invite.space.id!!, dto)
-        return ResponseEntity.ok(dto)
+        return ResponseEntity.ok(publish(invite))
     }
 
     @PostMapping("/notes")
@@ -161,9 +159,7 @@ class MeetingBotController(
         val invite = meetingService.submitNotes(
             bearerToken(authHeader), request.notes, request.participants
         )
-        val dto = invite.toDto()
-        streamService.publish(invite.space.id!!, dto)
-        return ResponseEntity.ok(dto)
+        return ResponseEntity.ok(publish(invite))
     }
 
     @PostMapping("/fail")
@@ -172,9 +168,95 @@ class MeetingBotController(
         @RequestBody request: FailRequest
     ): ResponseEntity<MeetingInviteDto> {
         val invite = meetingService.failInvite(bearerToken(authHeader), request.error)
+        return ResponseEntity.ok(publish(invite))
+    }
+
+    // --- Teams dispatch endpoints ---
+    //
+    // Authenticated by the service-level dispatch token (not a dvm_ token), and
+    // address invites by id. This is how the standing browser bot learns which
+    // Teams meetings to join and drives their lifecycle without a human ever
+    // holding a per-invite token. See MeetingService for the credential split.
+
+    @GetMapping("/teams/pending")
+    fun pendingTeams(
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<List<PendingTeamsInviteDto>> {
+        requireDispatch(authHeader)
+        val pending = meetingService.listPendingTeamsInvites().map {
+            PendingTeamsInviteDto(
+                inviteId = it.id!!,
+                meetingUrl = it.meetingUrl!!,
+                label = it.label,
+                language = it.language
+            )
+        }
+        return ResponseEntity.ok(pending)
+    }
+
+    @PostMapping("/teams/{inviteId}/claim")
+    fun claimTeams(
+        @RequestHeader("Authorization") authHeader: String,
+        @PathVariable inviteId: UUID,
+        @RequestBody request: ClaimRequest
+    ): ResponseEntity<ClaimResponse> {
+        requireDispatch(authHeader)
+        val invite = meetingService.claimTeamsInvite(inviteId, request.meetingChannel)
+        return ResponseEntity.ok(publishClaim(invite))
+    }
+
+    @PostMapping("/teams/{inviteId}/progress")
+    fun progressTeams(
+        @RequestHeader("Authorization") authHeader: String,
+        @PathVariable inviteId: UUID,
+        @RequestBody request: ProgressRequest
+    ): ResponseEntity<MeetingInviteDto> {
+        requireDispatch(authHeader)
+        val invite = meetingService.recordTeamsProgress(
+            inviteId, request.phase, request.current, request.total, request.message
+        )
+        return ResponseEntity.ok(publish(invite))
+    }
+
+    @PostMapping("/teams/{inviteId}/notes")
+    fun submitTeamsNotes(
+        @RequestHeader("Authorization") authHeader: String,
+        @PathVariable inviteId: UUID,
+        @RequestBody request: SubmitNotesRequest
+    ): ResponseEntity<MeetingInviteDto> {
+        requireDispatch(authHeader)
+        val invite = meetingService.submitTeamsNotes(inviteId, request.notes, request.participants)
+        return ResponseEntity.ok(publish(invite))
+    }
+
+    @PostMapping("/teams/{inviteId}/fail")
+    fun failTeams(
+        @RequestHeader("Authorization") authHeader: String,
+        @PathVariable inviteId: UUID,
+        @RequestBody request: FailRequest
+    ): ResponseEntity<MeetingInviteDto> {
+        requireDispatch(authHeader)
+        val invite = meetingService.failTeamsInvite(inviteId, request.error)
+        return ResponseEntity.ok(publish(invite))
+    }
+
+    /** Pushes the updated invite to the space's SSE stream and returns its DTO. */
+    private fun publish(invite: MeetingInvite): MeetingInviteDto {
         val dto = invite.toDto()
         streamService.publish(invite.space.id!!, dto)
-        return ResponseEntity.ok(dto)
+        return dto
+    }
+
+    private fun publishClaim(invite: MeetingInvite): ClaimResponse {
+        streamService.publish(invite.space.id!!, invite.toDto())
+        val base = publicUrl.trimEnd('/')
+        return ClaimResponse(
+            spaceId = invite.space.id!!,
+            spaceName = invite.space.name,
+            label = invite.label,
+            language = invite.language,
+            inboxUrl = "$base/${invite.space.getFullPath()}/inbox"
+        )
     }
 
     private fun bearerToken(authHeader: String): String {
@@ -182,6 +264,17 @@ class MeetingBotController(
             throw IllegalArgumentException("Missing bearer token")
         }
         return authHeader.removePrefix("Bearer ").trim()
+    }
+
+    /** Rejects the request unless it carries the configured dispatch token.
+     *  A blank configured token disables Teams dispatch entirely (deny-all). */
+    private fun requireDispatch(authHeader: String) {
+        if (dispatchToken.isBlank()) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Teams dispatch is not enabled")
+        }
+        if (!MessageDigest.isEqual(bearerToken(authHeader).toByteArray(), dispatchToken.toByteArray())) {
+            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid dispatch token")
+        }
     }
 }
 
@@ -191,8 +284,18 @@ data class CreateInviteRequest(
     @field:NotBlank val label: String,
     val platform: MeetingPlatform? = null,
     /** ISO-639-1 spoken language; defaults to German server-side when omitted. */
-    val language: String? = null
+    val language: String? = null,
+    /** Teams meeting join link; required for TEAMS, ignored for DISCORD. */
+    val meetingUrl: String? = null
 )
+
+/** Recognises the join links the Teams browser bot can open: work/school
+ *  (teams.microsoft.com) and consumer (teams.live.com) meetings. */
+private fun isTeamsMeetingUrl(url: String): Boolean {
+    val lower = url.lowercase()
+    return (lower.startsWith("https://") || lower.startsWith("http://")) &&
+        (lower.contains("teams.microsoft.com") || lower.contains("teams.live.com"))
+}
 
 data class ClaimRequest(
     val meetingChannel: String? = null
@@ -216,6 +319,16 @@ data class ProgressRequest(
 
 // --- Response DTOs ---
 
+/** A Teams invite the browser bot should join, returned by the dispatch poll.
+ *  No token is included — Teams operations authenticate with the dispatch token
+ *  and address the invite by id. */
+data class PendingTeamsInviteDto(
+    val inviteId: UUID,
+    val meetingUrl: String,
+    val label: String,
+    val language: String
+)
+
 data class MeetingInviteDto(
     val id: UUID,
     val spaceId: UUID,
@@ -227,6 +340,8 @@ data class MeetingInviteDto(
     /** Full token — only populated in the response to invite creation. */
     val token: String?,
     val meetingChannel: String?,
+    /** Teams join link, if this is a Teams invite. */
+    val meetingUrl: String?,
     val participants: String?,
     val noteCount: Int,
     val phase: MeetingPhase?,
@@ -260,6 +375,7 @@ fun MeetingInvite.toDto(rawToken: String? = null) = MeetingInviteDto(
     tokenPrefix = this.tokenPrefix,
     token = rawToken,
     meetingChannel = this.meetingChannel,
+    meetingUrl = this.meetingUrl,
     participants = this.participants,
     noteCount = this.noteCount,
     phase = this.phase,

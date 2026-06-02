@@ -126,6 +126,8 @@ services:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME}
       PUBLIC_URL: ${PUBLIC_URL:-https://${PUBLIC_HOSTNAME}}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Shared secret the Teams meeting bot authenticates dispatch calls with.
+      MEETING_BOT_DISPATCH_TOKEN: ${MEETING_BOT_DISPATCH_TOKEN:-}
       GITLAB_URL: ${GITLAB_URL:-https://gitlab.com}
       GITLAB_TOKEN: ${GITLAB_TOKEN:-}
       MINIO_ENDPOINT: http://minio:9000
@@ -158,11 +160,13 @@ services:
     depends_on:
       - backend
 
-  # Discord meeting transcription bot — opt-in.
+  # Meeting transcription bot (Discord and/or Teams) — opt-in.
   # Activate by:
-  #   1) setting DISCORD_BOT_TOKEN in .env (also set OPENAI_API_KEY)
+  #   1) setting OPENAI_API_KEY in .env, plus at least one adapter credential:
+  #        DISCORD_BOT_TOKEN          → Discord adapter
+  #        MEETING_BOT_DISPATCH_TOKEN → Teams adapter (same value as on backend)
   #   2) running `docker compose --profile meeting-bot up -d`
-  # deploy.sh detects DISCORD_BOT_TOKEN and includes this service automatically.
+  # deploy.sh detects either credential and includes this service automatically.
   meeting-bot:
     image: registry.git.systaro.de/systaro/docuvault/meeting-bot:${DOCUVAULT_VERSION:-latest}
     container_name: docuvault-meeting-bot
@@ -170,7 +174,10 @@ services:
     profiles:
       - meeting-bot
     environment:
-      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN:?DISCORD_BOT_TOKEN is required when enabling the meeting-bot profile}
+      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      MEETING_BOT_DISPATCH_TOKEN: ${MEETING_BOT_DISPATCH_TOKEN:-}
+      TEAMS_BOT_NAME: ${TEAMS_BOT_NAME:-DocuVault Notetaker}
+      MEETING_MAX_CONCURRENT_TEAMS: ${MEETING_MAX_CONCURRENT_TEAMS:-2}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required for transcription}
       DOCUVAULT_API_URL: http://backend:7030/api
       TRANSCRIBE_MODEL: ${MEETING_TRANSCRIBE_MODEL:-gpt-4o-transcribe}

@@ -64,6 +64,12 @@ app:
   mail:
     from-address: ${MAIL_FROM_ADDRESS:noreply@docuvault.systaro.de}
     from-name: ${MAIL_FROM_NAME:DocuVault}
+  meeting-bot:
+    # Shared secret the standing meeting bot uses to poll for pending Teams
+    # invites to dispatch into. Distinct from the per-invite dvm_ token: this
+    # authorizes the service-level "what should I join?" list call. Leave blank
+    # to disable Teams dispatch (the endpoint then rejects every request).
+    dispatch-token: ${MEETING_BOT_DISPATCH_TOKEN:}
 
 server:
   address: 0.0.0.0

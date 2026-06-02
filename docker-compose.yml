@@ -97,7 +97,7 @@ services:
     depends_on:
       - backend
 
-  # Optional Discord meeting transcription bot.
+  # Optional meeting transcription bot (Discord and/or Teams).
   # Start with: docker compose --profile meeting-bot up -d
   meeting-bot:
     build:
@@ -107,7 +107,12 @@ services:
     profiles:
       - meeting-bot
     environment:
-      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN}
+      # Discord adapter (set DISCORD_BOT_TOKEN to enable)
+      DISCORD_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      # Teams adapter (set MEETING_BOT_DISPATCH_TOKEN to enable)
+      MEETING_BOT_DISPATCH_TOKEN: ${MEETING_BOT_DISPATCH_TOKEN:-}
+      TEAMS_BOT_NAME: ${TEAMS_BOT_NAME:-DocuVault Notetaker}
+      MEETING_MAX_CONCURRENT_TEAMS: ${MEETING_MAX_CONCURRENT_TEAMS:-2}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       DOCUVAULT_API_URL: http://backend:7030/api
       TRANSCRIBE_MODEL: ${MEETING_TRANSCRIBE_MODEL:-gpt-4o-transcribe}

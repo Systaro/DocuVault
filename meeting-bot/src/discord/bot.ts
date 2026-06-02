@@ -58,6 +58,9 @@ const commands = [
 ];
 
 export function startBot(): void {
+  const discordToken = config.discordToken;
+  if (!discordToken) throw new Error('DISCORD_TOKEN is required to start the Discord adapter');
+
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
   });
@@ -101,11 +104,11 @@ export function startBot(): void {
     }
   });
 
-  void client.login(config.discordToken);
+  void client.login(discordToken);
 }
 
 async function registerCommands(appId: string, guildIds: string[]): Promise<void> {
-  const rest = new REST().setToken(config.discordToken);
+  const rest = new REST().setToken(config.discordToken ?? '');
   for (const guildId of guildIds) {
     await rest
       .put(Routes.applicationGuildCommands(appId, guildId), { body: commands })
