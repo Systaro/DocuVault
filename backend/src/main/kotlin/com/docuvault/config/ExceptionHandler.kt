@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -43,6 +44,19 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(
                 status = 400,
                 message = ex.message ?: "Invalid request"
+            ))
+    }
+
+    /** Honour the status carried by an explicitly thrown ResponseStatusException
+     *  (e.g. a 401/403/400 from a controller) instead of letting it fall through
+     *  to the generic 500 handler. */
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(ex.statusCode)
+            .body(ErrorResponse(
+                status = ex.statusCode.value(),
+                message = ex.reason ?: "Request failed"
             ))
     }
 
