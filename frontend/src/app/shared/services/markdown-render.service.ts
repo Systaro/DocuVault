@@ -9,6 +9,7 @@ import { resolveRelativePath } from '../utils/file-utils';
 export class MarkdownRenderService {
   private mermaidInitialised = false;
   private mermaidSeq = 0;
+  private drawioLoader: Promise<void> | null = null;
 
   constructor(private sanitizer: DomSanitizer) {}
 
@@ -57,6 +58,15 @@ export class MarkdownRenderService {
         const resolved = resolveRelativePath(docDir + src);
         return `${pre}${fileUrlPrefix}/${resolved}${post}`;
       }
+    );
+
+    // draw.io: a `.drawio` file referenced as an image (![](diagram.drawio))
+    // can't render as an <img>. Convert it into a placeholder that
+    // runDrawio() hydrates with the vendored viewer. src is already
+    // absolute here (relative paths were rewritten just above).
+    html = html.replace(
+      /<img\b[^>]*?\bsrc="([^"]+\.drawio)"[^>]*>/gi,
+      (_match, src) => `<div class="drawio" data-drawio-src="${src}"></div>`
     );
 
     // Rewrite relative href links
@@ -129,8 +139,98 @@ export class MarkdownRenderService {
     }
   }
 
+  /**
+   * Lazy-load the self-hosted draw.io viewer (~3.8 MB) on first use.
+   * Vendored under assets/ so it renders fully offline — no calls out to
+   * viewer.diagrams.net (see SECURITY.md). Idempotent: concurrent callers
+   * share one in-flight script load.
+   */
+  private ensureDrawio(): Promise<void> {
+    if ((window as any).GraphViewer) return Promise.resolve();
+    if (this.drawioLoader) return this.drawioLoader;
+    this.drawioLoader = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'assets/drawio/viewer-static.min.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        this.drawioLoader = null;
+        reject(new Error('Failed to load draw.io viewer'));
+      };
+      document.head.appendChild(script);
+    });
+    return this.drawioLoader;
+  }
+
+  /**
+   * Hydrate every `<div class="drawio" data-drawio-src>` inside `host` by
+   * fetching its `.drawio` XML and rendering it with the vendored viewer.
+   * Idempotent — nodes already processed are skipped. Mirrors runMermaid():
+   * call after Angular has flushed the innerHTML update.
+   */
+  async runDrawio(host: HTMLElement | null | undefined): Promise<void> {
+    if (!host) return;
+    const nodes = host.querySelectorAll<HTMLElement>(
+      'div.drawio[data-drawio-src]:not([data-drawio-rendered])'
+    );
+    if (nodes.length === 0) return;
+
+    try {
+      await this.ensureDrawio();
+    } catch {
+      for (const node of Array.from(nodes)) {
+        node.setAttribute('data-drawio-rendered', 'error');
+        node.innerHTML = `<div class="mermaid-error" style="color:#b91c1c;font-family:monospace;">draw.io viewer failed to load</div>`;
+      }
+      return;
+    }
+
+    const GraphViewer = (window as any).GraphViewer;
+    for (const node of Array.from(nodes)) {
+      // Claim the node before the await so a re-entrant call can't double-process it.
+      node.setAttribute('data-drawio-rendered', 'true');
+      const src = node.getAttribute('data-drawio-src') ?? '';
+      try {
+        const resp = await fetch(src, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const xml = await resp.text();
+        node.setAttribute('data-mxgraph', JSON.stringify({
+          xml,
+          toolbar: null,
+          'auto-fit': true,
+          resize: true,
+          border: 8,
+        }));
+        GraphViewer.createViewerForElement(node, () => {
+          node.classList.add('dv-mermaid-wrap');
+          this.attachSvgExpandButton(node);
+        });
+      } catch (err) {
+        node.setAttribute('data-drawio-rendered', 'error');
+        const message = err instanceof Error ? err.message : String(err);
+        node.innerHTML = `<div class="mermaid-error" style="color:#b91c1c;font-family:monospace;white-space:pre-wrap;">draw.io error: ${this.escape(message)}</div>`;
+      }
+    }
+  }
+
   private attachExpandButton(host: HTMLElement, source: string): void {
     host.classList.add('dv-mermaid-wrap');
+    host.appendChild(this.makeExpandButton(() => this.openFullscreen(source)));
+  }
+
+  /**
+   * Expand button for already-rendered SVG diagrams (draw.io). Unlike the
+   * mermaid variant it doesn't re-render from source — it clones the live
+   * `<svg>` out of `host` into the fullscreen overlay.
+   */
+  private attachSvgExpandButton(host: HTMLElement): void {
+    host.appendChild(this.makeExpandButton(() => {
+      const svg = host.querySelector('svg');
+      if (svg) this.openSvgFullscreen(svg as SVGElement);
+    }));
+  }
+
+  private makeExpandButton(onClick: () => void): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'dv-mermaid-expand';
@@ -139,12 +239,13 @@ export class MarkdownRenderService {
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      this.openFullscreen(source);
+      onClick();
     });
-    host.appendChild(btn);
+    return btn;
   }
 
-  private async openFullscreen(source: string): Promise<void> {
+  /** Create the fullscreen overlay shell (header + stage) attached to body. */
+  private buildOverlay(): { header: HTMLElement; stage: HTMLElement } {
     const overlay = document.createElement('div');
     overlay.className = 'dv-mermaid-overlay';
 
@@ -157,7 +258,11 @@ export class MarkdownRenderService {
     overlay.appendChild(header);
     overlay.appendChild(stage);
     document.body.appendChild(overlay);
+    return { header, stage };
+  }
 
+  private async openFullscreen(source: string): Promise<void> {
+    const { header, stage } = this.buildOverlay();
     const id = `mermaid-fs-${++this.mermaidSeq}`;
     try {
       const { svg, bindFunctions } = await mermaid.render(id, source);
@@ -166,7 +271,19 @@ export class MarkdownRenderService {
     } catch (err) {
       stage.innerHTML = `<div style="color:#fca5a5;font-family:monospace;">Render error: ${this.escape(String(err))}</div>`;
     }
+    this.installZoomPan(header, stage);
+  }
 
+  /** Open an already-rendered SVG (cloned) in the zoom/pan overlay. */
+  private openSvgFullscreen(svg: SVGElement): void {
+    const { header, stage } = this.buildOverlay();
+    stage.appendChild(svg.cloneNode(true));
+    this.installZoomPan(header, stage);
+  }
+
+  /** Wire zoom/pan/close controls onto an overlay whose stage holds an <svg>. */
+  private installZoomPan(header: HTMLElement, stage: HTMLElement): void {
+    const overlay = stage.parentElement as HTMLElement;
     let scale = 1;
     let tx = 0;
     let ty = 0;

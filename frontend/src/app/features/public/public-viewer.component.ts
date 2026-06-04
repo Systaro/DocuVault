@@ -1017,7 +1017,10 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
     effect(() => {
       this.renderedHtml();
-      setTimeout(() => this.markdownService.runMermaid(this.elementRef.nativeElement), 0);
+      setTimeout(() => {
+        this.markdownService.runMermaid(this.elementRef.nativeElement);
+        this.markdownService.runDrawio(this.elementRef.nativeElement);
+      }, 0);
     });
   }
 
