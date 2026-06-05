@@ -171,7 +171,7 @@ import { marked } from 'marked';
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar">
           <div class="preview-filename">
-            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : 'image' }}</span>
+            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -268,6 +268,10 @@ import { marked } from 'marked';
                   [permission]="annotationPermission()"
                 />
               }
+            </div>
+          } @else if (previewType() === 'drawio') {
+            <div class="drawio-preview-container">
+              <div #drawioElement class="drawio" [attr.data-drawio-src]="previewUrl()"></div>
             </div>
           } @else {
             <div class="image-zoom-container annotation-host" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
@@ -853,7 +857,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   deleting = signal(false);
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
-  previewType = signal<'image' | 'html' | 'pdf'>('image');
+  previewType = signal<'image' | 'html' | 'pdf' | 'drawio'>('image');
   previewUrl = signal('');
   safePreviewUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
@@ -864,6 +868,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   // Read-only render (git-backed markdown). Bypasses TipTap so Mermaid blocks render as SVG.
   readonlyHtml = signal<SafeHtml>('');
   @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
+  @ViewChild('drawioElement') drawioElement?: ElementRef<HTMLElement>;
 
   // Drag-resizable content width — persisted on the backend per (space, file) so the whole team sees it.
   private static readonly CONTENT_WIDTH_DEFAULT = 896; // matches Tailwind max-w-4xl
@@ -967,10 +972,28 @@ export class EditorComponent implements OnInit, OnDestroy {
       if (!this.isGitSpace()) this.saveDocument();
     });
 
-    // Render Mermaid diagrams after the read-only HTML is flushed to the DOM.
+    // Render Mermaid + draw.io diagrams after the read-only HTML is flushed to the DOM.
     effect(() => {
       this.readonlyHtml();
-      setTimeout(() => this.markdownService.runMermaid(this.readonlyElement?.nativeElement), 0);
+      setTimeout(() => {
+        this.markdownService.runMermaid(this.readonlyElement?.nativeElement);
+        this.markdownService.runDrawio(this.readonlyElement?.nativeElement);
+      }, 0);
+    });
+
+    // A .drawio file opened directly: render it via the viewer. Re-runs when
+    // the path changes (the host element is reused across navigations).
+    effect(() => {
+      this.previewUrl();
+      if (this.previewType() !== 'drawio') return;
+      setTimeout(() => {
+        const el = this.drawioElement?.nativeElement;
+        if (!el || !el.getAttribute('data-drawio-src')) return;
+        el.removeAttribute('data-drawio-rendered');
+        el.classList.remove('dv-mermaid-wrap');
+        el.innerHTML = '';
+        this.markdownService.runDrawio(el.parentElement);
+      }, 0);
     });
   }
 
@@ -1145,6 +1168,14 @@ export class EditorComponent implements OnInit, OnDestroy {
             const url = `/api/spaces/${space.id}/files/${path}`;
             this.previewUrl.set(url);
             this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+          }
+        } else if (ext === 'drawio') {
+          this.isPreviewFile.set(true);
+          this.previewType.set('drawio');
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
           }
         } else {
           this.isPreviewFile.set(false);
