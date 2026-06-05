@@ -1101,6 +1101,17 @@ body {
   svg { max-width: 100%; height: auto; }
 }
 
+// Direct-open `.drawio` file view in the editor (full-height padded canvas).
+.drawio-preview-container {
+  padding: 24px;
+  min-height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+
+  .drawio { margin: 0; width: 100%; }
+}
+
 // ============================================
 // MERMAID DIAGRAM CHROME + FULLSCREEN ZOOM/PAN
 // ============================================
