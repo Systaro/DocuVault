@@ -193,7 +193,13 @@ export class MarkdownRenderService {
       try {
         const resp = await fetch(src, { credentials: 'same-origin' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const xml = await resp.text();
+        const raw = await resp.text();
+        // GraphViewer's <mxfile>/<diagram> path mis-detects uncompressed XML as
+        // base64-deflate and throws on atob(). Feed it the bare <mxGraphModel>,
+        // which renders with no decompression. For genuinely compressed files
+        // (no inline model) fall back to the full XML so GraphViewer inflates it.
+        const model = raw.match(/<mxGraphModel[\s\S]*<\/mxGraphModel>/);
+        const xml = model ? model[0] : raw;
         node.setAttribute('data-mxgraph', JSON.stringify({
           xml,
           toolbar: null,
