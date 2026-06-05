@@ -1277,8 +1277,15 @@ export class EditorComponent implements OnInit, OnDestroy {
       this.editor?.destroy();
       this.editor = null as any;
       const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
+      // A raw Mermaid file (.mmd/.mermaid) is diagram source with no fence.
+      // Wrap it so the markdown pipeline emits a Mermaid block the runMermaid
+      // effect can turn into a diagram, instead of showing the source as code.
+      const ext = this.documentPath.split('.').pop()?.toLowerCase();
+      const toRender = (ext === 'mmd' || ext === 'mermaid')
+        ? '```mermaid\n' + content.trim() + '\n```\n'
+        : content;
       const rendered = this.markdownService.render(
-        content,
+        toRender,
         docDir,
         `/api/spaces/${space.id}/files`,
         null
