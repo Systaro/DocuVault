@@ -844,7 +844,8 @@ export class SpaceOverviewComponent implements OnInit {
   startNewDocument(): void {
     const space = this.space();
     if (!space) return;
-    this.router.navigate(spaceRoute(space.fullPath, 'doc'));
+    const folder = this.currentFolder();
+    this.router.navigate(spaceRoute(space.fullPath, 'doc'), folder ? { queryParams: { folder } } : {});
   }
 
   startNewFolder(): void {

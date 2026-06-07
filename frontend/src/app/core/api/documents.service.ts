@@ -28,6 +28,8 @@ export interface CreateDocumentRequest {
   path: string;
   title?: string;
   content: string;
+  autoCommit?: boolean;
+  commitMessage?: string;
 }
 
 export interface UpdateDocumentRequest {
