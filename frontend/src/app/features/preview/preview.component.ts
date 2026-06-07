@@ -19,6 +19,8 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
   imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent],
   template: `
     <div class="preview-shell">
+      <!-- Hover zone: reveals the auto-hidden topbar when the cursor nears the top -->
+      <div class="header-hover-zone" aria-hidden="true"></div>
       <!-- Header -->
       <header class="preview-header">
         <button class="header-icon-btn" (click)="sidebarOpen.set(!sidebarOpen())" title="Toggle file browser">
@@ -228,7 +230,29 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
       border-bottom: 1px solid #e5e7eb;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
       flex-shrink: 0;
-      z-index: 20;
+      /* Auto-hide: lift the bar off-screen; it slides back in on hover (see .header-hover-zone). */
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 30;
+      transform: translateY(-100%);
+      transition: transform 0.25s ease;
+    }
+
+    /* Thin strip pinned to the top edge that catches the cursor and reveals the bar. */
+    .header-hover-zone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 16px;
+      z-index: 29;
+    }
+
+    .header-hover-zone:hover ~ .preview-header,
+    .preview-header:hover {
+      transform: translateY(0);
     }
 
     .header-icon-btn {
