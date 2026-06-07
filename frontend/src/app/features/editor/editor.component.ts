@@ -59,8 +59,8 @@ import { marked } from 'marked';
         }
       </div>
       <div class="editor-toolbar">
-        @if (!isGitSpace()) {
-          <!-- Editing toolbar for non-git spaces -->
+        @if (!isReadOnly()) {
+          <!-- Editing toolbar (non-git spaces + new documents in git spaces) -->
           <div class="flex items-center gap-1">
             <button class="editor-icon-btn" [class.active]="isActive('bold')" (click)="toggleBold()" title="Bold"><b>B</b></button>
             <button class="editor-icon-btn" [class.active]="isActive('italic')" (click)="toggleItalic()" title="Italic"><i>I</i></button>
@@ -103,7 +103,7 @@ import { marked } from 'marked';
             <span class="text-sm text-amber-600 font-medium">Read-only — synced from Git</span>
           </div>
         }
-        <div class="flex items-center gap-2" [class.ml-auto]="isGitSpace()">
+        <div class="flex items-center gap-2" [class.ml-auto]="isReadOnly()">
           @if (documentPath) {
             <div class="relative">
               <button
@@ -323,11 +323,11 @@ import { marked } from 'marked';
                 type="text"
                 [(ngModel)]="documentTitle"
                 placeholder="Untitled"
-                [readonly]="isGitSpace()"
+                [readonly]="isReadOnly()"
                 class="editor-title"
               />
 
-              @if (isGitSpace()) {
+              @if (isReadOnly()) {
                 <!-- Read-only render (git-synced): full markdown pipeline incl. Mermaid -->
                 <article
                   #readonlyElement
@@ -831,6 +831,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   document = signal<DocumentContent | null>(null);
   documentTitle = '';
   documentPath = '';
+  // Folder a new document is being created in (from the ?folder= query param).
+  newDocFolder = '';
   /** Tracks documentPath as a signal so computed breadcrumbs react to changes. */
   documentPathSignal = signal<string>('');
 
@@ -863,6 +865,10 @@ export class EditorComponent implements OnInit, OnDestroy {
   imageZoom = signal(1);
   isDraggingImage = signal(false);
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
+  // A freshly-created document that has never been saved is editable even in a
+  // git-backed space — only existing git-synced files are read-only.
+  isNewDocument = signal(false);
+  isReadOnly = computed(() => this.isGitSpace() && !this.isNewDocument());
   annotationPermission = signal<AnnotationPermission>('VIEW');
 
   // Read-only render (git-backed markdown). Bypasses TipTap so Mermaid blocks render as SVG.
@@ -1184,6 +1190,9 @@ export class EditorComponent implements OnInit, OnDestroy {
           }
         }
       } else {
+        // New document — remember the folder the user created it from so it
+        // lands there instead of the default docs/ directory.
+        this.newDocFolder = (params.get('folder') ?? '').replace(/^\/+|\/+$/g, '');
         this.isPreviewFile.set(false);
         this.initializeNewDocument();
       }
@@ -1231,6 +1240,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.documentsService.getDocument(space.id, this.documentPath).subscribe({
       next: (doc) => {
         this.document.set(doc);
+        this.isNewDocument.set(false);
         this.documentTitle = doc.title || '';
         // Strip leading H1 if it matches the title to avoid duplicate heading
         let content = doc.content;
@@ -1265,6 +1275,7 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   initializeNewDocument(): void {
     this.documentTitle = '';
+    this.isNewDocument.set(true);
     this.loading.set(false);
     setTimeout(() => this.initializeEditor(''));
   }
@@ -1272,8 +1283,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   initializeEditor(content: string): void {
     const space = this.space();
 
-    // Read-only (git-backed): render full markdown pipeline incl. Mermaid, skip TipTap entirely.
-    if (this.isGitSpace() && space) {
+    // Read-only (existing git-synced file): render full markdown pipeline incl. Mermaid, skip TipTap entirely.
+    if (this.isReadOnly() && space) {
       this.editor?.destroy();
       this.editor = null as any;
       const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
@@ -1319,7 +1330,7 @@ export class EditorComponent implements OnInit, OnDestroy {
 
     this.editor = new Editor({
       element: el,
-      editable: !this.isGitSpace(),
+      editable: !this.isReadOnly(),
       extensions: [
         StarterKit.configure({
           codeBlock: false
@@ -1348,7 +1359,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       ],
       content: htmlContent,
       onUpdate: () => {
-        if (!this.isGitSpace()) {
+        if (!this.isReadOnly()) {
           this.hasChanges.set(true);
           this.lastSaved.set(false);
           this.autoSave$.next();
@@ -1371,11 +1382,17 @@ export class EditorComponent implements OnInit, OnDestroy {
 
     this.saving.set(true);
 
+    // Git-backed spaces only persist on commit — without this the file is
+    // written to the working tree but lost on the next git sync.
+    const isGit = this.isGitSpace();
+
     if (this.documentPath) {
       // Update existing document
       this.documentsService.updateDocument(space.id, this.documentPath, {
         title: this.documentTitle,
-        content: markdown
+        content: markdown,
+        autoCommit: isGit,
+        commitMessage: isGit ? `Update ${this.documentTitle || this.documentPath}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
@@ -1393,7 +1410,9 @@ export class EditorComponent implements OnInit, OnDestroy {
       this.documentsService.createDocument(space.id, {
         path,
         title: this.documentTitle,
-        content: markdown
+        content: markdown,
+        autoCommit: isGit,
+        commitMessage: isGit ? `Add ${this.documentTitle || path}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
@@ -1446,8 +1465,9 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   generatePath(): string {
     const title = this.documentTitle || 'untitled';
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    return `docs/${slug}.md`;
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'untitled';
+    const dir = this.newDocFolder || 'docs';
+    return `${dir}/${slug}.md`;
   }
 
   private resolveRelativePath(path: string): string {
