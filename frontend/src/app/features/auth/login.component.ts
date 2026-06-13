@@ -1,7 +1,7 @@
 import { Component, OnInit, signal, isDevMode } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
@@ -365,15 +365,21 @@ export class LoginComponent implements OnInit {
   error = signal<string | null>(null);
   isDevMode = isDevMode();
 
+  private returnUrl: string | null = null;
+
   constructor(
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
-    // Redirect to dashboard if already logged in
+    // Deep link the user was sent here from — navigate back to it after login
+    this.returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+
+    // Redirect away if already logged in
     if (this.authService.isAuthenticated()) {
-      this.router.navigate(['/dashboard']);
+      this.navigateAfterLogin();
       return;
     }
     // First-time install: no users yet — send to setup wizard
@@ -396,7 +402,7 @@ export class LoginComponent implements OnInit {
         if (response.error) {
           this.error.set(response.error);
         } else {
-          this.router.navigate(['/dashboard']);
+          this.navigateAfterLogin();
         }
       },
       error: () => {
@@ -404,6 +410,15 @@ export class LoginComponent implements OnInit {
         this.error.set('An error occurred. Please try again.');
       }
     });
+  }
+
+  private navigateAfterLogin(): void {
+    // Only honour app-internal paths to avoid an open-redirect via the param
+    if (this.returnUrl && this.returnUrl.startsWith('/') && !this.returnUrl.startsWith('//')) {
+      this.router.navigateByUrl(this.returnUrl);
+    } else {
+      this.router.navigate(['/dashboard']);
+    }
   }
 
   devLogin(): void {
