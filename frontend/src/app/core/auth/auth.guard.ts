@@ -3,7 +3,7 @@ import { Router, CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
 import { map } from 'rxjs';
 
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
@@ -11,7 +11,8 @@ export const authGuard: CanActivateFn = () => {
   return authService.checkAuth().pipe(
     map(authenticated => {
       if (authenticated) return true;
-      router.navigate(['/login']);
+      // Preserve the attempted deep link so login can send the user back to it
+      router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
       return false;
     })
   );
