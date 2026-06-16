@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, HostListener } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, computed, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
@@ -12,6 +12,7 @@ import { InboxService } from '../../core/api/inbox.service';
 import { AnnotationsService } from '../../core/api/annotations.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
+import { ToastService } from '../../shared/services/toast.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { getFileIcon } from '../../shared/utils/file-utils';
@@ -154,6 +155,43 @@ import { getFileIcon } from '../../shared/utils/file-utils';
             (close)="onShareDialogClose()"
           />
         }
+
+        @if (deletingNode(); as node) {
+          <div class="modal-overlay" (click)="cancelDeleteFile()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header"><h2>Delete file</h2></div>
+              <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ node.name }}</strong>?</p>
+                <p class="modal-hint">This action cannot be undone.</p>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
+                <button type="button" class="btn-danger" (click)="confirmDeleteFile()" [disabled]="deleteBusy()">Delete</button>
+              </div>
+            </div>
+          </div>
+        }
+
+        @if (movingNode(); as node) {
+          <div class="modal-overlay" (click)="cancelMoveFile()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header"><h2>Move file</h2></div>
+              <div class="modal-body">
+                <p>Move <strong>{{ node.name }}</strong> to:</p>
+                <select class="move-select" [(ngModel)]="moveTargetFolder">
+                  <option [value]="''">(space root)</option>
+                  @for (folder of folderOptions(); track folder) {
+                    <option [value]="folder">{{ folder }}</option>
+                  }
+                </select>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn-secondary" (click)="cancelMoveFile()">Cancel</button>
+                <button type="button" class="btn-primary" (click)="confirmMoveFile()" [disabled]="moveBusy()">Move</button>
+              </div>
+            </div>
+          </div>
+        }
       }
 
       <!-- File Tree Template -->
@@ -290,9 +328,17 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                         <span class="material-icons">drive_file_rename_outline</span>
                         Rename
                       </button>
+                      <button class="tree-dropdown-item" (click)="startMoveFile(node)">
+                        <span class="material-icons">drive_file_move</span>
+                        Move
+                      </button>
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, false)">
                         <span class="material-icons">share</span>
                         Share file
+                      </button>
+                      <button class="tree-dropdown-item danger" (click)="startDeleteFile(node)">
+                        <span class="material-icons">delete</span>
+                        Delete
                       </button>
                     </div>
                   }
@@ -754,6 +800,35 @@ import { getFileIcon } from '../../shared/utils/file-utils';
       &:hover {
         background: var(--bg-hover, rgba(0, 0, 0, 0.05));
       }
+
+      &.danger {
+        color: var(--danger, #dc2626);
+
+        .material-icons {
+          color: var(--danger, #dc2626);
+        }
+
+        &:hover {
+          background: var(--danger-bg, rgba(220, 38, 38, 0.08));
+        }
+      }
+    }
+
+    .modal-hint {
+      margin-top: var(--spacing-xs);
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .move-select {
+      width: 100%;
+      margin-top: var(--spacing-sm);
+      padding: var(--spacing-sm);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 14px;
     }
 
     .rename-input {
@@ -1082,6 +1157,30 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   annotationCounts = signal<Record<string, number>>({});
   annotationTotal = signal(0);
   openMenuPath = signal<string | null>(null);
+  /** File pending deletion — drives the delete-confirmation modal. */
+  deletingNode = signal<FileNode | null>(null);
+  deleteBusy = signal(false);
+  /** File being moved — drives the move modal. */
+  movingNode = signal<FileNode | null>(null);
+  moveBusy = signal(false);
+  /** Destination folder selected in the move modal ('' = space root). */
+  moveTargetFolder = '';
+
+  /** All folder paths in the tree, for the move modal's destination picker. */
+  folderOptions = computed<string[]>(() => {
+    const out: string[] = [];
+    const walk = (nodes: FileNode[]): void => {
+      for (const n of nodes) {
+        if (n.isDirectory) {
+          out.push(n.path);
+          if (n.children) walk(n.children);
+        }
+      }
+    };
+    walk(this.fileTree());
+    return out.sort((a, b) => a.localeCompare(b));
+  });
+
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
   );
@@ -1101,7 +1200,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private inboxService: InboxService,
     private annotationsService: AnnotationsService,
     protected caps: CapabilitiesService,
-    protected prefs: DisplayPrefsService
+    protected prefs: DisplayPrefsService,
+    private toastService: ToastService
   ) {}
 
   ngOnInit(): void {
@@ -1439,6 +1539,79 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   cancelCreateFolder(): void {
     this.creatingFolderUnder.set(null);
     this.newFolderName = '';
+  }
+
+  private parentFolderOf(path: string): string {
+    return path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : '';
+  }
+
+  startDeleteFile(node: FileNode): void {
+    this.deletingNode.set(node);
+    this.openMenuPath.set(null);
+  }
+
+  confirmDeleteFile(): void {
+    const node = this.deletingNode();
+    const space = this.spaceSignal();
+    if (!node || !space) return;
+    this.deleteBusy.set(true);
+    const wasActive = this.currentDocPath() === node.path;
+    this.documentsService.deleteDocument(space.id, node.path).subscribe({
+      next: () => {
+        this.deleteBusy.set(false);
+        this.deletingNode.set(null);
+        this.toastService.success('Deleted', `"${node.name}" has been deleted.`);
+        this.loadFileTree(space.id);
+        if (wasActive) {
+          this.router.navigate(spaceRoute(space.fullPath));
+        }
+      },
+      error: (err) => {
+        this.deleteBusy.set(false);
+        this.toastService.error('Delete failed', err?.error?.message ?? 'Could not delete the file.');
+      }
+    });
+  }
+
+  cancelDeleteFile(): void {
+    this.deletingNode.set(null);
+  }
+
+  startMoveFile(node: FileNode): void {
+    this.movingNode.set(node);
+    this.moveTargetFolder = this.parentFolderOf(node.path);
+    this.openMenuPath.set(null);
+  }
+
+  confirmMoveFile(): void {
+    const node = this.movingNode();
+    const space = this.spaceSignal();
+    if (!node || !space) return;
+    const target = this.moveTargetFolder;
+    const newPath = target ? `${target}/${node.name}` : node.name;
+    if (newPath === node.path) { this.cancelMoveFile(); return; }
+    this.moveBusy.set(true);
+    const wasActive = this.currentDocPath() === node.path;
+    this.documentsService.rename(space.id, node.path, newPath).subscribe({
+      next: () => {
+        this.moveBusy.set(false);
+        this.movingNode.set(null);
+        this.toastService.success('Moved', `"${node.name}" → ${target || 'space root'}`);
+        this.loadFileTree(space.id);
+        if (wasActive) {
+          this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
+        }
+      },
+      error: (err) => {
+        this.moveBusy.set(false);
+        this.toastService.error('Move failed', err?.error?.message ?? 'Could not move the file.');
+      }
+    });
+  }
+
+  cancelMoveFile(): void {
+    this.movingNode.set(null);
+    this.moveTargetFolder = '';
   }
 
   ngOnDestroy(): void {
