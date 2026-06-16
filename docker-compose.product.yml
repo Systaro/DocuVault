@@ -182,6 +182,10 @@ services:
       DOCUVAULT_API_URL: http://backend:7030/api
       TRANSCRIBE_MODEL: ${MEETING_TRANSCRIBE_MODEL:-gpt-4o-transcribe}
       NOTES_MODEL: ${MEETING_NOTES_MODEL:-gpt-5.5}
+      # Persist in-progress recordings so a bot restart can finalize them.
+      RECORDINGS_DIR: /data/recordings
+    volumes:
+      - meeting_bot_recordings:/data/recordings
     depends_on:
       - backend
 
@@ -190,6 +194,7 @@ volumes:
   repos_data:
   minio_data:
   redis_data:
+  meeting_bot_recordings:
   nginx_certs:
   nginx_vhost:
   nginx_html:

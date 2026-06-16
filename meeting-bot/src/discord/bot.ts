@@ -179,7 +179,14 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction): Promi
   connection.on('error', (err) => console.error(`[voice ${guildId}] error:`, err));
   await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
 
-  const session = new MeetingSession(client, claim.label, claim.spaceName, claim.inboxUrl, claim.language);
+  const session = new MeetingSession(
+    client,
+    claim.label,
+    claim.spaceName,
+    claim.inboxUrl,
+    claim.language,
+    { platform: 'DISCORD', token },
+  );
   await session.init();
   const recorder = new DiscordRecorder(connection, interaction.guild, session);
   recorder.start();

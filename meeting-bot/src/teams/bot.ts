@@ -95,6 +95,7 @@ export class TeamsMeeting {
       claim.spaceName,
       claim.inboxUrl,
       claim.language,
+      { platform: 'TEAMS', inviteId: this.invite.inviteId },
     );
     await session.init();
 
