@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
-import { DocumentsService, Document } from '../../core/api/documents.service';
+import { DocumentsService, Document, FileNode } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -227,23 +227,25 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             </div>
           }
 
-          @if (documents().length === 0) {
-            <div class="p-8 text-center">
-              <svg class="w-12 h-12 mx-auto overview-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              <p class="overview-text-secondary">No documents yet</p>
-              <a
-                [routerLink]="space()?.fullPath | spaceRoute:'doc'"
-                class="btn btn-primary mt-4 inline-flex"
-              >
-                Create your first document
-              </a>
-            </div>
-          } @else if (subfolders().length === 0 && filesHere().length === 0) {
-            <div class="p-8 text-center">
-              <p class="overview-text-secondary">This folder is empty.</p>
-            </div>
+          @if (!creatingFolderInline() && subfolders().length === 0 && filesHere().length === 0) {
+            @if (currentFolder()) {
+              <div class="p-8 text-center">
+                <p class="overview-text-secondary">This folder is empty.</p>
+              </div>
+            } @else {
+              <div class="p-8 text-center">
+                <svg class="w-12 h-12 mx-auto overview-text-muted mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                <p class="overview-text-secondary">No documents yet</p>
+                <a
+                  [routerLink]="space()?.fullPath | spaceRoute:'doc'"
+                  class="btn btn-primary mt-4 inline-flex"
+                >
+                  Create your first document
+                </a>
+              </div>
+            }
           } @else {
             <div class="overview-doc-list">
               @if (creatingFolderInline()) {
@@ -656,6 +658,9 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 export class SpaceOverviewComponent implements OnInit {
   space = signal<Space | null>(null);
   documents = signal<Document[]>([]);
+  /** All directory paths in the repo (from the git file tree) — covers empty folders
+   *  that hold only a .gitkeep and therefore have no Document rows under them. */
+  allFolders = signal<string[]>([]);
   syncing = signal(false);
   isDragOver = signal(false);
   uploading = signal(false);
@@ -684,11 +689,21 @@ export class SpaceOverviewComponent implements OnInit {
     const cur = this.currentFolder();
     const prefix = cur ? cur + '/' : '';
     const set = new Set<string>();
+    // Folders inferred from document paths.
     for (const d of this.documents()) {
       if (cur && !d.path.startsWith(prefix)) continue;
       const rest = cur ? d.path.slice(prefix.length) : d.path;
       const slash = rest.indexOf('/');
       if (slash > 0) set.add(rest.slice(0, slash));
+    }
+    // Folders from the git tree — includes empty folders (only a .gitkeep) that have
+    // no documents underneath and would otherwise be invisible.
+    for (const f of this.allFolders()) {
+      if (cur && !f.startsWith(prefix)) continue;
+      const rest = cur ? f.slice(prefix.length) : f;
+      if (!rest) continue;
+      const slash = rest.indexOf('/');
+      set.add(slash > 0 ? rest.slice(0, slash) : rest);
     }
     return [...set].sort((a, b) => a.localeCompare(b));
   });
@@ -837,6 +852,25 @@ export class SpaceOverviewComponent implements OnInit {
     this.documentsService.getDocuments(spaceId).subscribe({
       next: (docs) => this.documents.set(docs)
     });
+    this.documentsService.getFileTree(spaceId).subscribe({
+      next: (tree) => this.allFolders.set(this.collectFolderPaths(tree)),
+      error: () => this.allFolders.set([])
+    });
+  }
+
+  /** Flatten the git file tree into a list of every directory path it contains. */
+  private collectFolderPaths(nodes: FileNode[]): string[] {
+    const paths: string[] = [];
+    const walk = (list: FileNode[]): void => {
+      for (const node of list) {
+        if (node.isDirectory) {
+          paths.push(node.path);
+          if (node.children?.length) walk(node.children);
+        }
+      }
+    };
+    walk(nodes);
+    return paths;
   }
 
   // --- "+ New" menu actions ---
