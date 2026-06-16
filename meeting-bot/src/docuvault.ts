@@ -87,6 +87,32 @@ export class DocuVaultClient {
     }
   }
 
+  /**
+   * Polls whether a user asked (in DocuVault) to stop this recording early.
+   * Best-effort — a failed poll must never end a healthy meeting, so it resolves
+   * false on any error and the bot keeps recording until the next poll.
+   */
+  async shouldStop(): Promise<boolean> {
+    try {
+      const res = await this.get<{ stopRequested: boolean }>(`${this.opBase}/status`);
+      return res.stopRequested === true;
+    } catch (err) {
+      console.error('Failed to poll stop status from DocuVault:', err);
+      return false;
+    }
+  }
+
+  private async get<T>(path: string): Promise<T> {
+    const res = await fetch(`${config.docuvaultApiUrl}${path}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`DocuVault ${path} → ${res.status} ${detail}`.trim());
+    }
+    return (await res.json()) as T;
+  }
+
   private async post<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${config.docuvaultApiUrl}${path}`, {
       method: 'POST',

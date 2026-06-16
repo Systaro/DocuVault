@@ -174,6 +174,19 @@ import { ToastService } from '../../shared/services/toast.service';
                     <span class="material-icons">delete_outline</span>
                   </button>
                 }
+                @if (inv.status === 'ACTIVE') {
+                  <button
+                    class="btn btn-ghost btn-sm stop-btn"
+                    [disabled]="inv.stopRequested"
+                    (click)="stop(inv)"
+                    [title]="inv.stopRequested
+                      ? 'Aufnahme wird beendet…'
+                      : 'Aufnahme beenden und Protokoll erstellen'"
+                  >
+                    <span class="material-icons">{{ inv.stopRequested ? 'hourglass_top' : 'stop_circle' }}</span>
+                    {{ inv.stopRequested ? 'Stoppt…' : 'Stopp' }}
+                  </button>
+                }
               </div>
             }
           }
@@ -312,6 +325,13 @@ import { ToastService } from '../../shared/services/toast.service';
     .status-completed { background: rgba(34,197,94,0.14); color: #15803d; }
     .status-failed { background: rgba(220,38,38,0.12); color: #dc2626; }
     .status-cancelled { background: var(--surface-raised, rgba(0,0,0,0.05)); color: var(--text-muted); }
+
+    .stop-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      color: #dc2626; white-space: nowrap;
+    }
+    .stop-btn .material-icons { font-size: 16px; }
+    .stop-btn:disabled { color: var(--text-muted); cursor: default; }
   `]
 })
 export class MeetingInviteModalComponent implements OnInit, OnDestroy {
@@ -451,6 +471,24 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
         this.loadInvites();
       },
       error: () => this.toastService.error('Fehler', 'Token konnte nicht zurückgezogen werden.'),
+    });
+  }
+
+  /** Asks the bot to end an ACTIVE recording. The bot stops within a poll cycle
+   *  and files what it captured; the SSE stream then flips the row to "Fertig". */
+  stop(invite: MeetingInvite): void {
+    if (invite.stopRequested) return;
+    // Optimistically show the pending-stop state until the bot confirms.
+    this.mergeInvite({ ...invite, stopRequested: true });
+    this.meetingService.stopInvite(this.spaceId, invite.id).subscribe({
+      next: (updated) => {
+        this.mergeInvite(updated);
+        this.toastService.success('Wird gestoppt', 'Die Aufnahme wird beendet und das Protokoll erstellt.');
+      },
+      error: () => {
+        this.mergeInvite({ ...invite, stopRequested: false });
+        this.toastService.error('Fehler', 'Aufnahme konnte nicht gestoppt werden.');
+      },
     });
   }
 

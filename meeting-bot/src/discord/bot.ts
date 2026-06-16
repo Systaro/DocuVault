@@ -29,6 +29,7 @@ interface ActiveMeeting {
   textChannel: SendableChannels;
   voiceChannelId: string;
   safetyTimer: NodeJS.Timeout;
+  stopPoll: NodeJS.Timeout;
   startedAt: number;
 }
 
@@ -36,6 +37,9 @@ interface ActiveMeeting {
  *  against the bot's own voice-join event firing before the human user is
  *  reflected in the voice-state cache. */
 const AUTO_STOP_GRACE_MS = 10_000;
+
+/** How often each meeting polls DocuVault for a UI-triggered stop request. */
+const STOP_POLL_MS = 5_000;
 
 /** One meeting per guild — keyed by guild id. */
 const meetings = new Map<string, ActiveMeeting>();
@@ -185,6 +189,16 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction): Promi
     config.maxMeetingMinutes * 60_000,
   );
 
+  // Poll DocuVault for a UI-triggered stop, so the recording can be ended from
+  // the web inbox as well as with /stop.
+  const stopPoll = setInterval(() => {
+    void client.shouldStop().then((stop) => {
+      if (stop && meetings.has(guildId)) {
+        void finishMeeting(guildId, 'In DocuVault gestoppt.');
+      }
+    });
+  }, STOP_POLL_MS);
+
   meetings.set(guildId, {
     token,
     session,
@@ -192,6 +206,7 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction): Promi
     textChannel,
     voiceChannelId: voiceChannel.id,
     safetyTimer,
+    stopPoll,
     startedAt: Date.now(),
   });
 
@@ -232,6 +247,7 @@ async function finishMeeting(
   if (!meeting) return;
   meetings.delete(guildId);
   clearTimeout(meeting.safetyTimer);
+  clearInterval(meeting.stopPoll);
   meeting.recorder.stop();
   void new DocuVaultClient(meeting.token).progress('PROCESSING', {
     message: 'Aufnahme wird beendet…',

@@ -28,6 +28,8 @@ export interface MeetingInvite {
   progressTotal: number | null;
   progressMessage: string | null;
   error: string | null;
+  /** True once a user asked to stop this ACTIVE recording from the UI. */
+  stopRequested: boolean;
   expiresAt: string | null;
   claimedAt: string | null;
   completedAt: string | null;
@@ -75,6 +77,11 @@ export class MeetingService {
 
   cancelInvite(spaceId: string, inviteId: string): Observable<void> {
     return this.http.delete<void>(`/api/spaces/${spaceId}/meetings/${inviteId}`);
+  }
+
+  /** Asks the bot to stop an ACTIVE recording early and file what it has so far. */
+  stopInvite(spaceId: string, inviteId: string): Observable<MeetingInvite> {
+    return this.http.post<MeetingInvite>(`/api/spaces/${spaceId}/meetings/${inviteId}/stop`, {});
   }
 
   /**
