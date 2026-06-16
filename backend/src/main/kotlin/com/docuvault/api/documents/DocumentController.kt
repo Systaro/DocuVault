@@ -584,6 +584,21 @@ class DocumentController(
         val document = documentRepository.findBySpaceIdAndPath(spaceId, documentPath)
         document?.let { documentRepository.delete(it) }
 
+        // Commit and push the deletion so it persists for git-backed spaces
+        if (!space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = "Delete $documentPath",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
+        }
+
         return ResponseEntity.noContent().build()
     }
 
@@ -661,6 +676,21 @@ class DocumentController(
         } else {
             val doc = documentRepository.findBySpaceIdAndPath(spaceId, request.oldPath)
             doc?.let { documentRepository.save(it.copy(path = request.newPath)) }
+        }
+
+        // Commit and push the rename/move so it persists for git-backed spaces
+        if (!space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = "Rename ${request.oldPath} to ${request.newPath}",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
         }
 
         return ResponseEntity.ok().build()
