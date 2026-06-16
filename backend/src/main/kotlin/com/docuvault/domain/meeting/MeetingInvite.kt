@@ -119,6 +119,12 @@ data class MeetingInvite(
     @Column(columnDefinition = "TEXT")
     var error: String? = null,
 
+    /** Set when a user asks (from the DocuVault UI) to stop this ACTIVE recording.
+     *  The bot polls this flag and ends the meeting early, filing whatever it has
+     *  captured so far. */
+    @Column(name = "stop_requested", nullable = false)
+    var stopRequested: Boolean = false,
+
     @Column(name = "expires_at")
     var expiresAt: Instant? = null,
 

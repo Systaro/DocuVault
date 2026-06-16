@@ -112,6 +112,28 @@ class MeetingService(
         return true
     }
 
+    /**
+     * User asked to stop an ACTIVE recording from the UI. Raises the stop flag the
+     * bot polls; the bot then ends the call and files whatever it captured. Returns
+     * the updated invite, or null if missing, wrong space, or not currently ACTIVE.
+     */
+    @Transactional
+    fun requestStop(inviteId: UUID, spaceId: UUID): MeetingInvite? {
+        val invite = meetingInviteRepository.findById(inviteId).orElse(null) ?: return null
+        if (invite.space.id != spaceId) return null
+        if (invite.status != MeetingInviteStatus.ACTIVE) return null
+        invite.stopRequested = true
+        return meetingInviteRepository.save(invite)
+    }
+
+    /** Whether the bot holding [rawToken] has been asked to stop early (Discord). */
+    @Transactional(readOnly = true)
+    fun isStopRequested(rawToken: String): Boolean = authenticate(rawToken).stopRequested
+
+    /** Teams dispatch variant — resolves the invite by id. */
+    @Transactional(readOnly = true)
+    fun isTeamsStopRequested(inviteId: UUID): Boolean = requireTeamsInvite(inviteId).stopRequested
+
     // --- Bot-facing operations ---
     //
     // Two credential models resolve to the same entity-level transitions below:

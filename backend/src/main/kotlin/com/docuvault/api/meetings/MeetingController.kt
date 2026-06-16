@@ -116,6 +116,30 @@ class MeetingController(
             ResponseEntity.notFound().build()
         }
     }
+
+    /**
+     * Asks the bot to stop an ACTIVE recording early. Raises a flag the bot polls;
+     * the bot then ends the call and files whatever it has captured. 404 if the
+     * invite is missing, in another space, or no longer ACTIVE.
+     */
+    @PostMapping("/{inviteId}/stop")
+    fun stopInvite(
+        @PathVariable spaceId: UUID,
+        @PathVariable inviteId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<MeetingInviteDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        if (!permissionService.hasEditAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+        val invite = meetingService.requestStop(inviteId, spaceId)
+            ?: return ResponseEntity.notFound().build()
+        // Reflect the pending-stop on every open inbox right away.
+        val dto = invite.toDto()
+        streamService.publish(spaceId, dto)
+        return ResponseEntity.ok(dto)
+    }
 }
 
 /**
@@ -170,6 +194,13 @@ class MeetingBotController(
         val invite = meetingService.failInvite(bearerToken(authHeader), request.error)
         return ResponseEntity.ok(publish(invite))
     }
+
+    /** Poll for whether a user asked (in the UI) to stop this recording early. */
+    @GetMapping("/status")
+    fun status(
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<BotStatusDto> =
+        ResponseEntity.ok(BotStatusDto(meetingService.isStopRequested(bearerToken(authHeader))))
 
     // --- Teams dispatch endpoints ---
     //
@@ -238,6 +269,16 @@ class MeetingBotController(
         requireDispatch(authHeader)
         val invite = meetingService.failTeamsInvite(inviteId, request.error)
         return ResponseEntity.ok(publish(invite))
+    }
+
+    /** Teams dispatch variant of the stop-status poll — resolves by invite id. */
+    @GetMapping("/teams/{inviteId}/status")
+    fun statusTeams(
+        @RequestHeader("Authorization") authHeader: String,
+        @PathVariable inviteId: UUID
+    ): ResponseEntity<BotStatusDto> {
+        requireDispatch(authHeader)
+        return ResponseEntity.ok(BotStatusDto(meetingService.isTeamsStopRequested(inviteId)))
     }
 
     /** Pushes the updated invite to the space's SSE stream and returns its DTO. */
@@ -317,6 +358,9 @@ data class ProgressRequest(
     val message: String? = null
 )
 
+/** Lightweight poll payload telling the bot whether to stop the recording early. */
+data class BotStatusDto(val stopRequested: Boolean)
+
 // --- Response DTOs ---
 
 /** A Teams invite the browser bot should join, returned by the dispatch poll.
@@ -349,6 +393,7 @@ data class MeetingInviteDto(
     val progressTotal: Int?,
     val progressMessage: String?,
     val error: String?,
+    val stopRequested: Boolean,
     val expiresAt: Instant?,
     val claimedAt: Instant?,
     val completedAt: Instant?,
@@ -383,6 +428,7 @@ fun MeetingInvite.toDto(rawToken: String? = null) = MeetingInviteDto(
     progressTotal = this.progressTotal,
     progressMessage = this.progressMessage,
     error = this.error,
+    stopRequested = this.stopRequested,
     expiresAt = this.expiresAt,
     claimedAt = this.claimedAt,
     completedAt = this.completedAt,
