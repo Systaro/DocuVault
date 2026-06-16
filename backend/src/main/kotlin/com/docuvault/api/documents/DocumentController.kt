@@ -609,6 +609,21 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
 
+        // Commit and push the folder marker (.gitkeep) so the empty folder persists in git
+        if (!space.gitlabUrl.isNullOrBlank()) {
+            try {
+                gitService.commitAndPush(
+                    space = space,
+                    message = "Create folder ${request.path}",
+                    authorName = user.name,
+                    authorEmail = user.email
+                )
+            } catch (e: Exception) {
+                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
+                spaceRepository.save(space)
+            }
+        }
+
         return ResponseEntity.ok().build()
     }
 
