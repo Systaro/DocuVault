@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { tmpdir } from 'node:os';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -42,4 +43,9 @@ export const config = {
   teamsHeadless: flag('TEAMS_HEADLESS', true),
   /** Max time to wait in the lobby for a human to admit the bot, in ms. */
   teamsAdmitTimeoutMs: Number(process.env.TEAMS_ADMIT_TIMEOUT_MS ?? 120_000),
+  /** Where in-progress meeting recordings (PCM + manifest) are written. Point
+   *  this at a mounted volume in production so a meeting survives a bot restart
+   *  and can be finalized on the next boot; defaults to the OS temp dir for
+   *  local dev (where ephemeral storage is fine). */
+  recordingsDir: process.env.RECORDINGS_DIR ?? tmpdir(),
 };
