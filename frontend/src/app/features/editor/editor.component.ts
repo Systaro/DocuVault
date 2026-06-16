@@ -85,6 +85,12 @@ import { marked } from 'marked';
             <button class="editor-icon-btn" [class.active]="isActive('blockquote')" (click)="toggleBlockquote()" title="Blockquote">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10.5H6a2 2 0 01-2-2v-1a2 2 0 012-2h2m6 0h2a2 2 0 012 2v1a2 2 0 01-2 2h-2m-6 5h6"/></svg>
             </button>
+            <div class="toolbar-divider"></div>
+            <button class="editor-icon-btn" (click)="imageInput.click()" title="Insert image (or just paste / drop one)">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            </button>
+            <input #imageInput type="file" accept="image/*" multiple class="sr-only"
+                   (change)="onImageInputChange($event); imageInput.value = ''" />
           </div>
           <div class="flex items-center gap-2">
             @if (hasChanges()) {
@@ -1312,7 +1318,7 @@ export class EditorComponent implements OnInit, OnDestroy {
 
     // Rewrite relative image src to serve from API, resolved relative to the document's directory
     if (space) {
-      const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
+      const docDir = this.currentDocDir();
       htmlContent = htmlContent.replace(
         /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
         (_match, pre, src, post) => {
@@ -1357,6 +1363,10 @@ export class EditorComponent implements OnInit, OnDestroy {
           lowlight
         })
       ],
+      editorProps: {
+        handlePaste: (_view, event) => this.handleImageFiles(event.clipboardData?.files),
+        handleDrop: (_view, event) => this.handleImageFiles((event as DragEvent).dataTransfer?.files)
+      },
       content: htmlContent,
       onUpdate: () => {
         if (!this.isReadOnly()) {
@@ -1373,10 +1383,12 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (!space || !this.editor || this.saving()) return;
 
     let html = this.editor.getHTML();
-    // Restore relative image paths before converting to markdown
+    // Convert API serving URLs back to document-relative markdown paths (inverse of the
+    // rewrite done on load) so images resolve consistently across save/reload cycles.
+    const docDir = this.currentDocDir();
     html = html.replace(
       /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
-      '$1$2$3'
+      (_match, pre, abs, post) => `${pre}${this.toDocRelativePath(abs, docDir)}${post}`
     );
     const markdown = this.turndownService.turndown(html);
 
@@ -1481,6 +1493,69 @@ export class EditorComponent implements OnInit, OnDestroy {
       }
     }
     return resolved.join('/');
+  }
+
+  /** Directory of the current document within the repo, e.g. "Anleitungen/Coder/" ('' at root). */
+  private currentDocDir(): string {
+    return this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
+  }
+
+  /** Turn a repo-root-relative path into one relative to the document's directory (inverse of load). */
+  private toDocRelativePath(absPath: string, docDir: string): string {
+    const from = docDir.split('/').filter(Boolean);
+    const to = absPath.split('/').filter(Boolean);
+    let i = 0;
+    while (i < from.length && i < to.length && from[i] === to[i]) i++;
+    const up = from.slice(i).map(() => '..');
+    const down = to.slice(i);
+    return [...up, ...down].join('/') || absPath;
+  }
+
+  /** Triggered by the toolbar image button's hidden file input. */
+  onImageInputChange(event: globalThis.Event): void {
+    const input = event.target as HTMLInputElement;
+    this.handleImageFiles(input.files);
+  }
+
+  /**
+   * Upload any image files (from paste, drop, or the picker) into an `_assets/` folder next to
+   * the document and insert them at the cursor. Returns true when at least one image was handled
+   * so TipTap suppresses its default paste/drop behaviour.
+   */
+  private handleImageFiles(files: FileList | null | undefined): boolean {
+    if (this.isReadOnly() || !files || files.length === 0) return false;
+    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (images.length === 0) return false;
+    for (const image of images) {
+      this.uploadAndInsertImage(image);
+    }
+    return true;
+  }
+
+  private uploadAndInsertImage(file: File): void {
+    const space = this.space();
+    if (!space || !this.editor) return;
+
+    const docDir = this.currentDocDir();
+    const ext = (file.name.split('.').pop() || file.type.split('/').pop() || 'png').toLowerCase();
+    // Clipboard images arrive as a generic "image.png" — give each a unique, sortable name.
+    const named = new File([file], `paste-${Date.now()}.${ext}`, { type: file.type });
+    const folder = `${docDir}_assets`;
+
+    this.toastService.success('Uploading image…', named.name);
+    this.documentsService.uploadFiles(space.id, [named], folder).subscribe({
+      next: (uploaded) => {
+        const path = uploaded[0]?.path;
+        if (!path) return;
+        // Insert with the API serving URL so it renders in the editor; saveDocument()
+        // converts it back to a document-relative markdown path.
+        const src = `/api/spaces/${space.id}/files/${path}`;
+        this.editor?.chain().focus().setImage({ src }).run();
+      },
+      error: (err) => {
+        this.toastService.error('Image upload failed', err?.error?.message ?? 'Could not upload the image.');
+      }
+    });
   }
 
   // Toolbar actions
