@@ -67,6 +67,7 @@
     "rxjs": "~7.8.0",
     "tslib": "^2.6.0",
     "turndown": "^7.1.2",
+    "turndown-plugin-gfm": "^1.0.2",
     "zone.js": "~0.14.0"
   },
   "devDependencies": {

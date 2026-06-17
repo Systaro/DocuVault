@@ -32,6 +32,7 @@ import { DisplayPrefsService } from '../../shared/services/display-prefs.service
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
+import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
 
 @Component({
@@ -91,6 +92,63 @@ import { marked } from 'marked';
             </button>
             <input #imageInput type="file" accept="image/*" multiple class="sr-only"
                    (change)="onImageInputChange($event); imageInput.value = ''" />
+            <div class="toolbar-divider"></div>
+            <div class="relative">
+              <button
+                class="editor-icon-btn"
+                [class.active]="isActive('table')"
+                (click)="showTableMenu.set(!showTableMenu()); $event.stopPropagation()"
+                title="Table"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M3 5h18M3 12h18M3 19h18M9 5v14M15 5v14M4 5a1 1 0 00-1 1v12a1 1 0 001 1h16a1 1 0 001-1V6a1 1 0 00-1-1H4z"/>
+                </svg>
+              </button>
+              @if (showTableMenu()) {
+                <div class="action-menu action-menu--left" (click)="$event.stopPropagation()">
+                  <button class="action-menu-item" (click)="insertTable(); showTableMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16v14H4zM4 10h16M10 5v14"/></svg>
+                    Insert table
+                  </button>
+                  <div class="action-menu-divider"></div>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="addColumnBefore()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 9h4M7 7v4"/></svg>
+                    Add column left
+                  </button>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="addColumnAfter()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M15 9h4M17 7v4"/></svg>
+                    Add column right
+                  </button>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="addRowBefore()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M9 5h4M7 7h4" transform="rotate(0)"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6M12 5v4"/></svg>
+                    Add row above
+                  </button>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="addRowAfter()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M9 17h6M12 15v4"/></svg>
+                    Add row below
+                  </button>
+                  <div class="action-menu-divider"></div>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="toggleHeaderRow()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h16v14H4zM4 9h16"/></svg>
+                    Toggle header row
+                  </button>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="deleteColumn()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 9l4 4M9 9l-4 4"/></svg>
+                    Delete column
+                  </button>
+                  <button class="action-menu-item" [disabled]="!isActive('table')" (click)="deleteRow()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M9 9l4 4M13 9l-4 4"/></svg>
+                    Delete row
+                  </button>
+                  <div class="action-menu-divider"></div>
+                  <button class="action-menu-item action-menu-item--danger" [disabled]="!isActive('table')" (click)="deleteTable()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-1 12a2 2 0 01-2 2H8a2 2 0 01-2-2L5 7m5 4v6m4-6v6M4 7h16M10 4h4"/></svg>
+                    Delete table
+                  </button>
+                </div>
+              }
+            </div>
           </div>
           <div class="flex items-center gap-2">
             @if (hasChanges()) {
@@ -594,6 +652,12 @@ import { marked } from 'marked';
 
     .image-zoom-container {
       overflow: auto;
+      // Reserve the scrollbar gutter permanently so a vertical scrollbar
+      // toggling on/off never changes the content-box width. Without this,
+      // the width:100% image + width transition oscillate (scrollbar appears →
+      // width shrinks → image shorter → scrollbar hides → width grows → …),
+      // producing a visible jitter while previewing.
+      scrollbar-gutter: stable;
       flex: 1;
       width: 100%;
       min-height: 0;
@@ -682,6 +746,20 @@ import { marked } from 'marked';
       min-width: 200px;
       z-index: 50;
       padding: 4px;
+    }
+
+    .action-menu--left {
+      right: auto;
+      left: 0;
+    }
+
+    .action-menu-item:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .action-menu-item:disabled:hover {
+      background: none;
     }
 
     .action-menu-item {
@@ -822,7 +900,26 @@ export class EditorComponent implements OnInit, OnDestroy {
     codeBlockStyle: 'fenced',
     fence: '```',
     bulletListMarker: '-',
-  });
+  // Turndown core has no rule for <table>, so it would otherwise flatten a
+  // table into its concatenated cell text. The GFM tables rule serialises it
+  // to a pipe-delimited Markdown table that marked parses back on load.
+  }).use(turndownTables)
+    // TipTap wraps every cell's content in <p>. Turndown's default paragraph
+    // rule pads that with blank lines, which shatters the single-line GFM cell.
+    // Override paragraphs *inside* table cells to emit inline content only
+    // (multiple paragraphs in one cell collapse to a <br>, the only line break
+    // GFM cells allow). Added after .use() so it wins — Turndown unshifts rules,
+    // so the most recently registered match takes precedence.
+    .addRule('tableCellParagraph', {
+      filter: (node) =>
+        node.nodeName === 'P' &&
+        !!node.parentNode &&
+        (node.parentNode.nodeName === 'TD' || node.parentNode.nodeName === 'TH'),
+      replacement: (content, node) => {
+        const inline = content.replace(/\n+/g, ' ').trim();
+        return (node as HTMLElement).previousElementSibling ? '<br>' + inline : inline;
+      },
+    });
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
@@ -861,6 +958,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   showChat = signal(false);
   showShareDialog = signal(false);
   showActionMenu = signal(false);
+  showTableMenu = signal(false);
   showDeleteConfirm = signal(false);
   deleting = signal(false);
   gitLinkCopied = signal(false);
@@ -1012,6 +1110,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   @HostListener('document:click')
   onDocumentClick(): void {
     this.showActionMenu.set(false);
+    this.showTableMenu.set(false);
   }
 
   getGitUrl(): string | null {
@@ -1597,6 +1696,43 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   toggleCodeBlock(): void {
     this.editor?.chain().focus().toggleCodeBlock().run();
+  }
+
+  insertTable(): void {
+    this.editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+  }
+
+  addColumnBefore(): void {
+    this.editor?.chain().focus().addColumnBefore().run();
+  }
+
+  addColumnAfter(): void {
+    this.editor?.chain().focus().addColumnAfter().run();
+  }
+
+  addRowBefore(): void {
+    this.editor?.chain().focus().addRowBefore().run();
+  }
+
+  addRowAfter(): void {
+    this.editor?.chain().focus().addRowAfter().run();
+  }
+
+  deleteColumn(): void {
+    this.editor?.chain().focus().deleteColumn().run();
+  }
+
+  deleteRow(): void {
+    this.editor?.chain().focus().deleteRow().run();
+  }
+
+  toggleHeaderRow(): void {
+    this.editor?.chain().focus().toggleHeaderRow().run();
+  }
+
+  deleteTable(): void {
+    this.editor?.chain().focus().deleteTable().run();
+    this.showTableMenu.set(false);
   }
 
   isActive(name: string, attributes?: Record<string, unknown>): boolean {
