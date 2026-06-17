@@ -37,6 +37,12 @@ import { spaceRoute } from '../../shared/utils/route-utils';
               <a routerLink="/dashboard" class="hero-crumb">
                 <span class="material-icons">home</span>
               </a>
+              @for (group of groupCrumbs(); track group.path) {
+                <span class="hero-crumb-sep">/</span>
+                <a [routerLink]="group.path | spaceRoute" class="hero-crumb">
+                  {{ prefs.prettify(group.name, true) }}
+                </a>
+              }
               <span class="hero-crumb-sep">/</span>
               <a
                 [routerLink]="[]"
@@ -719,6 +725,18 @@ export class SpaceOverviewComponent implements OnInit {
         return !rest.includes('/');
       })
       .sort((a, b) => (a.title || a.path).localeCompare(b.title || b.path));
+  });
+
+  /** Parent group crumbs (everything in the space path above the space itself). */
+  groupCrumbs = computed<{ name: string; path: string }[]>(() => {
+    const sp = this.space();
+    if (!sp?.fullPath) return [];
+    const parts = sp.fullPath.split('/');
+    // Last segment is the space slug itself — drop it; the rest are ancestor groups.
+    return parts.slice(0, -1).map((name, i) => ({
+      name,
+      path: parts.slice(0, i + 1).join('/'),
+    }));
   });
 
   /** Breadcrumb segments above the listing — each entry links one level deeper. */
