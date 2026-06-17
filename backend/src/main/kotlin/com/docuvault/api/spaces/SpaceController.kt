@@ -459,6 +459,7 @@ class SpaceController(
     }
 
     @DeleteMapping("/{id}/permissions/{userId}")
+    @Transactional
     fun removeSpacePermission(
         @PathVariable id: UUID,
         @PathVariable userId: UUID,
