@@ -52,13 +52,26 @@ function resolveSpaceId(spaces: Space[], input: string): string | null {
   return match?.id ?? null;
 }
 
+/**
+ * Builds the canonical DocuVault app URL for a document — the same deep link the
+ * web UI uses (/spaces/<fullPath>/doc?path=<docPath>). This is NOT a public share
+ * link: opening it requires the user to be logged in and to have access to the
+ * space. Slashes in the path are preserved; only individual segments are encoded
+ * so spaces/#/? in filenames don't break the link.
+ */
+function buildDocumentUrl(baseUrl: string, spaceFullPath: string, docPath: string): string {
+  const encodedPath = docPath.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl}/spaces/${spaceFullPath}/doc?path=${encodedPath}`;
+}
+
 export function registerTools(server: McpServer, client: DocuVaultClient, spaces: Space[] = []): void {
 
   const spaceCatalog = buildSpaceCatalog(spaces);
+  const baseUrl = client.getBaseUrl();
 
   server.tool(
     'search_documentation',
-    `Semantic vector search across all accessible DocuVault documentation. Returns relevant document chunks ranked by similarity.${spaceCatalog}`,
+    `Semantic vector search across all accessible DocuVault documentation. Returns relevant document chunks ranked by similarity. Each result includes a direct DocuVault URL — give it to the user to open the document in the app (they're already authenticated, no share link needed).${spaceCatalog}`,
     {
       query: z.string().describe('The search query - can be a question or topic description'),
       spaceId: z.string().optional().describe('Optional: limit search to a specific space ID'),
@@ -82,7 +95,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
 
         const formatted = results.map((r, i) => {
           const header = r.spaceFullPath
-            ? `[${i + 1}] ${r.documentTitle} (${r.spaceFullPath}/${r.documentPath})`
+            ? `[${i + 1}] ${r.documentTitle} (${r.spaceFullPath}/${r.documentPath})\nURL: ${buildDocumentUrl(baseUrl, r.spaceFullPath, r.documentPath)}`
             : `[${i + 1}] ${r.documentTitle} (${r.documentPath})`;
           return `${header}\n${r.content}`;
         }).join('\n\n---\n\n');
@@ -96,7 +109,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
 
   server.tool(
     'search_by_keyword',
-    'Full-text keyword search across document titles and paths in DocuVault.',
+    'Full-text keyword search across document titles and paths in DocuVault. Each result includes a direct DocuVault URL the user can open in the app (no share link needed — they already have access).',
     {
       query: z.string().describe('The keyword or phrase to search for'),
       limit: z.number().optional().default(20).describe('Maximum number of results (default 20)'),
@@ -110,7 +123,7 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
         }
 
         const formatted = results.map((r, i) =>
-          `[${i + 1}] ${r.documentTitle}\n  Space: ${r.spaceName} (${r.spaceFullPath})\n  Path: ${r.documentPath}\n  Updated: ${r.updatedAt}${r.snippet ? `\n  Preview: ${r.snippet}` : ''}`
+          `[${i + 1}] ${r.documentTitle}\n  Space: ${r.spaceName} (${r.spaceFullPath})\n  Path: ${r.documentPath}\n  URL: ${buildDocumentUrl(baseUrl, r.spaceFullPath, r.documentPath)}\n  Updated: ${r.updatedAt}${r.snippet ? `\n  Preview: ${r.snippet}` : ''}`
         ).join('\n\n');
 
         return { content: [{ type: 'text', text: formatted }] };
@@ -134,7 +147,9 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
         const doc = await client.readDocument(resolvedId, path);
-        const header = `# ${doc.title}\nPath: ${doc.path}\ncontentHash: ${doc.contentHash}\n\n`;
+        const spaceFullPath = spaces.find(s => s.id === resolvedId)?.fullPath;
+        const urlLine = spaceFullPath ? `URL: ${buildDocumentUrl(baseUrl, spaceFullPath, doc.path)}\n` : '';
+        const header = `# ${doc.title}\nPath: ${doc.path}\n${urlLine}contentHash: ${doc.contentHash}\n\n`;
         return { content: [{ type: 'text', text: header + doc.content }] };
       } catch (error) {
         return { content: [{ type: 'text', text: `Failed to read document: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
@@ -374,10 +389,13 @@ Provide EITHER filePath (reads local file — ideal after download_document) OR 
           commitMessage: commit_message,
         });
 
+        const updateSpaceFullPath = spaces.find(s => s.id === resolvedId)?.fullPath;
+        const updateUrlLine = updateSpaceFullPath ? `\nURL: ${buildDocumentUrl(baseUrl, updateSpaceFullPath, doc.path)}` : '';
+
         return {
           content: [{
             type: 'text',
-            text: `Document updated successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nNew hash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}${auto_commit ? '\nChanges committed and pushed to Git.' : ''}`,
+            text: `Document updated successfully.\nPath: ${doc.path}\nTitle: ${doc.title}${updateUrlLine}\nNew hash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}${auto_commit ? '\nChanges committed and pushed to Git.' : ''}`,
           }],
         };
       } catch (error) {
@@ -507,10 +525,12 @@ Provide EITHER filePath (to upload a local file — fast, no token overhead) OR 
         }
 
         const doc = await client.createDocument(resolvedId, path, documentContent, title);
+        const createSpaceFullPath = spaces.find(s => s.id === resolvedId)?.fullPath;
+        const createUrlLine = createSpaceFullPath ? `\nURL: ${buildDocumentUrl(baseUrl, createSpaceFullPath, doc.path)}` : '';
         return {
           content: [{
             type: 'text',
-            text: `Document created successfully.\nPath: ${doc.path}\nTitle: ${doc.title}\nHash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}\n\nNote: Document is saved locally. Use autoCommit on edit_document or push via the UI to publish to Git.`,
+            text: `Document created successfully.\nPath: ${doc.path}\nTitle: ${doc.title}${createUrlLine}\nHash: ${doc.contentHash}${filePath ? `\nSource: ${filePath}` : ''}\n\nNote: Document is saved locally. Use autoCommit on edit_document or push via the UI to publish to Git.`,
           }],
         };
       } catch (error) {
