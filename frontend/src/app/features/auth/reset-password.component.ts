@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { validatePasswordPolicy } from '../../shared/utils/password-policy';
 
 @Component({
   selector: 'app-reset-password',
@@ -348,8 +349,9 @@ export class ResetPasswordComponent implements OnInit {
       return;
     }
 
-    if (this.password.length < 8) {
-      this.error.set('Password must be at least 8 characters.');
+    const policyError = validatePasswordPolicy(this.password);
+    if (policyError) {
+      this.error.set(policyError);
       return;
     }
 

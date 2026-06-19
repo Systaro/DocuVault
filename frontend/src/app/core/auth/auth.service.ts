@@ -116,7 +116,19 @@ export class AuthService {
 
   resetPassword(token: string, password: string): Observable<{ message?: string; error?: string }> {
     return this.http.post<{ message?: string; error?: string }>('/api/auth/reset-password', { token, password }).pipe(
-      catchError(error => of({ error: error.error?.error || 'Something went wrong. Please try again.' }))
+      // The backend reports failures two ways: the controller returns
+      // { error } for token problems, while bean-validation failures come
+      // back from the global handler as { message, errors }. Surface
+      // whichever is present instead of collapsing them all to a generic
+      // "Something went wrong".
+      catchError(error => of({
+        error: error.error?.error
+          || (Array.isArray(error.error?.errors) && error.error.errors.length
+            ? error.error.errors.join(', ')
+            : null)
+          || error.error?.message
+          || 'Something went wrong. Please try again.'
+      }))
     );
   }
 

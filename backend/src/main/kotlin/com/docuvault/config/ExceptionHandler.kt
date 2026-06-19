@@ -16,6 +16,7 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationExceptions(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         val errors = ex.bindingResult.fieldErrors.map { "${it.field}: ${it.defaultMessage}" }
+        logger.warn("Validation failed for ${ex.parameter.method?.declaringClass?.simpleName}.${ex.parameter.method?.name}: $errors")
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(

@@ -219,18 +219,26 @@ class AuthController(
     @Transactional
     fun resetPassword(@Valid @RequestBody request: ResetPasswordRequest): ResponseEntity<Map<String, String>> {
         val token = passwordResetTokenRepository.findByToken(request.token)
-            ?: return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+            ?: run {
+                logger.warn("Password reset rejected: token not found")
+                return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+            }
 
         if (token.usedAt != null) {
+            logger.warn("Password reset rejected for ${token.email}: token already used at ${token.usedAt}")
             return ResponseEntity.badRequest().body(mapOf("error" to "This reset link has already been used."))
         }
 
         if (token.expiresAt.isBefore(Instant.now())) {
+            logger.warn("Password reset rejected for ${token.email}: token expired at ${token.expiresAt}")
             return ResponseEntity.badRequest().body(mapOf("error" to "This reset link has expired. Please request a new one."))
         }
 
         val user = userRepository.findByEmail(token.email)
-            ?: return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+            ?: run {
+                logger.warn("Password reset rejected: no user for token email ${token.email}")
+                return ResponseEntity.badRequest().body(mapOf("error" to "Invalid or expired reset link."))
+            }
 
         user.passwordHash = passwordEncoder.encode(request.password)
         user.updatedAt = Instant.now()
@@ -239,6 +247,7 @@ class AuthController(
         token.usedAt = Instant.now()
         passwordResetTokenRepository.save(token)
 
+        logger.info("Password reset completed for ${user.email}")
         return ResponseEntity.ok(mapOf("message" to "Password has been reset successfully. You can now sign in."))
     }
 
