@@ -111,6 +111,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
                 [renderMode]="renderMode()!"
                 [permission]="annotationPermission()"
                 [currentUserId]="currentUserId()"
+                [allowComment]="false"
               />
             </div>
           } @else if (renderMode() === 'html') {
@@ -122,6 +123,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
                 [renderMode]="renderMode()!"
                 [permission]="annotationPermission()"
                 [currentUserId]="currentUserId()"
+                [allowComment]="false"
               />
             </div>
           } @else if (renderMode() === 'image') {
@@ -134,6 +136,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
                 [renderMode]="renderMode()!"
                 [permission]="annotationPermission()"
                 [currentUserId]="currentUserId()"
+                [allowComment]="false"
               />
             </div>
             <div class="zoom-toolbar">
@@ -158,6 +161,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
                 [renderMode]="renderMode()!"
                 [permission]="annotationPermission()"
                 [currentUserId]="currentUserId()"
+                [allowComment]="false"
               />
             </div>
           } @else if (renderMode() === 'download') {

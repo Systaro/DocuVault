@@ -510,6 +510,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   permission = input<AnnotationPermission>('VIEW');
   shareToken = input<string | null>(null);
   currentUserId = input<string | null>(null);
+  // Set false to hide the "Add comment" button (e.g. distraction-free fullscreen preview)
+  allowComment = input<boolean>(true);
 
   // State
   annotations = signal<Annotation[]>([]);
@@ -707,6 +709,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   canComment(): boolean {
+    if (!this.allowComment()) return false;
     const p = this.permission();
     return p === 'COMMENT' || p === 'EDIT' || p === 'ADMIN';
   }
