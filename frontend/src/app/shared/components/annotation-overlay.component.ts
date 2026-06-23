@@ -65,26 +65,29 @@ import { ToastService } from '../services/toast.service';
       }
     }
 
-    <!-- Floating toolbar — Figma-style bottom pill -->
-    <div class="annotation-fab" [class.has-annotations]="annotations().length > 0">
-      @if (canComment()) {
-        <button class="fab-btn" [class.active]="annotationMode()"
-                (click)="toggleAnnotationMode()" [title]="annotationMode() ? 'Exit comment mode (Esc)' : 'Add comment'">
-          <span class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
-          @if (annotationMode()) {
-            <span class="fab-label">Click to place comment</span>
-          }
-        </button>
-      }
-      @if (annotations().length > 0) {
-        <div class="fab-divider"></div>
-        <button class="fab-btn" [class.active]="showList()"
-                (click)="showList.set(!showList())" title="View all comments">
-          <span class="material-icons">chat_bubble_outline</span>
-          <span class="fab-badge">{{ annotations().length }}</span>
-        </button>
-      }
-    </div>
+    <!-- Floating toolbar — Figma-style bottom pill. Hidden entirely when commenting
+         is disabled (e.g. distraction-free fullscreen preview). -->
+    @if (allowComment()) {
+      <div class="annotation-fab" [class.has-annotations]="annotations().length > 0">
+        @if (canComment()) {
+          <button class="fab-btn" [class.active]="annotationMode()"
+                  (click)="toggleAnnotationMode()" [title]="annotationMode() ? 'Exit comment mode (Esc)' : 'Add comment'">
+            <span class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
+            @if (annotationMode()) {
+              <span class="fab-label">Click to place comment</span>
+            }
+          </button>
+        }
+        @if (annotations().length > 0) {
+          <div class="fab-divider"></div>
+          <button class="fab-btn" [class.active]="showList()"
+                  (click)="showList.set(!showList())" title="View all comments">
+            <span class="material-icons">chat_bubble_outline</span>
+            <span class="fab-badge">{{ annotations().length }}</span>
+          </button>
+        }
+      </div>
+    }
 
     <!-- Thread popover -->
     @if (activeAnnotation(); as active) {
@@ -510,7 +513,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   permission = input<AnnotationPermission>('VIEW');
   shareToken = input<string | null>(null);
   currentUserId = input<string | null>(null);
-  // Set false to hide the "Add comment" button (e.g. distraction-free fullscreen preview)
+  // Set false to hide the annotation FAB entirely (e.g. distraction-free fullscreen preview)
   allowComment = input<boolean>(true);
 
   // State
