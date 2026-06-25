@@ -250,10 +250,44 @@ export class MarkdownRenderService {
     return btn;
   }
 
+  /**
+   * Make every content `<img>` inside `host` open in a zoom/pan lightbox on
+   * click. Idempotent — images already wired are skipped. Linked images keep
+   * their navigation; diagrams render as inline SVG (not `<img>`) so they're
+   * untouched. Mirrors runMermaid()/runDrawio(): call after Angular flushes
+   * the innerHTML update.
+   */
+  runImageLightbox(host: HTMLElement | null | undefined): void {
+    if (!host) return;
+    const imgs = host.querySelectorAll<HTMLImageElement>('img:not([data-lightbox-bound])');
+    imgs.forEach((img) => {
+      if (img.closest('a')) return;
+      img.setAttribute('data-lightbox-bound', 'true');
+      img.classList.add('dv-lightbox-img');
+      img.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this.openImageFullscreen(img.currentSrc || img.src, img.alt);
+      });
+    });
+  }
+
+  private openImageFullscreen(src: string, alt: string): void {
+    const { header, stage } = this.buildOverlay('dv-lightbox-overlay');
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = alt;
+    img.className = 'dv-lightbox-image';
+    img.draggable = false;
+    stage.appendChild(img);
+    this.installZoomPan(header, stage);
+  }
+
   /** Create the fullscreen overlay shell (header + stage) attached to body. */
-  private buildOverlay(): { header: HTMLElement; stage: HTMLElement } {
+  private buildOverlay(extraClass?: string): { header: HTMLElement; stage: HTMLElement } {
     const overlay = document.createElement('div');
     overlay.className = 'dv-mermaid-overlay';
+    if (extraClass) overlay.classList.add(extraClass);
 
     const header = document.createElement('div');
     header.className = 'dv-mermaid-overlay-header';
@@ -293,9 +327,9 @@ export class MarkdownRenderService {
     let scale = 1;
     let tx = 0;
     let ty = 0;
-    const svgEl = stage.querySelector('svg') as SVGElement | null;
+    const target = stage.querySelector('svg, img') as (SVGElement | HTMLElement | null);
     const apply = () => {
-      if (svgEl) svgEl.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      if (target) target.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
       zoomLabel.textContent = `${Math.round(scale * 100)}%`;
     };
 

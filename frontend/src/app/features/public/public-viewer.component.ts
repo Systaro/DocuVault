@@ -1020,6 +1020,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
       setTimeout(() => {
         this.markdownService.runMermaid(this.elementRef.nativeElement);
         this.markdownService.runDrawio(this.elementRef.nativeElement);
+        this.markdownService.runImageLightbox(this.elementRef.nativeElement);
       }, 0);
     });
   }

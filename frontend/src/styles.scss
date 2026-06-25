@@ -1260,6 +1260,42 @@ body {
 }
 
 // ============================================
+// IMAGE LIGHTBOX (read-mode content images)
+// ============================================
+.dv-lightbox-img {
+  cursor: zoom-in;
+}
+
+.dv-lightbox-overlay {
+  background: rgba(15, 23, 42, 0.95);
+
+  .dv-mermaid-overlay-header {
+    background: transparent;
+    border-bottom-color: rgba(255, 255, 255, 0.15);
+    color: #fff;
+
+    button {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #e2e8f0;
+
+      &:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+    }
+
+    .dv-mermaid-zoom-level { color: #cbd5e1; }
+  }
+}
+
+.dv-lightbox-image {
+  display: block;
+  max-width: 90vw;
+  max-height: 100%;
+  transform-origin: center center;
+  transition: transform 0.05s linear;
+  user-select: none;
+}
+
+// ============================================
 // SCROLLBAR STYLES
 // ============================================
 ::-webkit-scrollbar {

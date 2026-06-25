@@ -60,8 +60,8 @@ import { marked } from 'marked';
         }
       </div>
       <div class="editor-toolbar">
-        @if (!isReadOnly()) {
-          <!-- Editing toolbar (non-git spaces + new documents in git spaces) -->
+        @if (showEditor()) {
+          <!-- Editing toolbar (shown only in edit mode) -->
           <div class="flex items-center gap-1">
             <button class="editor-icon-btn" [class.active]="isActive('bold')" (click)="toggleBold()" title="Bold"><b>B</b></button>
             <button class="editor-icon-btn" [class.active]="isActive('italic')" (click)="toggleItalic()" title="Italic"><i>I</i></button>
@@ -156,18 +156,32 @@ import { marked } from 'marked';
             } @else if (lastSaved()) {
               <span class="text-xs text-muted">Saved</span>
             }
-            <button class="btn-save" (click)="saveDocument()" [disabled]="saving() || !hasChanges()" title="Save">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-              Save
+            <button class="btn-save" (click)="doneEditing()" [disabled]="saving()" [title]="hasChanges() ? 'Save and view' : 'Done editing'">
+              @if (hasChanges()) {
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                Save
+              } @else {
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                Done
+              }
             </button>
           </div>
-        } @else {
+        } @else if (isReadOnly()) {
           <!-- Read-only banner for git spaces -->
           <div class="flex items-center gap-2">
             <span class="text-sm text-amber-600 font-medium">Read-only — synced from Git</span>
           </div>
+        } @else {
+          <!-- Read mode for editable documents: spacer keeps the actions group right-aligned -->
+          <div></div>
         }
-        <div class="flex items-center gap-2" [class.ml-auto]="isReadOnly()">
+        <div class="flex items-center gap-2" [class.ml-auto]="!showEditor()">
+          @if (!showEditor() && canEdit()) {
+            <button class="btn-edit" (click)="enterEditMode()" title="Edit document">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit
+            </button>
+          }
           @if (documentPath) {
             <div class="relative">
               <button
@@ -387,12 +401,12 @@ import { marked } from 'marked';
                 type="text"
                 [(ngModel)]="documentTitle"
                 placeholder="Untitled"
-                [readonly]="isReadOnly()"
+                [readonly]="!showEditor()"
                 class="editor-title"
               />
 
-              @if (isReadOnly()) {
-                <!-- Read-only render (git-synced): full markdown pipeline incl. Mermaid -->
+              @if (!showEditor()) {
+                <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
                 <article
                   #readonlyElement
                   class="markdown-readonly"
@@ -537,6 +551,23 @@ import { marked } from 'marked';
 
       &:hover:not(:disabled) { background: var(--primary-dark, #2563eb); }
       &:disabled { opacity: 0.5; cursor: not-allowed; }
+    }
+
+    .btn-edit {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+
+      &:hover { background: var(--background); border-color: var(--primary); color: var(--primary); }
     }
 
     .text-muted { color: var(--text-muted); }
@@ -975,7 +1006,18 @@ export class EditorComponent implements OnInit, OnDestroy {
   isReadOnly = computed(() => this.isGitSpace() && !this.isNewDocument());
   annotationPermission = signal<AnnotationPermission>('VIEW');
 
-  // Read-only render (git-backed markdown). Bypasses TipTap so Mermaid blocks render as SVG.
+  // Read/edit split: documents open in rendered read mode; the user clicks Edit
+  // to switch to the TipTap editor. Git-synced files can't be edited at all
+  // (canEdit false), so they stay in read mode permanently.
+  editMode = signal(false);
+  canEdit = computed(() => !this.isReadOnly());
+  // True only when the TipTap editor + toolbar should be shown.
+  showEditor = computed(() => this.canEdit() && this.editMode());
+  // Raw (title-stripped) markdown for the current document — feeds both the
+  // read-mode render and the TipTap editor when entering edit mode.
+  private markdownContent = signal('');
+
+  // Read render (markdown pipeline). Bypasses TipTap so Mermaid blocks render as SVG.
   readonlyHtml = signal<SafeHtml>('');
   @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
   @ViewChild('drawioElement') drawioElement?: ElementRef<HTMLElement>;
@@ -1088,6 +1130,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       setTimeout(() => {
         this.markdownService.runMermaid(this.readonlyElement?.nativeElement);
         this.markdownService.runDrawio(this.readonlyElement?.nativeElement);
+        this.markdownService.runImageLightbox(this.readonlyElement?.nativeElement);
       }, 0);
     });
 
@@ -1354,7 +1397,10 @@ export class EditorComponent implements OnInit, OnDestroy {
           content = content.substring(h1Match[0].length);
         }
         this.loading.set(false);
-        setTimeout(() => this.initializeEditor(content));
+        // Documents open in read mode; the user clicks Edit to switch.
+        this.markdownContent.set(content);
+        this.editMode.set(false);
+        setTimeout(() => this.applyView());
       },
       error: () => {
         this.initializeNewDocument();
@@ -1382,33 +1428,56 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.documentTitle = '';
     this.isNewDocument.set(true);
     this.loading.set(false);
-    setTimeout(() => this.initializeEditor(''));
+    // A freshly-created document opens straight in edit mode — you made it to write.
+    this.markdownContent.set('');
+    this.editMode.set(true);
+    setTimeout(() => this.applyView());
   }
 
-  initializeEditor(content: string): void {
-    const space = this.space();
-
-    // Read-only (existing git-synced file): render full markdown pipeline incl. Mermaid, skip TipTap entirely.
-    if (this.isReadOnly() && space) {
-      this.editor?.destroy();
-      this.editor = null as any;
-      const docDir = this.documentPath ? this.documentPath.substring(0, this.documentPath.lastIndexOf('/') + 1) : '';
-      // A raw Mermaid file (.mmd/.mermaid) is diagram source with no fence.
-      // Wrap it so the markdown pipeline emits a Mermaid block the runMermaid
-      // effect can turn into a diagram, instead of showing the source as code.
-      const ext = this.documentPath.split('.').pop()?.toLowerCase();
-      const toRender = (ext === 'mmd' || ext === 'mermaid')
-        ? '```mermaid\n' + content.trim() + '\n```\n'
-        : content;
-      const rendered = this.markdownService.render(
-        toRender,
-        docDir,
-        `/api/spaces/${space.id}/files`,
-        null
-      );
-      this.readonlyHtml.set(rendered);
-      return;
+  /** Render the current document according to the active view (read vs edit). */
+  private applyView(): void {
+    if (this.showEditor()) {
+      this.initTiptap(this.markdownContent());
+    } else {
+      this.renderReadView(this.markdownContent());
     }
+  }
+
+  /** Switch from read mode into the TipTap editor (editable spaces only). */
+  enterEditMode(): void {
+    if (!this.canEdit()) return;
+    this.editMode.set(true);
+    setTimeout(() => this.initTiptap(this.markdownContent()));
+  }
+
+  /**
+   * Render markdown through the full pipeline (incl. Mermaid / draw.io) into the
+   * read-mode article, bypassing TipTap. Used for git-synced files and for any
+   * document being viewed in read mode.
+   */
+  private renderReadView(content: string): void {
+    const space = this.space();
+    if (!space) return;
+    this.editor?.destroy();
+    this.editor = null as any;
+    const docDir = this.currentDocDir();
+    // A raw Mermaid file (.mmd/.mermaid) is diagram source with no fence.
+    // Wrap it so the markdown pipeline emits a Mermaid block the runMermaid
+    // effect can turn into a diagram, instead of showing the source as code.
+    const ext = this.documentPath.split('.').pop()?.toLowerCase();
+    const toRender = (ext === 'mmd' || ext === 'mermaid')
+      ? '```mermaid\n' + content.trim() + '\n```\n'
+      : content;
+    this.readonlyHtml.set(this.markdownService.render(
+      toRender,
+      docDir,
+      `/api/spaces/${space.id}/files`,
+      null
+    ));
+  }
+
+  private initTiptap(content: string): void {
+    const space = this.space();
 
     const lowlight = createLowlight(common);
 
@@ -1477,19 +1546,40 @@ export class EditorComponent implements OnInit, OnDestroy {
     });
   }
 
-  saveDocument(): void {
-    const space = this.space();
-    if (!space || !this.editor || this.saving()) return;
+  /**
+   * Finish editing: persist any unsaved changes (returning to read mode on
+   * success) or, when nothing is dirty, drop straight back to read mode.
+   * Needed because non-git spaces autosave, which leaves the Save button with
+   * nothing to do — this button is the reliable way back to the read view.
+   */
+  doneEditing(): void {
+    if (this.saving()) return;
+    if (this.hasChanges()) {
+      this.saveDocument(true);
+    } else {
+      this.exitToReadView(this.editorMarkdown());
+    }
+  }
 
+  /** Current editor content as document-relative markdown (inverse of the load rewrite). */
+  private editorMarkdown(): string {
+    if (!this.editor) return this.markdownContent();
     let html = this.editor.getHTML();
-    // Convert API serving URLs back to document-relative markdown paths (inverse of the
-    // rewrite done on load) so images resolve consistently across save/reload cycles.
+    // Convert API serving URLs back to document-relative markdown paths so images
+    // resolve consistently across save/reload cycles.
     const docDir = this.currentDocDir();
     html = html.replace(
       /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
       (_match, pre, abs, post) => `${pre}${this.toDocRelativePath(abs, docDir)}${post}`
     );
-    const markdown = this.turndownService.turndown(html);
+    return this.turndownService.turndown(html);
+  }
+
+  saveDocument(returnToRead = false): void {
+    const space = this.space();
+    if (!space || !this.editor || this.saving()) return;
+
+    const markdown = this.editorMarkdown();
 
     this.saving.set(true);
 
@@ -1510,6 +1600,7 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.saving.set(false);
           this.lastSaved.set(true);
           this.hasChanges.set(false);
+          if (returnToRead) this.exitToReadView(markdown);
         },
         error: () => {
           this.saving.set(false);
@@ -1531,12 +1622,20 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.saving.set(false);
           this.lastSaved.set(true);
           this.hasChanges.set(false);
+          if (returnToRead) this.exitToReadView(markdown);
         },
         error: () => {
           this.saving.set(false);
         }
       });
     }
+  }
+
+  /** Tear down the editor and drop back to the rendered read view after a save. */
+  private exitToReadView(content: string): void {
+    this.markdownContent.set(content);
+    this.editMode.set(false);
+    setTimeout(() => this.renderReadView(content));
   }
 
   saveAndCommit(): void {
