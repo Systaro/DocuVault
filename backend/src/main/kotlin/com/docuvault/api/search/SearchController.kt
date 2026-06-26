@@ -44,9 +44,11 @@ class SearchController(
         val spaceMap = spaces.associateBy { it.id }
 
         // Literal substring match over title, path, and content (via the chunks
-        // already indexed for embeddings). pg_trgm GIN index on de.content keeps
-        // this sub-50ms regardless of corpus size — see V014.
-        val documents = documentRepository.searchByTitleOrPath(spaceIds, q).take(limit)
+        // already indexed for embeddings). The query is split into whitespace
+        // terms that are AND-ed, so multi-word searches match across fields.
+        // pg_trgm GIN index on de.content keeps this sub-50ms regardless of
+        // corpus size — see V014.
+        val documents = documentRepository.searchByTerms(spaceIds, q, limit)
 
         val results = documents.map { doc ->
             val space = spaceMap[doc.space.id]
