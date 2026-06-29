@@ -39,6 +39,12 @@ export interface UpdateDocumentRequest {
   commitMessage?: string;
 }
 
+export interface DocumentTranslation {
+  targetLanguage: string;
+  content: string;
+  cached: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentsService {
   constructor(private http: HttpClient) {}
@@ -65,6 +71,13 @@ export class DocumentsService {
 
   deleteDocument(spaceId: string, path: string): Observable<void> {
     return this.http.delete<void>(`/api/spaces/${spaceId}/documents/${path}`);
+  }
+
+  translate(spaceId: string, path: string, targetLanguage: string): Observable<DocumentTranslation> {
+    return this.http.post<DocumentTranslation>(`/api/spaces/${spaceId}/documents/translate`, {
+      path,
+      targetLanguage
+    });
   }
 
   createFolder(spaceId: string, path: string): Observable<void> {

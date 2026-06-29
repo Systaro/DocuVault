@@ -21,6 +21,7 @@ import { MarkdownRenderService } from '../../shared/services/markdown-render.ser
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService } from '../../core/api/ai.service';
 import { AuthService } from '../../core/auth/auth.service';
@@ -197,6 +198,7 @@ import { marked } from 'marked';
               </button>
               @if (showActionMenu()) {
                 <div class="action-menu">
+                  @if (!showTranslateMenu()) {
                   <button class="action-menu-item" (click)="showShareDialog.set(true); showActionMenu.set(false)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
@@ -229,6 +231,14 @@ import { marked } from 'marked';
                       {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
                     </button>
                   }
+                  @if (caps.aiEnabled() && !showEditor()) {
+                    <button class="action-menu-item" (click)="showTranslateMenu.set(true); $event.stopPropagation()">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                      </svg>
+                      Translate
+                    </button>
+                  }
                   <div class="action-menu-divider"></div>
                   <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -236,6 +246,41 @@ import { marked } from 'marked';
                     </svg>
                     Delete document
                   </button>
+                  } @else {
+                    <button class="action-menu-item" (click)="showTranslateMenu.set(false); $event.stopPropagation()">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                      </svg>
+                      Translate to…
+                    </button>
+                    <div class="action-menu-divider"></div>
+                    @if (translationLang()) {
+                      <button class="action-menu-item" (click)="showOriginal(); $event.stopPropagation()">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+                        </svg>
+                        Show original
+                      </button>
+                    }
+                    @for (lang of translateLanguages; track lang.code) {
+                      <button class="action-menu-item" [disabled]="translating()" (click)="translateTo(lang.code); $event.stopPropagation()">
+                        <span class="action-menu-check">
+                          @if (translationLang() === lang.code) {
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                          }
+                        </span>
+                        {{ lang.label }}
+                        @if (translatingLang() === lang.code) {
+                          <svg class="w-4 h-4 ml-auto animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                          </svg>
+                        }
+                      </button>
+                    }
+                  }
                 </div>
               }
             </div>
@@ -407,6 +452,15 @@ import { marked } from 'marked';
 
               @if (!showEditor()) {
                 <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
+                @if (translationLang()) {
+                  <div class="translation-banner">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+                    </svg>
+                    <span>Translated to {{ languageLabel(translationLang()!) }} · AI-generated, may contain errors</span>
+                    <button type="button" (click)="showOriginal()">Show original</button>
+                  </div>
+                }
                 <article
                   #readonlyElement
                   class="markdown-readonly"
@@ -827,6 +881,53 @@ import { marked } from 'marked';
       margin: 4px 0;
     }
 
+    .action-menu-check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      flex-shrink: 0;
+      color: var(--primary);
+    }
+
+    .translation-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--background);
+      border: 1px solid var(--border);
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .translation-banner svg {
+      color: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .translation-banner span {
+      flex: 1;
+    }
+
+    .translation-banner button {
+      border: none;
+      background: none;
+      color: var(--primary);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .translation-banner button:hover {
+      text-decoration: underline;
+    }
+
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -989,7 +1090,22 @@ export class EditorComponent implements OnInit, OnDestroy {
   showChat = signal(false);
   showShareDialog = signal(false);
   showActionMenu = signal(false);
+  showTranslateMenu = signal(false);
   showTableMenu = signal(false);
+
+  // AI translation: offered set must mirror TranslationService.supportedLanguages on the backend.
+  readonly translateLanguages = [
+    { code: 'en', label: 'English' },
+    { code: 'de', label: 'Deutsch' },
+    { code: 'fr', label: 'Français' },
+    { code: 'es', label: 'Español' },
+    { code: 'it', label: 'Italiano' }
+  ];
+  // Active translation language code, or null when the original is shown.
+  translationLang = signal<string | null>(null);
+  // Language code currently being fetched, or null when idle.
+  translatingLang = signal<string | null>(null);
+  translating = computed(() => this.translatingLang() !== null);
   showDeleteConfirm = signal(false);
   deleting = signal(false);
   gitLinkCopied = signal(false);
@@ -1115,7 +1231,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     private annotationsService: AnnotationsService,
     private markdownService: MarkdownRenderService,
     private documentSettingsService: DocumentSettingsService,
-    protected prefs: DisplayPrefsService
+    protected prefs: DisplayPrefsService,
+    protected caps: CapabilitiesService
   ) {
     this.autoSave$.pipe(
       debounceTime(2000),
@@ -1153,7 +1270,49 @@ export class EditorComponent implements OnInit, OnDestroy {
   @HostListener('document:click')
   onDocumentClick(): void {
     this.showActionMenu.set(false);
+    this.showTranslateMenu.set(false);
     this.showTableMenu.set(false);
+  }
+
+  languageLabel(code: string): string {
+    return this.translateLanguages.find(l => l.code === code)?.label ?? code;
+  }
+
+  /** Fetch (or reuse the cached) translation for the current document and show it in read view. */
+  translateTo(code: string): void {
+    const space = this.space();
+    if (!space || !this.documentPath || this.translating()) return;
+    if (this.translationLang() === code) {
+      this.closeActionMenus();
+      return;
+    }
+    this.translatingLang.set(code);
+    this.documentsService.translate(space.id, this.documentPath, code)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.translatingLang.set(null);
+          this.translationLang.set(code);
+          this.renderReadView(res.content);
+          this.closeActionMenus();
+        },
+        error: () => {
+          this.translatingLang.set(null);
+          this.toastService.error('Translation failed', 'Could not translate this document. Please try again.');
+        }
+      });
+  }
+
+  /** Drop the active translation and re-render the original document. */
+  showOriginal(): void {
+    this.translationLang.set(null);
+    this.renderReadView(this.markdownContent());
+    this.closeActionMenus();
+  }
+
+  private closeActionMenus(): void {
+    this.showTranslateMenu.set(false);
+    this.showActionMenu.set(false);
   }
 
   getGitUrl(): string | null {
@@ -1384,6 +1543,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (!space || !this.documentPath) return;
 
     this.loading.set(true);
+    this.translationLang.set(null);
     this.loadDocumentSettings(space.id, this.documentPath);
     this.documentsService.getDocument(space.id, this.documentPath).subscribe({
       next: (doc) => {
@@ -1446,6 +1606,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   /** Switch from read mode into the TipTap editor (editable spaces only). */
   enterEditMode(): void {
     if (!this.canEdit()) return;
+    this.translationLang.set(null);
     this.editMode.set(true);
     setTimeout(() => this.initTiptap(this.markdownContent()));
   }
