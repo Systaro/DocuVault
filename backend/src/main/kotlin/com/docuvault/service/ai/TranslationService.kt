@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import kotlin.time.Duration.Companion.seconds
 
 @Service
 class TranslationService(
@@ -74,7 +75,9 @@ class TranslationService(
     }
 
     private fun translate(content: String, languageName: String): String? {
-        val openAI = openAIProvider.getClient() ?: return null
+        // Whole-document translation generates a large response in one shot, so allow a
+        // far longer window than interactive AI calls (which use the 60s default).
+        val openAI = openAIProvider.getClient(socketTimeout = 240.seconds) ?: return null
 
         val systemPrompt = """
             |You are a professional translator for technical documentation.
