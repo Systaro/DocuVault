@@ -45,6 +45,11 @@ class TranslationService(
     fun listLanguagesForDocument(spaceId: UUID, path: String): List<String> =
         translationRepository.findLanguagesBySpaceIdAndPath(spaceId, path).sorted()
 
+    /** Drop a document's cached translation for one language. Returns true if a row was removed. */
+    @Transactional
+    fun deleteTranslation(spaceId: UUID, path: String, targetLanguage: String): Boolean =
+        translationRepository.deleteBySpaceIdAndPathAndTargetLanguage(spaceId, path, targetLanguage) > 0
+
     /**
      * Return a cached translation when the source is unchanged, otherwise translate
      * via the configured chat model and upsert the cache. Returns null when AI is

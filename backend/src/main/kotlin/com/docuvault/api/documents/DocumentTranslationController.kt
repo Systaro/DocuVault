@@ -52,6 +52,24 @@ class DocumentTranslationController(
         }
     }
 
+    @DeleteMapping("/translations")
+    fun deleteTranslation(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam path: String,
+        @RequestParam targetLanguage: String
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        translationService.deleteTranslation(spaceId, path, targetLanguage)
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/translate")
     fun translate(
         @PathVariable spaceId: UUID,

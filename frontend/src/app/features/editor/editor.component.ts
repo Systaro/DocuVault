@@ -466,21 +466,32 @@ import { marked } from 'marked';
                     </span>
                     <div class="translation-chips">
                       @for (code of availableLangs(); track code) {
-                        <button
-                          type="button"
-                          class="translation-chip"
-                          [class.active]="translationLang() === code"
-                          [disabled]="translatingLang() === code"
-                          (click)="translateTo(code)"
-                        >
-                          {{ languageLabel(code) }}
-                          @if (translatingLang() === code) {
-                            <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        <span class="translation-chip" [class.active]="translationLang() === code">
+                          <button
+                            type="button"
+                            class="translation-chip-label"
+                            [disabled]="translatingLang() === code"
+                            (click)="translateTo(code)"
+                          >
+                            {{ languageLabel(code) }}
+                            @if (translatingLang() === code) {
+                              <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                              </svg>
+                            }
+                          </button>
+                          <button
+                            type="button"
+                            class="translation-chip-remove"
+                            [title]="'Remove ' + languageLabel(code) + ' translation'"
+                            (click)="removeTranslation(code)"
+                          >
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
-                          }
-                        </button>
+                          </button>
+                        </span>
                       }
                     </div>
                     @if (translationLang()) {
@@ -949,32 +960,65 @@ import { marked } from 'marked';
     .translation-chip {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
       border: 1px solid var(--border);
       background: var(--surface);
-      color: var(--text-primary);
-      font-size: 0.75rem;
-      font-weight: 500;
-      cursor: pointer;
-      padding: 3px 10px;
       border-radius: 999px;
+      overflow: hidden;
       white-space: nowrap;
     }
 
-    .translation-chip:hover:not(:disabled) {
+    .translation-chip:hover {
       border-color: var(--primary);
-      color: var(--primary);
     }
 
     .translation-chip.active {
       background: var(--primary);
       border-color: var(--primary);
+    }
+
+    .translation-chip-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: none;
+      background: none;
+      color: var(--text-primary);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 3px 4px 3px 10px;
+      white-space: nowrap;
+    }
+
+    .translation-chip.active .translation-chip-label {
       color: #fff;
     }
 
-    .translation-chip:disabled {
+    .translation-chip-label:disabled {
       cursor: default;
       opacity: 0.7;
+    }
+
+    .translation-chip-remove {
+      display: inline-flex;
+      align-items: center;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 3px 8px 3px 3px;
+    }
+
+    .translation-chip-remove:hover {
+      color: var(--error, #dc2626);
+    }
+
+    .translation-chip.active .translation-chip-remove {
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .translation-chip.active .translation-chip-remove:hover {
+      color: #fff;
     }
 
     .translation-original {
@@ -1382,6 +1426,22 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.translationLang.set(null);
     this.renderReadView(this.markdownContent());
     this.closeActionMenus();
+  }
+
+  /** Delete a cached translation for this document; reverts to the original if it was showing. */
+  removeTranslation(code: string): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.documentsService.deleteTranslation(space.id, this.documentPath, code)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.availableLangs.update(langs => langs.filter(c => c !== code));
+          if (this.translationLang() === code) this.showOriginal();
+          this.toastService.success('Translation removed', `The ${this.languageLabel(code)} translation was removed.`);
+        },
+        error: () => this.toastService.error('Could not remove translation', 'Please try again.')
+      });
   }
 
   private closeActionMenus(): void {

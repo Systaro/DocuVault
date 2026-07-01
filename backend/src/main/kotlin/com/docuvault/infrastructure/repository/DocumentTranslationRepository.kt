@@ -2,6 +2,7 @@ package com.docuvault.infrastructure.repository
 
 import com.docuvault.domain.space.DocumentTranslation
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
@@ -30,6 +31,22 @@ interface DocumentTranslationRepository : JpaRepository<DocumentTranslation, UUI
         """
     )
     fun findLanguagesBySpaceIdAndPath(@Param("spaceId") spaceId: UUID, @Param("path") path: String): List<String>
+
+    @Modifying
+    @Query(
+        """
+        DELETE FROM DocumentTranslation t
+        WHERE t.targetLanguage = :targetLanguage
+        AND t.document.id IN (
+            SELECT d.id FROM Document d WHERE d.space.id = :spaceId AND d.path = :path
+        )
+        """
+    )
+    fun deleteBySpaceIdAndPathAndTargetLanguage(
+        @Param("spaceId") spaceId: UUID,
+        @Param("path") path: String,
+        @Param("targetLanguage") targetLanguage: String
+    ): Int
 }
 
 interface TranslationLanguageRow {

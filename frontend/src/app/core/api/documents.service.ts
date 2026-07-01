@@ -91,6 +91,12 @@ export class DocumentsService {
     return this.http.get<DocumentTranslations[]>(`/api/spaces/${spaceId}/documents/translations`, options);
   }
 
+  deleteTranslation(spaceId: string, path: string, targetLanguage: string): Observable<void> {
+    return this.http.delete<void>(`/api/spaces/${spaceId}/documents/translations`, {
+      params: { path, targetLanguage }
+    });
+  }
+
   createFolder(spaceId: string, path: string): Observable<void> {
     return this.http.post<void>(`/api/spaces/${spaceId}/documents/folder`, { path });
   }

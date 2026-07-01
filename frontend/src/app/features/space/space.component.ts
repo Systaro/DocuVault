@@ -357,6 +357,16 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                       <span class="material-icons translation-icon">translate</span>
                       <span class="tree-name">{{ languageLabel(code) }}</span>
                     </a>
+                    <div class="tree-row-menu">
+                      <button
+                        type="button"
+                        class="tree-menu-btn"
+                        [title]="'Remove ' + languageLabel(code) + ' translation'"
+                        (click)="removeTreeTranslation(node.path, code); $event.stopPropagation(); $event.preventDefault()"
+                      >
+                        <span class="material-icons">close</span>
+                      </button>
+                    </div>
                   </div>
                 }
               }
@@ -772,6 +782,10 @@ import { getFileIcon } from '../../shared/utils/file-utils';
         color: #4a9097;
         font-weight: 500;
       }
+    }
+
+    .tree-translation-row .tree-menu-btn:hover {
+      color: var(--danger, #dc2626);
     }
 
     .tree-row-menu {
@@ -1394,6 +1408,27 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   languageLabel(code: string): string {
     return this.translationLanguageLabels[code] ?? code;
+  }
+
+  removeTreeTranslation(path: string, code: string): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.documentsService.deleteTranslation(space.id, path, code).subscribe({
+      next: () => {
+        this.translationsByPath.update(m => {
+          const langs = (m[path] ?? []).filter(c => c !== code);
+          const next = { ...m };
+          if (langs.length) next[path] = langs; else delete next[path];
+          return next;
+        });
+        // If that exact translation is the one open in the editor, revert it to the original.
+        if (this.currentDocPath() === path && this.currentLang() === code) {
+          this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path } });
+        }
+        this.toastService.success('Translation removed', `The ${this.languageLabel(code)} translation was removed.`);
+      },
+      error: () => this.toastService.error('Could not remove translation', 'Please try again.')
+    });
   }
 
   loadInboxCount(spaceId: string): void {
