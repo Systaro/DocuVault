@@ -452,13 +452,40 @@ import { marked } from 'marked';
 
               @if (!showEditor()) {
                 <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
-                @if (translationLang()) {
+                @if (caps.aiEnabled() && availableLangs().length > 0) {
                   <div class="translation-banner">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
                     </svg>
-                    <span>Translated to {{ languageLabel(translationLang()!) }} · AI-generated, may contain errors</span>
-                    <button type="button" (click)="showOriginal()">Show original</button>
+                    <span>
+                      @if (translationLang()) {
+                        Translated to {{ languageLabel(translationLang()!) }} · AI-generated, may contain errors
+                      } @else {
+                        Available in
+                      }
+                    </span>
+                    <div class="translation-chips">
+                      @for (code of availableLangs(); track code) {
+                        <button
+                          type="button"
+                          class="translation-chip"
+                          [class.active]="translationLang() === code"
+                          [disabled]="translatingLang() === code"
+                          (click)="translateTo(code)"
+                        >
+                          {{ languageLabel(code) }}
+                          @if (translatingLang() === code) {
+                            <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                          }
+                        </button>
+                      }
+                    </div>
+                    @if (translationLang()) {
+                      <button type="button" class="translation-original" (click)="showOriginal()">Show original</button>
+                    }
                   </div>
                 }
                 <article
@@ -893,6 +920,7 @@ import { marked } from 'marked';
     .translation-banner {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 16px;
       padding: 8px 12px;
@@ -903,16 +931,54 @@ import { marked } from 'marked';
       color: var(--text-secondary);
     }
 
-    .translation-banner svg {
+    .translation-banner > svg {
       color: var(--primary);
       flex-shrink: 0;
     }
 
-    .translation-banner span {
-      flex: 1;
+    .translation-banner > span {
+      flex-shrink: 0;
     }
 
-    .translation-banner button {
+    .translation-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .translation-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 3px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .translation-chip:hover:not(:disabled) {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .translation-chip.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .translation-chip:disabled {
+      cursor: default;
+      opacity: 0.7;
+    }
+
+    .translation-original {
+      margin-left: auto;
       border: none;
       background: none;
       color: var(--primary);
@@ -924,7 +990,7 @@ import { marked } from 'marked';
       white-space: nowrap;
     }
 
-    .translation-banner button:hover {
+    .translation-original:hover {
       text-decoration: underline;
     }
 
@@ -1106,6 +1172,10 @@ export class EditorComponent implements OnInit, OnDestroy {
   // Language code currently being fetched, or null when idle.
   translatingLang = signal<string | null>(null);
   translating = computed(() => this.translatingLang() !== null);
+  // Languages this document already has a cached translation for — drives the read-mode bar.
+  availableLangs = signal<string[]>([]);
+  // A translation language requested via the ?lang= query param, applied once the document has loaded.
+  private pendingLang: string | null = null;
   showDeleteConfirm = signal(false);
   deleting = signal(false);
   gitLinkCopied = signal(false);
@@ -1293,6 +1363,10 @@ export class EditorComponent implements OnInit, OnDestroy {
         next: (res) => {
           this.translatingLang.set(null);
           this.translationLang.set(code);
+          // Surface a newly-created language in the read-mode bar right away.
+          if (!this.availableLangs().includes(code)) {
+            this.availableLangs.update(langs => [...langs, code].sort());
+          }
           this.renderReadView(res.content);
           this.closeActionMenus();
         },
@@ -1444,6 +1518,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     // Get document path from query params
     this.route.queryParamMap.subscribe(params => {
       const path = params.get('path');
+      const lang = params.get('lang');
       if (path) {
         const pathChanged = path !== this.documentPath;
         this.documentPath = path; this.documentPathSignal.set(path);
@@ -1492,8 +1567,19 @@ export class EditorComponent implements OnInit, OnDestroy {
           }
         } else {
           this.isPreviewFile.set(false);
-          if (this.space()) {
-            this.loadDocument();
+          if (pathChanged || this.document() === null) {
+            // First load or a different document: remember any ?lang= to apply once the
+            // document has rendered. loadDocument runs here, or — on a cold load where the
+            // space isn't ready yet — via loadSpace() shortly after; pendingLang persists.
+            this.pendingLang = lang;
+            if (this.space()) {
+              this.loadDocument();
+            }
+          } else if (lang) {
+            // Same document, only the language changed (e.g. clicked a tree translation).
+            this.translateTo(lang);
+          } else {
+            this.showOriginal();
           }
         }
       } else {
@@ -1544,7 +1630,9 @@ export class EditorComponent implements OnInit, OnDestroy {
 
     this.loading.set(true);
     this.translationLang.set(null);
+    this.availableLangs.set([]);
     this.loadDocumentSettings(space.id, this.documentPath);
+    this.loadAvailableTranslations(space.id, this.documentPath);
     this.documentsService.getDocument(space.id, this.documentPath).subscribe({
       next: (doc) => {
         this.document.set(doc);
@@ -1560,12 +1648,27 @@ export class EditorComponent implements OnInit, OnDestroy {
         // Documents open in read mode; the user clicks Edit to switch.
         this.markdownContent.set(content);
         this.editMode.set(false);
-        setTimeout(() => this.applyView());
+        setTimeout(() => {
+          this.applyView();
+          // Apply a translation requested via ?lang= now that the original is rendered.
+          const lang = this.pendingLang;
+          this.pendingLang = null;
+          if (lang) this.translateTo(lang);
+        });
       },
       error: () => {
         this.initializeNewDocument();
       }
     });
+  }
+
+  private loadAvailableTranslations(spaceId: string, path: string): void {
+    this.documentsService.getTranslations(spaceId, path)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (entries) => this.availableLangs.set(entries[0]?.languages ?? []),
+        error: () => this.availableLangs.set([])
+      });
   }
 
   private loadDocumentSettings(spaceId: string, filePath: string): void {

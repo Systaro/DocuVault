@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 
 @Service
@@ -33,6 +34,16 @@ class TranslationService(
     )
 
     fun isSupported(language: String): Boolean = supportedLanguages.containsKey(language)
+
+    /** Cached translation languages for every translated document in the space, keyed by document path. */
+    fun listLanguagesBySpace(spaceId: UUID): Map<String, List<String>> =
+        translationRepository.findLanguagesBySpaceId(spaceId)
+            .groupBy({ it.path }, { it.targetLanguage })
+            .mapValues { it.value.sorted() }
+
+    /** Cached translation languages for a single document. */
+    fun listLanguagesForDocument(spaceId: UUID, path: String): List<String> =
+        translationRepository.findLanguagesBySpaceIdAndPath(spaceId, path).sorted()
 
     /**
      * Return a cached translation when the source is unchanged, otherwise translate

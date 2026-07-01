@@ -28,6 +28,30 @@ class DocumentTranslationController(
     private val gitService: GitService,
     private val translationService: TranslationService
 ) {
+    @GetMapping("/translations")
+    fun listTranslations(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestParam(required = false) path: String?
+    ): ResponseEntity<List<DocumentTranslationsDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        return if (path != null) {
+            val languages = translationService.listLanguagesForDocument(spaceId, path)
+            val body = if (languages.isEmpty()) emptyList() else listOf(DocumentTranslationsDto(path, languages))
+            ResponseEntity.ok(body)
+        } else {
+            val body = translationService.listLanguagesBySpace(spaceId)
+                .map { DocumentTranslationsDto(it.key, it.value) }
+            ResponseEntity.ok(body)
+        }
+    }
+
     @PostMapping("/translate")
     fun translate(
         @PathVariable spaceId: UUID,
@@ -110,4 +134,9 @@ data class TranslateResponse(
     val targetLanguage: String,
     val content: String,
     val cached: Boolean
+)
+
+data class DocumentTranslationsDto(
+    val path: String,
+    val languages: List<String>
 )

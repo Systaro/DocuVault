@@ -45,6 +45,11 @@ export interface DocumentTranslation {
   cached: boolean;
 }
 
+export interface DocumentTranslations {
+  path: string;
+  languages: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentsService {
   constructor(private http: HttpClient) {}
@@ -78,6 +83,12 @@ export class DocumentsService {
       path,
       targetLanguage
     });
+  }
+
+  /** Cached translation languages for the whole space (path → languages), or for a single document when path is given. */
+  getTranslations(spaceId: string, path?: string): Observable<DocumentTranslations[]> {
+    const options = path ? { params: { path } } : {};
+    return this.http.get<DocumentTranslations[]>(`/api/spaces/${spaceId}/documents/translations`, options);
   }
 
   createFolder(spaceId: string, path: string): Observable<void> {

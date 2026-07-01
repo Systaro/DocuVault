@@ -344,6 +344,22 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   }
                 </div>
               </div>
+              @if (fileTranslations(node.path); as langs) {
+                @for (code of langs; track code) {
+                  <div class="tree-file-row tree-translation-row">
+                    <a
+                      [routerLink]="spaceSignal()?.fullPath | spaceRoute:'doc'"
+                      [queryParams]="{ path: node.path, lang: code }"
+                      class="tree-item file translation"
+                      [class.active]="currentDocPath() === node.path && currentLang() === code"
+                      [style.padding-left.px]="48 + level * 16"
+                    >
+                      <span class="material-icons translation-icon">translate</span>
+                      <span class="tree-name">{{ languageLabel(code) }}</span>
+                    </a>
+                  </div>
+                }
+              }
             }
           </div>
         }
@@ -738,6 +754,23 @@ import { getFileIcon } from '../../shared/utils/file-utils';
 
       &.file {
         padding-left: 12px;
+      }
+    }
+
+    .tree-item.translation {
+      font-size: 12px;
+      color: var(--text-muted);
+
+      .translation-icon {
+        font-size: 15px;
+        color: var(--primary);
+        flex-shrink: 0;
+      }
+
+      &.active {
+        background: #65aaaf36;
+        color: #4a9097;
+        font-weight: 500;
       }
     }
 
@@ -1145,6 +1178,13 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   /** Sidebar file-tree filter (placeholder until full search lands). */
   fileTreeFilter = '';
   currentDocPath = signal<string | null>(null);
+  /** Active translation language (?lang=) for the currently-open document, or null. */
+  currentLang = signal<string | null>(null);
+  /** Cached translation languages per document path — drives the indented tree entries. */
+  translationsByPath = signal<Record<string, string[]>>({});
+  private readonly translationLanguageLabels: Record<string, string> = {
+    en: 'English', de: 'Deutsch', fr: 'Français', es: 'Español', it: 'Italiano'
+  };
   renamingPath = signal<string | null>(null);
   renamingValue = '';
   creatingFolderUnder = signal<string | null>(null);
@@ -1257,8 +1297,10 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     // The `path` query param is shared by two routes: /doc (file path) and
     // the space overview itself (folder path). Distinguish via the URL.
     const isDoc = this.router.url.includes('/doc');
+    const lang = childRoute?.snapshot.queryParamMap.get('lang') || null;
 
     this.currentDocPath.set(isDoc ? path : null);
+    this.currentLang.set(isDoc ? lang : null);
     this.currentFolderPath.set(!isDoc ? path : null);
 
     if (path) {
@@ -1321,6 +1363,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.documentsService.getFileTree(spaceId).subscribe({
       next: (tree) => this.fileTree.set(tree)
     });
+    this.loadTranslations(spaceId);
     this.documentsService.getDocuments(spaceId).subscribe({
       next: (docs: Document[]) => {
         const map = new Map<string, string>();
@@ -1331,6 +1374,26 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       },
       error: () => this.documentTitles.set(new Map())
     });
+  }
+
+  private loadTranslations(spaceId: string): void {
+    this.documentsService.getTranslations(spaceId).subscribe({
+      next: (entries) => {
+        const map: Record<string, string[]> = {};
+        for (const e of entries) map[e.path] = e.languages;
+        this.translationsByPath.set(map);
+      },
+      error: () => this.translationsByPath.set({})
+    });
+  }
+
+  fileTranslations(path: string): string[] | undefined {
+    const langs = this.translationsByPath()[path];
+    return langs && langs.length ? langs : undefined;
+  }
+
+  languageLabel(code: string): string {
+    return this.translationLanguageLabels[code] ?? code;
   }
 
   loadInboxCount(spaceId: string): void {
