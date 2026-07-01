@@ -16,7 +16,7 @@ import { APP_VERSION } from '../version';
       <!-- Header -->
       <header class="app-header">
         <a routerLink="/dashboard" class="app-logo">
-          <img src="assets/logo_horiz.png" alt="DocuVault" class="logo-img" [class.inverted]="themeService.darkMode()" />
+          <img [src]="themeService.darkMode() ? 'assets/logo_horiz_dark.png' : 'assets/logo_horiz.png'" alt="DocuVault" class="logo-img" />
           <span class="app-version" [title]="'DocuVault ' + appVersion">{{ appVersion }}</span>
         </a>
 

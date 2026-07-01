@@ -132,7 +132,6 @@ import { AuthService } from '../../core/auth/auth.service';
       max-width: 200px;
       height: auto;
       margin-bottom: 24px;
-      filter: brightness(0) invert(1);
     }
 
     .forgot-brand p {

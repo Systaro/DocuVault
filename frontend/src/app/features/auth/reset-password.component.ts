@@ -162,7 +162,6 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
       max-width: 200px;
       height: auto;
       margin-bottom: 24px;
-      filter: brightness(0) invert(1);
     }
 
     .reset-brand p {

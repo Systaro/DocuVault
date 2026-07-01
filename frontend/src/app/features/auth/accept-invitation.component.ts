@@ -182,7 +182,6 @@ import { UsersService } from '../../core/api/users.service';
       max-width: 200px;
       height: auto;
       margin-bottom: 24px;
-      filter: brightness(0) invert(1);
     }
 
     .invitation-brand p {
