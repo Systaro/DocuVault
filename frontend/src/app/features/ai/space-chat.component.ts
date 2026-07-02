@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SafeHtml } from '@angular/platform-browser';
+import { forkJoin } from 'rxjs';
 import { AiService, ChatHistory, ChatMessage } from '../../core/api/ai.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
@@ -17,6 +18,27 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     <div class="chat-page">
       <!-- History Panel -->
       <aside class="chat-history-panel" [class.open]="historyOpen()">
+        @if (space()) {
+          <div class="chat-context">
+            <div class="context-header">
+              <span class="material-icons">hub</span>
+              <span>Context</span>
+            </div>
+            @if (contextRepos().length > 0) {
+              <div class="context-list">
+                @for (repo of contextRepos(); track repo.id) {
+                  <button class="context-repo" (click)="openContextRepo(repo)" [title]="'Open ' + repo.name">
+                    <span class="material-icons">menu_book</span>
+                    <span class="context-repo-name">{{ repo.name }}</span>
+                  </button>
+                }
+              </div>
+            } @else {
+              <p class="context-hint">{{ contextLabel() }}</p>
+            }
+          </div>
+        }
+
         <div class="history-header">
           <h3>Conversations</h3>
           <button class="history-new-btn" (click)="startNewChat()" title="New conversation">
@@ -64,6 +86,20 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         <button class="history-toggle" (click)="historyOpen.set(!historyOpen())">
           <span class="material-icons">{{ historyOpen() ? 'close' : 'menu' }}</span>
         </button>
+
+        @if (space(); as sp) {
+          <header class="chat-space-header">
+            @if (sp.logoUrl) {
+              <img class="chat-space-logo" [src]="sp.logoUrl" [alt]="sp.name" />
+            } @else {
+              <span class="material-icons chat-space-logo-fallback">{{ sp.type === 'GROUP' ? 'folder_special' : 'menu_book' }}</span>
+            }
+            <div class="chat-space-heading">
+              <span class="chat-space-name">{{ sp.name }}</span>
+              <span class="chat-space-scope">{{ contextLabel() }}</span>
+            </div>
+          </header>
+        }
 
         @if (!currentChat()) {
           <!-- Empty State -->
@@ -318,6 +354,101 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       flex-direction: column;
       min-width: 0;
       position: relative;
+    }
+
+    /* ── Space header ── */
+    .chat-space-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .chat-space-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md, 8px);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .chat-space-logo-fallback {
+      font-size: 28px;
+      color: var(--primary);
+      flex-shrink: 0;
+    }
+    .chat-space-heading {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .chat-space-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .chat-space-scope {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ── Context section ── */
+    .chat-context {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .context-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+
+      .material-icons { font-size: 16px; }
+    }
+    .context-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .context-repo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      background: none;
+      border-radius: var(--radius-md, 8px);
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s;
+
+      .material-icons { font-size: 18px; color: var(--primary); }
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+    .context-repo-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .context-hint {
+      margin: 0;
+      padding: 0 4px;
+      font-size: 12px;
+      color: var(--text-muted);
     }
 
     .history-toggle {
@@ -703,6 +834,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       .history-toggle {
         display: flex;
       }
+
+      /* clear the floating toggle so it doesn't overlap the logo/name */
+      .chat-space-header {
+        padding-left: 56px;
+      }
     }
   `]
 })
@@ -711,6 +847,15 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
   @ViewChild('chatInput') chatInputEl!: ElementRef<HTMLTextAreaElement>;
 
   space = signal<Space | null>(null);
+  contextRepos = signal<Space[]>([]);
+  contextLabel = computed(() => {
+    const sp = this.space();
+    if (!sp) return '';
+    if (sp.type !== 'GROUP') return 'Searching this repository';
+    const n = this.contextRepos().length;
+    if (n === 0) return 'No repositories in this group';
+    return `Searching ${n} ${n === 1 ? 'repository' : 'repositories'}`;
+  });
   chatHistories = signal<ChatHistory[]>([]);
   currentChat = signal<ChatHistory | null>(null);
   sending = signal(false);
@@ -742,6 +887,7 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
           next: (space) => {
             this.space.set(space);
             this.loadChatHistories(space.id);
+            this.loadContextRepos(space);
           }
         });
       }
@@ -753,6 +899,38 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
       this.scrollToBottom();
       this.shouldScrollToBottom = false;
     }
+  }
+
+  // Mirrors the backend retrieval scope (EmbeddingService.resolveSpaceIds): a GROUP
+  // chats across all descendant repositories, a REPOSITORY across itself. Nesting is
+  // at most 2 levels (workspace groups feature), so one level of sub-group expansion covers it.
+  private loadContextRepos(space: Space): void {
+    if (space.type !== 'GROUP') {
+      this.contextRepos.set([]);
+      return;
+    }
+    this.spacesService.getChildren(space.id).subscribe({
+      next: (children) => {
+        const repos = children.filter(c => c.type === 'REPOSITORY');
+        const subGroups = children.filter(c => c.type === 'GROUP');
+        if (subGroups.length === 0) {
+          this.contextRepos.set(repos);
+          return;
+        }
+        forkJoin(subGroups.map(g => this.spacesService.getChildren(g.id))).subscribe({
+          next: (lists) => {
+            const nested = lists.flat().filter(c => c.type === 'REPOSITORY');
+            this.contextRepos.set([...repos, ...nested]);
+          },
+          error: () => this.contextRepos.set(repos)
+        });
+      },
+      error: () => this.contextRepos.set([])
+    });
+  }
+
+  openContextRepo(repo: Space): void {
+    this.router.navigate(spaceRoute(repo.fullPath));
   }
 
   loadChatHistories(spaceId: string): void {

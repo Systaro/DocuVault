@@ -82,6 +82,16 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   <span class="material-icons">home</span>
                   Overview
                 </a>
+                @if (caps.aiChat()) {
+                  <a
+                    [routerLink]="spaceSignal()?.fullPath | spaceRoute:'chat'"
+                    routerLinkActive="active"
+                    class="nav-item"
+                  >
+                    <span class="material-icons">auto_awesome</span>
+                    AI Chat
+                  </a>
+                }
                 @if (caps.aiInbox()) {
                   <a
                     [routerLink]="spaceSignal()?.fullPath | spaceRoute:'inbox'"
