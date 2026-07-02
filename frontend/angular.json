@@ -32,7 +32,12 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/assets"
+              "src/assets",
+              {
+                "glob": "xlsx.full.min.js",
+                "input": "node_modules/xlsx/dist",
+                "output": "vendor"
+              }
             ],
             "styles": [
               "src/styles.scss"

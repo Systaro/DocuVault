@@ -1878,7 +1878,9 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   /**
    * Fetch a binary spreadsheet (xlsx/xls) and render each sheet as a table.
-   * SheetJS is loaded lazily so the (large) parser only ships to clients that
+   * SheetJS is loaded on demand from a self-hosted asset (see loadXlsxLib) so
+   * it never enters the bundle — keeping the (very large) parser out of the
+   * production build's optimisation step, and only shipping it to clients that
    * actually open a spreadsheet.
    */
   private loadSpreadsheet(): void {
@@ -1889,21 +1891,22 @@ export class EditorComponent implements OnInit, OnDestroy {
     const path = this.documentPath;
     const url = `/api/spaces/${space.id}/files/${path}`;
 
-    fetch(url, { credentials: 'include' })
-      .then(res => {
+    Promise.all([
+      fetch(url, { credentials: 'include' }).then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.arrayBuffer();
-      })
-      .then(async buffer => {
-        const XLSX = await import('xlsx');
+      }),
+      this.loadXlsxLib(),
+    ])
+      .then(([buffer, XLSX]) => {
         const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
         const showSheetNames = wb.SheetNames.length > 1;
-        const html = wb.SheetNames.map(name => {
-          const rows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], {
+        const html = wb.SheetNames.map((name: string) => {
+          const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], {
             header: 1, blankrows: false, defval: '', raw: false
           });
           const stringRows = rows.map(r =>
-            (r ?? []).map(c => (c === null || c === undefined) ? '' : String(c))
+            (r ?? []).map((c: any) => (c === null || c === undefined) ? '' : String(c))
           );
           const table = this.dataFileService.renderTable(stringRows);
           return showSheetNames
@@ -1920,6 +1923,31 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.spreadsheetError.set('This spreadsheet could not be read.');
         this.loading.set(false);
       });
+  }
+
+  private xlsxLoader?: Promise<any>;
+
+  /** Load the SheetJS UMD bundle from our own assets, once, and resolve the
+   *  global it defines. Kept out of the Angular bundle on purpose. */
+  private loadXlsxLib(): Promise<any> {
+    const existing = (window as any).XLSX;
+    if (existing) return Promise.resolve(existing);
+    if (this.xlsxLoader) return this.xlsxLoader;
+    this.xlsxLoader = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/vendor/xlsx.full.min.js';
+      script.async = true;
+      script.onload = () => {
+        const lib = (window as any).XLSX;
+        lib ? resolve(lib) : reject(new Error('XLSX failed to initialise'));
+      };
+      script.onerror = () => {
+        this.xlsxLoader = undefined;
+        reject(new Error('Failed to load the spreadsheet parser'));
+      };
+      document.head.appendChild(script);
+    });
+    return this.xlsxLoader;
   }
 
   // Relative links inside a rendered doc (e.g. ../ONBOARDING.md) are rewritten by the
