@@ -10,6 +10,7 @@ import java.util.*
 interface DocumentEmbeddingRepository : JpaRepository<DocumentEmbedding, UUID> {
     fun findByDocumentId(documentId: UUID): List<DocumentEmbedding>
     fun deleteByDocumentId(documentId: UUID)
+    fun existsByDocumentId(documentId: UUID): Boolean
 
     @Query(
         value = """

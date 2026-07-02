@@ -3,6 +3,7 @@ package com.docuvault.service
 import com.docuvault.domain.space.Document
 import com.docuvault.domain.space.Space
 import com.docuvault.domain.space.SyncStatus
+import com.docuvault.infrastructure.repository.DocumentEmbeddingRepository
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.service.embedding.EmbeddingService
@@ -30,6 +31,7 @@ class SyncScheduler(
     private val gitConflictService: GitConflictService,
     private val gitDiffService: GitDiffService,
     private val documentRepository: DocumentRepository,
+    private val documentEmbeddingRepository: DocumentEmbeddingRepository,
     private val embeddingService: EmbeddingService,
     private val changeNotificationService: ChangeNotificationService
 ) {
@@ -118,14 +120,22 @@ class SyncScheduler(
 
                     val existingDoc = documentRepository.findBySpaceIdAndPath(space.id!!, relativePath)
 
-                    if (existingDoc != null && existingDoc.contentHash == contentHash) {
-                        skipped++
-                        return@forEach
-                    }
-
                     val isHtml = filePath.extension.lowercase() in htmlExtensions
                     val htmlTitle = if (isHtml) extractHtmlTitle(rawContent) else null
                     val content = if (isHtml) stripHtml(rawContent) else rawContent
+
+                    // Re-embed even when content is unchanged if the doc has no embeddings — e.g. it was
+                    // first synced before OpenAI was configured (or an embedding call failed), which stores
+                    // the content hash with zero embeddings and would otherwise never be retried.
+                    if (existingDoc != null && existingDoc.contentHash == contentHash) {
+                        if (documentEmbeddingRepository.existsByDocumentId(existingDoc.id!!)) {
+                            skipped++
+                            return@forEach
+                        }
+                        embeddingService.processDocument(existingDoc.id!!, content)
+                        indexed++
+                        return@forEach
+                    }
 
                     val document = existingDoc?.apply {
                         this.contentHash = contentHash
