@@ -11,6 +11,15 @@ import { DisplayPrefsService } from '../../shared/services/display-prefs.service
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
+/** A file shown in the folder listing — any type, optionally enriched with the
+ *  markdown title + last-sync date when a Document row exists for it. */
+interface FileEntry {
+  path: string;
+  name: string;
+  title?: string;
+  lastSyncedAt?: string;
+}
+
 @Component({
   selector: 'app-space-overview',
   standalone: true,
@@ -23,7 +32,13 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
           <p class="text-lg font-semibold">Drop files to upload</p>
-          <p class="text-sm opacity-75 mt-1">Files will be added to this space</p>
+          <p class="text-sm opacity-75 mt-1">
+            @if (currentFolder()) {
+              Files will be added to <strong>{{ prefs.prettify(currentFolder().split('/').pop() ?? '', true) }}</strong>
+            } @else {
+              Files will be added to this space
+            }
+          </p>
         </div>
       </div>
     }
@@ -297,21 +312,21 @@ import { spaceRoute } from '../../shared/utils/route-utils';
               @if (filesHere().length > 0) {
                 <div class="list-group-label">Files</div>
               }
-              @for (doc of filesHere(); track doc.id) {
+              @for (file of filesHere(); track file.path) {
                 <a
                   [routerLink]="space()?.fullPath | spaceRoute:'doc'"
-                  [queryParams]="{ path: doc.path }"
+                  [queryParams]="{ path: file.path }"
                   class="overview-doc-item flex items-center justify-between gap-4 p-4"
                 >
                   <div class="flex items-center gap-3 min-w-0">
-                    <span class="material-icons overview-text-muted">description</span>
+                    <span class="material-icons overview-text-muted">{{ fileIcon(file.name) }}</span>
                     <div class="min-w-0">
-                      <div class="font-medium overview-text-primary truncate">{{ doc.title || prefs.prettify(doc.path.split('/').pop() ?? '', false) }}</div>
+                      <div class="font-medium overview-text-primary truncate">{{ file.title || prefs.prettify(file.name, false) }}</div>
                     </div>
                   </div>
-                  @if (doc.lastSyncedAt) {
+                  @if (file.lastSyncedAt) {
                     <div class="text-sm overview-text-muted flex-shrink-0">
-                      {{ formatDate(doc.lastSyncedAt) }}
+                      {{ formatDate(file.lastSyncedAt) }}
                     </div>
                   }
                 </a>
@@ -667,6 +682,10 @@ export class SpaceOverviewComponent implements OnInit {
   /** All directory paths in the repo (from the git file tree) — covers empty folders
    *  that hold only a .gitkeep and therefore have no Document rows under them. */
   allFolders = signal<string[]>([]);
+  /** Every non-directory file path in the repo (from the git file tree). Covers
+   *  non-markdown files (json/csv/images/pdf/…) that have no Document row and
+   *  would otherwise be invisible in the folder listing. */
+  allFiles = signal<{ path: string; name: string }[]>([]);
   syncing = signal(false);
   isDragOver = signal(false);
   uploading = signal(false);
@@ -714,17 +733,41 @@ export class SpaceOverviewComponent implements OnInit {
     return [...set].sort((a, b) => a.localeCompare(b));
   });
 
-  /** Documents directly at this folder level (no further nesting). */
-  filesHere = computed<Document[]>(() => {
+  /** All files directly at this folder level (no further nesting) — markdown
+   *  documents and every other file type (json/csv/images/pdf/…). Files come
+   *  from the git tree; markdown Document rows enrich them with title + sync
+   *  date. Union keyed by path so a file never appears twice. */
+  filesHere = computed<FileEntry[]>(() => {
     const cur = this.currentFolder();
     const prefix = cur ? cur + '/' : '';
-    return this.documents()
-      .filter((d) => {
-        if (cur && !d.path.startsWith(prefix)) return false;
-        const rest = cur ? d.path.slice(prefix.length) : d.path;
-        return !rest.includes('/');
-      })
-      .sort((a, b) => (a.title || a.path).localeCompare(b.title || b.path));
+    const atLevel = (p: string): boolean => {
+      if (cur && !p.startsWith(prefix)) return false;
+      const rest = cur ? p.slice(prefix.length) : p;
+      return rest.length > 0 && !rest.includes('/');
+    };
+    const byPath = new Map<string, FileEntry>();
+    for (const f of this.allFiles()) {
+      if (!atLevel(f.path)) continue;
+      byPath.set(f.path, { path: f.path, name: f.name });
+    }
+    for (const d of this.documents()) {
+      if (!atLevel(d.path)) continue;
+      const existing = byPath.get(d.path);
+      if (existing) {
+        existing.title = d.title;
+        existing.lastSyncedAt = d.lastSyncedAt;
+      } else {
+        byPath.set(d.path, {
+          path: d.path,
+          name: d.path.split('/').pop() ?? d.path,
+          title: d.title,
+          lastSyncedAt: d.lastSyncedAt,
+        });
+      }
+    }
+    return [...byPath.values()].sort((a, b) =>
+      (a.title || a.name).localeCompare(b.title || b.name)
+    );
   });
 
   /** Parent group crumbs (everything in the space path above the space itself). */
@@ -871,8 +914,14 @@ export class SpaceOverviewComponent implements OnInit {
       next: (docs) => this.documents.set(docs)
     });
     this.documentsService.getFileTree(spaceId).subscribe({
-      next: (tree) => this.allFolders.set(this.collectFolderPaths(tree)),
-      error: () => this.allFolders.set([])
+      next: (tree) => {
+        this.allFolders.set(this.collectFolderPaths(tree));
+        this.allFiles.set(this.collectFiles(tree));
+      },
+      error: () => {
+        this.allFolders.set([]);
+        this.allFiles.set([]);
+      }
     });
   }
 
@@ -889,6 +938,37 @@ export class SpaceOverviewComponent implements OnInit {
     };
     walk(nodes);
     return paths;
+  }
+
+  /** Flatten the git file tree into a list of every (non-directory) file. */
+  private collectFiles(nodes: FileNode[]): { path: string; name: string }[] {
+    const files: { path: string; name: string }[] = [];
+    const walk = (list: FileNode[]): void => {
+      for (const node of list) {
+        if (node.isDirectory) {
+          if (node.children?.length) walk(node.children);
+        } else if (!node.name.startsWith('.')) {
+          // Skip hidden files (.gitkeep, .gitignore, …) — they're plumbing.
+          files.push({ path: node.path, name: node.name });
+        }
+      }
+    };
+    walk(nodes);
+    return files;
+  }
+
+  /** Material icon name for a file, chosen by extension. */
+  fileIcon(name: string): string {
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'].includes(ext)) return 'image';
+    if (ext === 'pdf') return 'picture_as_pdf';
+    if (ext === 'json') return 'data_object';
+    if (['csv', 'tsv', 'tab', 'xlsx', 'xls'].includes(ext)) return 'grid_on';
+    if (ext === 'sql') return 'storage';
+    if (['html', 'htm'].includes(ext)) return 'code';
+    if (ext === 'drawio') return 'schema';
+    if (['md', 'markdown'].includes(ext)) return 'description';
+    return 'insert_drive_file';
   }
 
   // --- "+ New" menu actions ---
@@ -1090,12 +1170,12 @@ export class SpaceOverviewComponent implements OnInit {
     input.value = '';
   }
 
-  private uploadFiles(files: File[]): void {
+  private uploadFiles(files: File[], folder = this.currentFolder()): void {
     const space = this.space();
     if (!space) return;
 
     this.uploading.set(true);
-    this.documentsService.uploadFiles(space.id, files).subscribe({
+    this.documentsService.uploadFiles(space.id, files, folder).subscribe({
       next: (uploaded) => {
         this.uploading.set(false);
         const names = uploaded.map(f => f.name).join(', ');

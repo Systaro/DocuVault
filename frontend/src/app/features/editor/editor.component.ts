@@ -18,6 +18,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { DataFileRenderService } from '../../shared/services/data-file-render.service';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
@@ -295,7 +296,7 @@ import { marked } from 'marked';
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar">
           <div class="preview-filename">
-            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : 'image' }}</span>
+            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -397,6 +398,21 @@ import { marked } from 'marked';
             <div class="drawio-preview-container">
               <div #drawioElement class="drawio" [attr.data-drawio-src]="previewUrl()"></div>
             </div>
+          } @else if (previewType() === 'spreadsheet') {
+            <div class="spreadsheet-preview-container">
+              @if (loading()) {
+                <div class="flex items-center justify-center py-12">
+                  <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                </div>
+              } @else if (spreadsheetError()) {
+                <p class="spreadsheet-error">{{ spreadsheetError() }}</p>
+              } @else {
+                <div class="markdown-readonly" [innerHTML]="spreadsheetHtml()"></div>
+              }
+            </div>
           } @else {
             <div class="image-zoom-container annotation-host" [class.dragging]="isDraggingImage()" (mousedown)="onImageDragStart($event)">
               <img
@@ -434,7 +450,7 @@ import { marked } from 'marked';
       } @else {
         <!-- Editor Area -->
         <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
-          <div class="mx-auto px-8 py-6 paper" [style.maxWidth.px]="contentWidthPx()">
+          <div class="mx-auto px-8 py-6 paper" [class.paper-full]="isDataView()" [style.maxWidth.px]="isDataView() ? null : contentWidthPx()">
             @if (loading()) {
               <div class="flex items-center justify-center py-12">
                 <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
@@ -522,10 +538,12 @@ import { marked } from 'marked';
                 [permission]="annotationPermission()"
               />
             }
-            <div class="paper-resize-handle"
-                 title="Drag to resize content width"
-                 (mousedown)="onWidthResizeStart($event)"
-                 [class.dragging]="isResizingWidth()"></div>
+            @if (!isDataView()) {
+              <div class="paper-resize-handle"
+                   title="Drag to resize content width"
+                   (mousedown)="onWidthResizeStart($event)"
+                   [class.dragging]="isResizingWidth()"></div>
+            }
           </div>
         </div>
       }
@@ -773,6 +791,27 @@ import { marked } from 'marked';
       flex: 1;
       display: flex;
       min-height: 100%;
+    }
+
+    // Spreadsheet (xlsx/xls) preview: full-width, no paper column, so wide
+    // sheets use the available space instead of being squeezed + side-scrolled.
+    .spreadsheet-preview-container {
+      flex: 1;
+      min-height: 100%;
+      padding: 24px 32px;
+      background: var(--surface);
+    }
+
+    .spreadsheet-error {
+      color: var(--text-muted);
+      text-align: center;
+      padding: 48px 0;
+    }
+
+    // Data views (JSON/CSV/TSV/TAB/SQL) drop the paper max-width entirely.
+    .paper.paper-full {
+      max-width: none;
+      width: 100%;
     }
 
     .image-zoom-container {
@@ -1173,6 +1212,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   ]);
   private static readonly HTML_EXTENSIONS = new Set(['html', 'htm']);
   private static readonly PDF_EXTENSIONS = new Set(['pdf']);
+  // Binary spreadsheets — fetched as bytes and parsed client-side into tables.
+  private static readonly SPREADSHEET_EXTENSIONS = new Set(['xlsx', 'xls']);
 
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
@@ -1226,8 +1267,11 @@ export class EditorComponent implements OnInit, OnDestroy {
   deleting = signal(false);
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
-  previewType = signal<'image' | 'html' | 'pdf' | 'drawio'>('image');
+  previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
   previewUrl = signal('');
+  // Parsed-and-rendered HTML for a spreadsheet (xlsx/xls) preview.
+  spreadsheetHtml = signal<SafeHtml>('');
+  spreadsheetError = signal<string | null>(null);
   safePreviewUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
   isDraggingImage = signal(false);
@@ -1245,6 +1289,14 @@ export class EditorComponent implements OnInit, OnDestroy {
   canEdit = computed(() => !this.isReadOnly());
   // True only when the TipTap editor + toolbar should be shown.
   showEditor = computed(() => this.canEdit() && this.editMode());
+  // A structured-data view (JSON/CSV/TSV/TAB/SQL in read mode, or an xlsx/xls
+  // spreadsheet preview). These render full-width without a paper column so
+  // wide tables and long lines don't force side-scrolling.
+  isDataView = computed(() => {
+    if (this.isPreviewFile()) return this.previewType() === 'spreadsheet';
+    const ext = this.documentPathSignal().split('.').pop()?.toLowerCase() || '';
+    return this.dataFileService.isDataFile(ext);
+  });
   // Raw (title-stripped) markdown for the current document — feeds both the
   // read-mode render and the TipTap editor when entering edit mode.
   private markdownContent = signal('');
@@ -1346,6 +1398,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     private toastService: ToastService,
     private annotationsService: AnnotationsService,
     private markdownService: MarkdownRenderService,
+    private dataFileService: DataFileRenderService,
     private documentSettingsService: DocumentSettingsService,
     protected prefs: DisplayPrefsService,
     protected caps: CapabilitiesService
@@ -1627,6 +1680,14 @@ export class EditorComponent implements OnInit, OnDestroy {
           if (space) {
             this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
           }
+        } else if (EditorComponent.SPREADSHEET_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.previewType.set('spreadsheet');
+          this.spreadsheetHtml.set('');
+          this.spreadsheetError.set(null);
+          if (this.space()) {
+            this.loadSpreadsheet();
+          }
         } else {
           this.isPreviewFile.set(false);
           if (pathChanged || this.document() === null) {
@@ -1674,10 +1735,14 @@ export class EditorComponent implements OnInit, OnDestroy {
           error: () => {}
         });
         if (this.isPreviewFile()) {
-          const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
-          this.previewUrl.set(url);
-          if (this.previewType() === 'html' || this.previewType() === 'pdf') {
-            this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+          if (this.previewType() === 'spreadsheet') {
+            this.loadSpreadsheet();
+          } else {
+            const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
+            this.previewUrl.set(url);
+            if (this.previewType() === 'html' || this.previewType() === 'pdf') {
+              this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+            }
           }
         } else if (this.documentPath) {
           this.loadDocument();
@@ -1786,11 +1851,20 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (!space) return;
     this.editor?.destroy();
     this.editor = null as any;
+    const ext = this.documentPath.split('.').pop()?.toLowerCase() || '';
+    // Structured data files (JSON/CSV/TSV/TAB/SQL) get a dedicated renderer:
+    // pretty JSON, syntax-highlighted SQL and real tables for delimited data,
+    // instead of a raw blob dumped through the markdown pipeline.
+    if (this.dataFileService.isDataFile(ext)) {
+      this.readonlyHtml.set(
+        this.sanitizer.bypassSecurityTrustHtml(this.dataFileService.render(content, ext))
+      );
+      return;
+    }
     const docDir = this.currentDocDir();
     // A raw Mermaid file (.mmd/.mermaid) is diagram source with no fence.
     // Wrap it so the markdown pipeline emits a Mermaid block the runMermaid
     // effect can turn into a diagram, instead of showing the source as code.
-    const ext = this.documentPath.split('.').pop()?.toLowerCase();
     const toRender = (ext === 'mmd' || ext === 'mermaid')
       ? '```mermaid\n' + content.trim() + '\n```\n'
       : content;
@@ -1800,6 +1874,52 @@ export class EditorComponent implements OnInit, OnDestroy {
       `/api/spaces/${space.id}/files`,
       `/spaces/${space.fullPath}/doc`
     ));
+  }
+
+  /**
+   * Fetch a binary spreadsheet (xlsx/xls) and render each sheet as a table.
+   * SheetJS is loaded lazily so the (large) parser only ships to clients that
+   * actually open a spreadsheet.
+   */
+  private loadSpreadsheet(): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.loading.set(true);
+    this.spreadsheetError.set(null);
+    const path = this.documentPath;
+    const url = `/api/spaces/${space.id}/files/${path}`;
+
+    fetch(url, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then(async buffer => {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const showSheetNames = wb.SheetNames.length > 1;
+        const html = wb.SheetNames.map(name => {
+          const rows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], {
+            header: 1, blankrows: false, defval: '', raw: false
+          });
+          const stringRows = rows.map(r =>
+            (r ?? []).map(c => (c === null || c === undefined) ? '' : String(c))
+          );
+          const table = this.dataFileService.renderTable(stringRows);
+          return showSheetNames
+            ? `<h2 class="data-sheet-title">${this.escapeHtml(name)}</h2>${table}`
+            : table;
+        }).join('\n');
+        // Guard against a race where the user navigated to another file mid-fetch.
+        if (this.documentPath !== path) return;
+        this.spreadsheetHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+        this.loading.set(false);
+      })
+      .catch(() => {
+        if (this.documentPath !== path) return;
+        this.spreadsheetError.set('This spreadsheet could not be read.');
+        this.loading.set(false);
+      });
   }
 
   // Relative links inside a rendered doc (e.g. ../ONBOARDING.md) are rewritten by the

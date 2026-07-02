@@ -116,7 +116,11 @@ import { getFileIcon } from '../../shared/utils/file-utils';
               </nav>
 
               <!-- File Tree -->
-              <div class="folder-tree">
+              <div class="folder-tree"
+                   [class.drop-target-root]="rootDropActive()"
+                   (dragover)="onTreeDragOver($event)"
+                   (dragleave)="onTreeDragLeave($event)"
+                   (drop)="onTreeDrop($event)">
                 @if (fileTree().length === 0) {
                   <div class="tree-empty">
                     <span class="material-icons">folder_off</span>
@@ -188,12 +192,37 @@ import { getFileIcon } from '../../shared/utils/file-utils';
               <div class="modal-header"><h2>Move file</h2></div>
               <div class="modal-body">
                 <p>Move <strong>{{ node.name }}</strong> to:</p>
-                <select class="move-select" [(ngModel)]="moveTargetFolder">
-                  <option [value]="''">(space root)</option>
-                  @for (folder of folderOptions(); track folder) {
-                    <option [value]="folder">{{ folder }}</option>
+                <div class="move-search-wrap">
+                  <span class="material-icons move-search-icon">search</span>
+                  <input
+                    class="move-search"
+                    type="text"
+                    autofocus
+                    placeholder="Search folders…"
+                    [ngModel]="moveSearch()"
+                    (ngModelChange)="moveSearch.set($event)"
+                  />
+                </div>
+                <ul class="move-folder-list">
+                  @for (folder of filteredFolderOptions(); track folder) {
+                    <li>
+                      <button
+                        type="button"
+                        class="move-folder-option"
+                        [class.selected]="folder === moveTargetFolder"
+                        (click)="moveTargetFolder = folder"
+                      >
+                        <span class="material-icons opt-icon">{{ folder ? 'folder' : 'home' }}</span>
+                        <span class="move-folder-label">{{ folder || '(space root)' }}</span>
+                        @if (folder === moveTargetFolder) {
+                          <span class="material-icons opt-check">check</span>
+                        }
+                      </button>
+                    </li>
+                  } @empty {
+                    <li class="move-folder-empty">No matching folders</li>
                   }
-                </select>
+                </ul>
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn-secondary" (click)="cancelMoveFile()">Cancel</button>
@@ -209,12 +238,21 @@ import { getFileIcon } from '../../shared/utils/file-utils';
         @for (node of nodes; track node.path) {
           <div class="tree-node">
             @if (node.isDirectory) {
-              <div class="tree-folder-row">
+              <div class="tree-folder-row"
+                   [class.drop-target]="dropTargetPath() === node.path"
+                   (dragenter)="onFolderDragEnter(node.path, $event)"
+                   (dragover)="onFolderDragOver(node.path, $event)"
+                   (dragleave)="onFolderDragLeave(node.path, $event)"
+                   (drop)="onFolderDrop(node.path, $event)">
                 <button
                   (click)="openFolder(node.path)"
                   class="tree-item"
                   [class.expanded]="expandedFolders().has(node.path)"
                   [class.active]="currentFolderPath() === node.path"
+                  [class.dragging]="draggingNode()?.path === node.path"
+                  [draggable]="renamingPath() !== node.path"
+                  (dragstart)="onNodeDragStart(node, $event); $event.stopPropagation()"
+                  (dragend)="onNodeDragEnd()"
                   [style.padding-left.px]="12 + level * 16"
                 >
                   <span class="material-icons expand-icon">chevron_right</span>
@@ -287,9 +325,13 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   [queryParams]="{ path: node.path }"
                   class="tree-item file"
                   [class.active]="currentDocPath() === node.path"
+                  [class.dragging]="draggingNode()?.path === node.path"
+                  [draggable]="renamingPath() !== node.path"
+                  (dragstart)="onNodeDragStart(node, $event); $event.stopPropagation()"
+                  (dragend)="onNodeDragEnd()"
                   [style.padding-left.px]="32 + level * 16"
                 >
-                  <img class="file-icon-img" [src]="getFileIcon(node.name)" [alt]="node.name" />
+                  <img class="file-icon-img" draggable="false" [src]="getFileIcon(node.name)" [alt]="node.name" />
                   @if (renamingPath() === node.path) {
                     <input
                       class="rename-input"
@@ -686,10 +728,23 @@ import { getFileIcon } from '../../shared/utils/file-utils';
       line-height: 1.6;
     }
 
+    // The tree node currently being dragged to reorganise it.
+    .tree-item.dragging {
+      opacity: 0.45;
+    }
+
     .folder-tree {
       flex: 1;
       overflow-y: auto;
       padding: var(--spacing-sm);
+
+      // Highlighted while something is dragged over empty space (→ space root).
+      &.drop-target-root {
+        outline: 2px dashed var(--primary);
+        outline-offset: -4px;
+        border-radius: var(--radius-md);
+        background: var(--background-darker);
+      }
     }
 
     .tree-empty {
@@ -877,15 +932,98 @@ import { getFileIcon } from '../../shared/utils/file-utils';
       color: var(--text-muted);
     }
 
-    .move-select {
-      width: 100%;
+    .move-search-wrap {
+      position: relative;
       margin-top: var(--spacing-sm);
-      padding: var(--spacing-sm);
+    }
+
+    .move-search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 18px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .move-search {
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 34px;
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       background: var(--surface);
       color: var(--text-primary);
       font-size: 14px;
+
+      &:focus {
+        outline: none;
+        border-color: var(--primary);
+      }
+    }
+
+    .move-folder-list {
+      list-style: none;
+      margin: var(--spacing-sm) 0 0;
+      padding: 4px;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+    }
+
+    .move-folder-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 10px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: none;
+      color: var(--text-primary);
+      font-size: 13.5px;
+      text-align: left;
+      cursor: pointer;
+
+      .opt-icon {
+        font-size: 18px;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      .move-folder-label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .opt-check {
+        font-size: 18px;
+        color: var(--primary);
+        flex-shrink: 0;
+      }
+
+      &:hover {
+        background: var(--background);
+      }
+
+      &.selected {
+        background: var(--background-darker);
+        font-weight: 600;
+
+        .opt-icon { color: var(--primary); }
+      }
+    }
+
+    .move-folder-empty {
+      padding: 12px 10px;
+      color: var(--text-muted);
+      font-size: 13px;
+      text-align: center;
     }
 
     .rename-input {
@@ -957,6 +1095,14 @@ import { getFileIcon } from '../../shared/utils/file-utils';
 
       &:hover .shared-indicator {
         display: none;
+      }
+
+      // Highlighted while OS files are dragged over it (drop-to-upload target).
+      &.drop-target {
+        outline: 2px dashed var(--primary);
+        outline-offset: -2px;
+        border-radius: var(--radius-sm);
+        background: var(--background-darker);
       }
     }
 
@@ -1229,6 +1375,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   moveBusy = signal(false);
   /** Destination folder selected in the move modal ('' = space root). */
   moveTargetFolder = '';
+  /** Search query in the move modal's folder picker. */
+  moveSearch = signal('');
 
   /** All folder paths in the tree, for the move modal's destination picker. */
   folderOptions = computed<string[]>(() => {
@@ -1243,6 +1391,15 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     };
     walk(this.fileTree());
     return out.sort((a, b) => a.localeCompare(b));
+  });
+
+  /** Folder options filtered by the move-modal search box. '' (space root) is
+   *  always offered first, and hidden only when it doesn't match the query. */
+  filteredFolderOptions = computed<string[]>(() => {
+    const q = this.moveSearch().toLowerCase().trim();
+    const all = ['', ...this.folderOptions()];
+    if (!q) return all;
+    return all.filter(f => (f || 'space root').toLowerCase().includes(q));
   });
 
   sidebarWidth = signal(
@@ -1685,9 +1842,171 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.deletingNode.set(null);
   }
 
+  /** Folder path currently under a drag, for the drop highlight. */
+  dropTargetPath = signal<string | null>(null);
+  /** True while a drag is over empty sidebar space (→ space root). */
+  rootDropActive = signal(false);
+  /** The tree node being dragged to reorganise it (internal move), or null. */
+  draggingNode = signal<FileNode | null>(null);
+
+  private hasFiles(event: DragEvent): boolean {
+    return !!event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files');
+  }
+
+  /** Either an OS-file drag (upload) or an internal node drag (reorganise). */
+  private isAcceptableDrag(event: DragEvent): boolean {
+    return this.hasFiles(event) || !!this.draggingNode();
+  }
+
+  private dropEffectFor(event: DragEvent): 'copy' | 'move' {
+    return this.hasFiles(event) ? 'copy' : 'move';
+  }
+
+  // --- Dragging a tree node to reorganise (internal move) ---
+
+  onNodeDragStart(node: FileNode, event: DragEvent): void {
+    this.draggingNode.set(node);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      // text/plain keeps Firefox from cancelling the drag; the node itself is
+      // tracked via the draggingNode signal (same app instance).
+      event.dataTransfer.setData('text/plain', node.path);
+    }
+  }
+
+  onNodeDragEnd(): void {
+    this.draggingNode.set(null);
+    this.dropTargetPath.set(null);
+    this.rootDropActive.set(false);
+  }
+
+  // --- Folder rows: accept OS files (upload) or a dragged node (move) ---
+
+  onFolderDragEnter(path: string, event: DragEvent): void {
+    if (!this.isAcceptableDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.rootDropActive.set(false);
+    this.dropTargetPath.set(path);
+  }
+
+  onFolderDragOver(path: string, event: DragEvent): void {
+    if (!this.isAcceptableDrag(event)) return;
+    // Prevent default so the browser accepts the drop (otherwise it navigates
+    // to the dropped file). stopPropagation keeps parent folder rows — and the
+    // root dropzone — from also claiming the highlight.
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = this.dropEffectFor(event);
+    this.rootDropActive.set(false);
+    this.dropTargetPath.set(path);
+  }
+
+  onFolderDragLeave(path: string, event: DragEvent): void {
+    // Only clear when the pointer actually left the row, not when moving onto a
+    // child element inside it.
+    const current = event.currentTarget as HTMLElement;
+    const related = event.relatedTarget as Node | null;
+    if (related && current.contains(related)) return;
+    if (this.dropTargetPath() === path) this.dropTargetPath.set(null);
+  }
+
+  onFolderDrop(path: string, event: DragEvent): void {
+    if (!this.isAcceptableDrag(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.dropTargetPath.set(null);
+    if (this.hasFiles(event)) {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length) this.uploadFilesToFolder(files, path);
+      return;
+    }
+    const node = this.draggingNode();
+    this.draggingNode.set(null);
+    if (node) this.moveNodeToFolder(node, path);
+  }
+
+  // --- Empty sidebar space: drop into the space root ---
+
+  onTreeDragOver(event: DragEvent): void {
+    if (!this.isAcceptableDrag(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = this.dropEffectFor(event);
+    this.rootDropActive.set(true);
+  }
+
+  onTreeDragLeave(event: DragEvent): void {
+    const current = event.currentTarget as HTMLElement;
+    const related = event.relatedTarget as Node | null;
+    if (related && current.contains(related)) return;
+    this.rootDropActive.set(false);
+  }
+
+  onTreeDrop(event: DragEvent): void {
+    if (!this.isAcceptableDrag(event)) return;
+    event.preventDefault();
+    this.rootDropActive.set(false);
+    if (this.hasFiles(event)) {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length) this.uploadFilesToFolder(files, '');
+      return;
+    }
+    const node = this.draggingNode();
+    this.draggingNode.set(null);
+    if (node) this.moveNodeToFolder(node, '');
+  }
+
+  private uploadFilesToFolder(files: File[], folder: string): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.documentsService.uploadFiles(space.id, files, folder).subscribe({
+      next: (uploaded) => {
+        this.toastService.success(
+          `${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`,
+          `${uploaded.map(f => f.name).join(', ')} → ${folder || 'space root'}`
+        );
+        // Reveal the destination and refresh so the new files appear.
+        if (folder) this.expandedFolders.update(set => new Set(set).add(folder));
+        this.loadFileTree(space.id);
+      },
+      error: (err) => {
+        this.toastService.error('Upload failed', err?.error?.message ?? 'Could not upload files.');
+      }
+    });
+  }
+
+  /** Move a dragged tree node (file or folder) into a destination folder. */
+  private moveNodeToFolder(node: FileNode, targetFolder: string): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    const newPath = targetFolder ? `${targetFolder}/${node.name}` : node.name;
+    // Already there — dropping on the current parent is a no-op.
+    if (newPath === node.path) return;
+    // A folder can't be moved into itself or one of its own descendants.
+    if (node.isDirectory && (targetFolder === node.path || targetFolder.startsWith(node.path + '/'))) {
+      this.toastService.error('Move failed', "Can't move a folder into itself.");
+      return;
+    }
+    const wasActive = this.currentDocPath() === node.path;
+    this.documentsService.rename(space.id, node.path, newPath).subscribe({
+      next: () => {
+        this.toastService.success('Moved', `"${node.name}" → ${targetFolder || 'space root'}`);
+        if (targetFolder) this.expandedFolders.update(set => new Set(set).add(targetFolder));
+        this.loadFileTree(space.id);
+        if (wasActive) {
+          this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
+        }
+      },
+      error: (err) => {
+        this.toastService.error('Move failed', err?.error?.message ?? 'Could not move the item.');
+      }
+    });
+  }
+
   startMoveFile(node: FileNode): void {
     this.movingNode.set(node);
     this.moveTargetFolder = this.parentFolderOf(node.path);
+    this.moveSearch.set('');
     this.openMenuPath.set(null);
   }
 
@@ -1720,6 +2039,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   cancelMoveFile(): void {
     this.movingNode.set(null);
     this.moveTargetFolder = '';
+    this.moveSearch.set('');
   }
 
   ngOnDestroy(): void {

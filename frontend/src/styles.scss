@@ -1084,6 +1084,76 @@ body {
 }
 
 // ============================================
+// STRUCTURED DATA FILES (JSON / CSV / TSV / TAB / SQL / spreadsheets)
+// ============================================
+// Rendered into the read-only viewer via [innerHTML], so these live globally
+// (scoped component styles don't reach innerHTML nodes). The guiding rule is
+// "no side-scrolling": code wraps, tables use the full width.
+
+.data-view {
+  // Pretty JSON / highlighted SQL — wrap instead of forcing a horizontal
+  // scrollbar, even for very long lines or deep nesting.
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: visible;
+  tab-size: 2;
+}
+
+.data-table-wrap {
+  width: 100%;
+  margin: 4px 0 20px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+  table-layout: auto;
+
+  th, td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+    color: var(--text-primary);
+    // Let cells wrap so wide sheets never trigger a horizontal scrollbar.
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tbody tr:nth-child(even) td {
+    background: var(--background-darker);
+  }
+}
+
+.data-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 24px 0 8px;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+.data-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+// ============================================
 // EDITABLE TABLES (TipTap resizable tables)
 // ============================================
 // Chrome the resizable Table extension needs: a scroll wrapper, fixed layout so
