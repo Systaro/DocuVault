@@ -18,6 +18,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
@@ -503,6 +504,7 @@ import { marked } from 'marked';
                   #readonlyElement
                   class="markdown-readonly"
                   [innerHTML]="readonlyHtml()"
+                  (click)="onMarkdownClick($event)"
                 ></article>
               } @else {
                 <!-- TipTap Editor Container -->
@@ -1796,8 +1798,19 @@ export class EditorComponent implements OnInit, OnDestroy {
       toRender,
       docDir,
       `/api/spaces/${space.id}/files`,
-      null
+      `/spaces/${space.fullPath}/doc`
     ));
+  }
+
+  // Relative links inside a rendered doc (e.g. ../ONBOARDING.md) are rewritten by the
+  // markdown service to `/spaces/<fullPath>/doc/<resolved>`; intercept the click and
+  // reload the target document in place via the `path` query param the editor reads.
+  onMarkdownClick(event: MouseEvent): void {
+    const space = this.space();
+    if (!space) return;
+    handleMarkdownClick(event, `/spaces/${space.fullPath}/doc/`, (filePath) => {
+      this.router.navigate([], { relativeTo: this.route, queryParams: { path: filePath } });
+    });
   }
 
   private initTiptap(content: string): void {
