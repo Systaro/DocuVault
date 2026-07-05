@@ -40,8 +40,8 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 >
                   <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
                 </button>
-                @if (spaceSignal()?.logoUrl) {
-                  <img class="space-context-logo" [src]="spaceSignal()!.logoUrl" [alt]="spaceSignal()!.name" />
+                @if (headerLogo(); as logo) {
+                  <img class="space-context-logo" [src]="logo" [alt]="spaceSignal()?.name" />
                 } @else {
                   <span class="material-icons">folder_special</span>
                 }
@@ -1416,6 +1416,9 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     return idx > 0 ? space.fullPath.slice(0, idx) : null;
   });
   groupLabel = computed(() => this.groupPath()?.split('/').join(' / ') ?? '');
+  /** Logo inherited from the nearest ancestor group when the space has none of its own. */
+  parentLogoUrl = signal<string | null>(null);
+  headerLogo = computed(() => this.spaceSignal()?.logoUrl || this.parentLogoUrl());
   shareFilePath = signal<string | null>(null);
   shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
@@ -1500,8 +1503,30 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.loadAnnotationCounts(this.space.id);
       this.buildPathBreadcrumbs();
       this.loadInboxCount(this.space.id);
+      this.loadContextLogo(this.space);
       this.updateTitle();
     }
+  }
+
+  private loadContextLogo(space: Space): void {
+    this.parentLogoUrl.set(null);
+    if (!space.logoUrl && space.parentId) {
+      this.resolveParentLogo(space.parentId);
+    }
+  }
+
+  /** Walks up the group chain until a logo is found (spaces don't carry their parent's logoUrl). */
+  private resolveParentLogo(parentId: string): void {
+    this.spacesService.getSpace(parentId).subscribe({
+      next: parent => {
+        if (parent.logoUrl) {
+          this.parentLogoUrl.set(parent.logoUrl);
+        } else if (parent.parentId) {
+          this.resolveParentLogo(parent.parentId);
+        }
+      },
+      error: () => {}
+    });
   }
 
   private buildPathBreadcrumbs(): void {
