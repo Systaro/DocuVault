@@ -40,8 +40,17 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 >
                   <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
                 </button>
-                <span class="material-icons">folder_special</span>
-                Project Files
+                @if (spaceSignal()?.logoUrl) {
+                  <img class="space-context-logo" [src]="spaceSignal()!.logoUrl" [alt]="spaceSignal()!.name" />
+                } @else {
+                  <span class="material-icons">folder_special</span>
+                }
+                <div class="space-context">
+                  @if (groupPath(); as gPath) {
+                    <a class="space-context-group" [routerLink]="gPath | spaceRoute" [title]="groupLabel()">{{ groupLabel() }}</a>
+                  }
+                  <span class="space-context-name" [title]="spaceSignal()?.name">{{ spaceSignal()?.name }}</span>
+                </div>
                 @if (sharedFilePaths().has('')) {
                   <span class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
                 }
@@ -598,14 +607,52 @@ import { getFileIcon } from '../../shared/utils/file-utils';
       font-size: 13px;
       font-weight: 600;
       color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
       border-bottom: 1px solid var(--border);
 
       .material-icons {
         font-size: 18px;
         color: var(--primary);
       }
+    }
+
+    .space-context-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-sm);
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .space-context {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+
+    .space-context-group {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      &:hover {
+        color: var(--primary);
+        text-decoration: underline;
+      }
+    }
+
+    .space-context-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .sidebar-action-btn {
@@ -1361,6 +1408,14 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   newFolderName = '';
   breadcrumbSegments = signal<{ label: string; path: string; isFile: boolean }[]>([]);
   pathBreadcrumbs = signal<{ name: string; path: string }[]>([]);
+  /** Full path of the parent group (everything before the last segment), or null for top-level spaces. */
+  groupPath = computed(() => {
+    const space = this.spaceSignal();
+    if (!space?.parentId) return null;
+    const idx = space.fullPath.lastIndexOf('/');
+    return idx > 0 ? space.fullPath.slice(0, idx) : null;
+  });
+  groupLabel = computed(() => this.groupPath()?.split('/').join(' / ') ?? '');
   shareFilePath = signal<string | null>(null);
   shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
