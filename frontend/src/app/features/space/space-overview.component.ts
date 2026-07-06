@@ -1,11 +1,14 @@
-import { Component, OnInit, signal, computed, HostListener } from '@angular/core';
+import { Component, OnInit, signal, computed, effect, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, Document, FileNode } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
+import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { AuthService } from '../../core/auth/auth.service';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
@@ -334,6 +337,32 @@ interface FileEntry {
             </div>
           }
         </div>
+
+        <!-- GitHub-style README render for the current folder -->
+        @if (readmeHere(); as readme) {
+          <div class="card readme-card">
+            <div class="readme-card-header">
+              <span class="material-icons overview-text-muted">description</span>
+              <a
+                [routerLink]="space()?.fullPath | spaceRoute:'doc'"
+                [queryParams]="{ path: readme.path }"
+                class="readme-card-title"
+              >{{ readme.name }}</a>
+            </div>
+            @if (readmeHtml()) {
+              <div class="readme-card-body markdown-container" (click)="onReadmeClick($event)">
+                <div class="markdown-readonly" [innerHTML]="readmeHtml()"></div>
+              </div>
+            } @else {
+              <div class="p-6 flex justify-center">
+                <svg class="animate-spin h-5 w-5 overview-text-muted" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+              </div>
+            }
+          </div>
+        }
       </div>
     </div>
   `,
@@ -352,6 +381,32 @@ interface FileEntry {
 
     .overview-section-header {
       border-bottom: 1px solid var(--border);
+    }
+
+    .readme-card {
+      margin-top: 1.5rem;
+    }
+
+    .readme-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .readme-card-title {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    .readme-card-body {
+      padding: 1.25rem 1.5rem;
     }
 
     .overview-doc-list {
@@ -790,6 +845,15 @@ export class SpaceOverviewComponent implements OnInit {
     return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
   });
 
+  /** README file at the current folder level, if any — rendered GitHub-style
+   *  below the file listing. */
+  readmeHere = computed<FileEntry | null>(() =>
+    this.filesHere().find(f => /^readme\.(md|markdown)$/i.test(f.name)) ?? null
+  );
+  readmeHtml = signal<SafeHtml | null>(null);
+  /** Guards the fetch effect against re-running for an already-rendered README. */
+  private renderedReadmeKey: string | null = null;
+
   parentFolderPath = computed<string>(() => {
     const cur = this.currentFolder();
     if (!cur) return '';
@@ -864,8 +928,56 @@ export class SpaceOverviewComponent implements OnInit {
     private gitService: GitService,
     private toastService: ToastService,
     private authService: AuthService,
+    private markdownService: MarkdownRenderService,
+    private elementRef: ElementRef<HTMLElement>,
     protected prefs: DisplayPrefsService
-  ) {}
+  ) {
+    // Fetch + render the folder's README whenever the folder (or space) changes.
+    effect(() => {
+      const space = this.space();
+      const readme = this.readmeHere();
+      if (!space || !readme) {
+        this.renderedReadmeKey = null;
+        this.readmeHtml.set(null);
+        return;
+      }
+      const key = `${space.id}:${readme.path}`;
+      if (this.renderedReadmeKey === key) return;
+      this.renderedReadmeKey = key;
+      this.readmeHtml.set(null);
+      this.documentsService.getDocument(space.id, readme.path).subscribe({
+        next: (doc) => {
+          const docDir = readme.path.substring(0, readme.path.lastIndexOf('/') + 1);
+          this.readmeHtml.set(this.markdownService.render(
+            doc.content,
+            docDir,
+            `/api/spaces/${space.id}/files`,
+            `/spaces/${space.fullPath}/doc`
+          ));
+        },
+        error: () => this.readmeHtml.set(null)
+      });
+    }, { allowSignalWrites: true });
+
+    // Render Mermaid / draw.io / image lightbox once the README HTML is in the DOM.
+    effect(() => {
+      this.readmeHtml();
+      setTimeout(() => {
+        this.markdownService.runMermaid(this.elementRef.nativeElement);
+        this.markdownService.runDrawio(this.elementRef.nativeElement);
+        this.markdownService.runImageLightbox(this.elementRef.nativeElement);
+      }, 0);
+    });
+  }
+
+  /** Route relative links inside the rendered README through the doc viewer. */
+  onReadmeClick(event: MouseEvent): void {
+    const space = this.space();
+    if (!space) return;
+    handleMarkdownClick(event, `/spaces/${space.fullPath}/doc/`, (filePath) => {
+      this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: filePath } });
+    });
+  }
 
   ngOnInit(): void {
     this.route.parent?.params.subscribe(params => {
