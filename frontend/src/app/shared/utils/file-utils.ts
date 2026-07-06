@@ -40,6 +40,25 @@ export function getFileIcon(name: string): string {
   return `assets/file-icons/file-extension-${slug}-icon.png`;
 }
 
+/**
+ * Extensions AI editing is never offered for (binary or image formats).
+ * Mirrors AI_EDIT_BLOCKED_EXTENSIONS in the backend DocumentController — keep in sync.
+ */
+const AI_EDIT_BLOCKED_EXTENSIONS = new Set([
+  ...IMAGE_EXTENSIONS,
+  'tif', 'tiff', 'psd',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pps', 'odt', 'rtf',
+  'zip', '7z', 'rar', 'gz', 'gz2', 'tgz', 'tar', 'iso', 'dmg', 'jar', 'apk', 'msi',
+  'mp3', 'mp4', 'mpeg', 'mkv', 'mov', 'avi', 'webm', 'flac', 'ogg', 'wav', 'wma', 'wmv',
+  'flv', 'swf', '3gp', 'asf', 'divx', 'aac',
+  'exe', 'dll', 'sys', 'bat', 'ttf', 'otf', 'woff', 'woff2', 'eot',
+]);
+
+/** True when the file is a text-based document the AI edit feature can work on. */
+export function isAiEditable(path: string): boolean {
+  return !AI_EDIT_BLOCKED_EXTENSIONS.has(getExtension(path));
+}
+
 export function resolveRelativePath(path: string): string {
   const parts = path.split('/');
   const resolved: string[] = [];

@@ -25,7 +25,10 @@ import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
-import { AiService } from '../../core/api/ai.service';
+import { AiService, AiEditResult } from '../../core/api/ai.service';
+import { isAiEditable } from '../../shared/utils/file-utils';
+import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
+import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 import { AuthService } from '../../core/auth/auth.service';
 import { GitService } from '../../core/api/git.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
@@ -41,7 +44,7 @@ import { marked } from 'marked';
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -225,6 +228,14 @@ import { marked } from 'marked';
                     </svg>
                     Download file
                   </button>
+                  @if (canAiEdit()) {
+                    <button class="action-menu-item" (click)="openAiEditDialog(); showActionMenu.set(false)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                      </svg>
+                      Edit via AI
+                    </button>
+                  }
                   @if (getGitUrl()) {
                     <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,6 +360,14 @@ import { marked } from 'marked';
                   </svg>
                   Download file
                 </button>
+                @if (canAiEdit()) {
+                  <button class="action-menu-item" (click)="openAiEditDialog(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                    </svg>
+                    Edit via AI
+                  </button>
+                }
                 @if (getGitUrl()) {
                   <button class="action-menu-item" (click)="copyGitLink(); showActionMenu.set(false)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,6 +389,7 @@ import { marked } from 'marked';
         </div>
         <!-- Scrollable preview content -->
         <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
+          <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
           @if (previewType() === 'html') {
             <div class="html-preview-container annotation-host">
               <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
@@ -467,6 +487,8 @@ import { marked } from 'marked';
                 class="editor-title"
               />
 
+              <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
+
               @if (!showEditor()) {
                 <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
                 @if (caps.aiEnabled() && availableLangs().length > 0) {
@@ -548,6 +570,28 @@ import { marked } from 'marked';
         </div>
       }
 
+
+      <ng-template #aiUndoBanner>
+        <app-ai-edit-step-back
+          [spaceId]="space()?.id || ''"
+          [undo]="aiEditUndo()"
+          [viewingPrevious]="viewingAiPrevious()"
+          [canPreview]="!isPreviewFile()"
+          (showPrevious)="onAiPreviewPrevious($event)"
+          (showCurrent)="onAiPreviewCurrent()"
+          (dismissed)="aiEditUndo.set(null)"
+          (reverted)="onAiReverted()"
+        />
+      </ng-template>
+
+      @if (showAiEditDialog() && space() && documentPath) {
+        <app-ai-edit-dialog
+          [spaceId]="space()!.id"
+          [filePath]="documentPath"
+          (closed)="showAiEditDialog.set(false)"
+          (applied)="onAiEditApplied($event)"
+        />
+      }
 
       @if (showShareDialog() && space() && documentPath) {
         <app-share-link-dialog
@@ -1265,6 +1309,19 @@ export class EditorComponent implements OnInit, OnDestroy {
   private pendingLang: string | null = null;
   showDeleteConfirm = signal(false);
   deleting = signal(false);
+  // "Edit via AI": the AI applies a free-form instruction to the whole file and
+  // saves the result as a commit; aiEditUndo powers the step-back banner.
+  showAiEditDialog = signal(false);
+  aiEditUndo = signal<AiEditUndoState | null>(null);
+  // Read-only preview of the pre-AI-edit version (nothing is written until the
+  // revert is confirmed inside the step-back component).
+  viewingAiPrevious = signal(false);
+  canAiEdit = computed(() =>
+    this.caps.aiEnabled() &&
+    !this.isNewDocument() &&
+    !!this.documentPathSignal() &&
+    isAiEditable(this.documentPathSignal())
+  );
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
@@ -1462,6 +1519,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         next: (res) => {
           this.translatingLang.set(null);
           this.translationLang.set(code);
+          this.viewingAiPrevious.set(false);
           // Surface a newly-created language in the read-mode bar right away.
           if (!this.availableLangs().includes(code)) {
             this.availableLangs.update(langs => [...langs, code].sort());
@@ -1479,6 +1537,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   /** Drop the active translation and re-render the original document. */
   showOriginal(): void {
     this.translationLang.set(null);
+    this.viewingAiPrevious.set(false);
     this.renderReadView(this.markdownContent());
     this.closeActionMenus();
   }
@@ -1611,6 +1670,42 @@ export class EditorComponent implements OnInit, OnDestroy {
     a.click();
   }
 
+  openAiEditDialog(): void {
+    this.showAiEditDialog.set(true);
+  }
+
+  onAiEditApplied(result: AiEditResult): void {
+    this.showAiEditDialog.set(false);
+    this.aiEditUndo.set({ path: result.path, previousContent: result.previousContent });
+    this.viewingAiPrevious.set(false);
+    this.loadDocument();
+  }
+
+  /** Read-only preview of the version before the AI edit — nothing is written. */
+  onAiPreviewPrevious(previousContent: string): void {
+    this.translationLang.set(null);
+    // Strip a leading H1 matching the title, mirroring loadDocument's read render.
+    let content = previousContent;
+    const h1Match = content.match(/^#\s+(.+)\n*/);
+    if (h1Match && h1Match[1].trim() === this.documentTitle.trim()) {
+      content = content.substring(h1Match[0].length);
+    }
+    this.viewingAiPrevious.set(true);
+    this.renderReadView(content);
+  }
+
+  /** Leave the previous-version preview and re-render the current document. */
+  onAiPreviewCurrent(): void {
+    this.viewingAiPrevious.set(false);
+    this.renderReadView(this.markdownContent());
+  }
+
+  onAiReverted(): void {
+    this.aiEditUndo.set(null);
+    this.viewingAiPrevious.set(false);
+    this.loadDocument();
+  }
+
   private escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1641,6 +1736,9 @@ export class EditorComponent implements OnInit, OnDestroy {
         // the previous document's scroll offset (the container is reused).
         if (pathChanged) {
           setTimeout(() => this.scrollContainer?.nativeElement.scrollTo({ top: 0 }));
+          this.aiEditUndo.set(null);
+          this.showAiEditDialog.set(false);
+          this.viewingAiPrevious.set(false);
         }
         const ext = path.split('.').pop()?.toLowerCase() || '';
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {
@@ -1837,6 +1935,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   enterEditMode(): void {
     if (!this.canEdit()) return;
     this.translationLang.set(null);
+    // Editing always starts from the current version, never the AI-previous preview.
+    this.viewingAiPrevious.set(false);
     this.editMode.set(true);
     setTimeout(() => this.initTiptap(this.markdownContent()));
   }

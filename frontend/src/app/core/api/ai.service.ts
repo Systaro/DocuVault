@@ -33,6 +33,12 @@ export interface ChatResponse {
   sources: string[];
 }
 
+export interface AiEditResult {
+  path: string;
+  content: string;
+  previousContent: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AiService {
   constructor(private http: HttpClient) {}
@@ -71,6 +77,13 @@ export class AiService {
       context,
       type,
       cursorPosition
+    });
+  }
+
+  editDocument(spaceId: string, path: string, instruction: string): Observable<AiEditResult> {
+    return this.http.post<AiEditResult>(`/api/spaces/${spaceId}/documents/ai-edit`, {
+      path,
+      instruction
     });
   }
 

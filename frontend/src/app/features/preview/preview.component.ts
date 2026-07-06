@@ -11,12 +11,16 @@ import { AnnotationOverlayComponent } from '../../shared/components/annotation-o
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
-import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
+import { RenderMode, getRenderMode, getFileIcon, getExtension, isAiEditable } from '../../shared/utils/file-utils';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
+import { AiEditResult } from '../../core/api/ai.service';
+import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
+import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 
 @Component({
   selector: 'app-preview',
   standalone: true,
-  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent],
+  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent, AiEditDialogComponent, AiEditStepBackComponent],
   template: `
     <div class="preview-shell">
       <!-- Hover zone: reveals the auto-hidden topbar when the cursor nears the top -->
@@ -47,6 +51,11 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
           <button class="header-icon-btn header-action-end" (click)="showShareDialog.set(true)" title="Share">
             <span class="material-icons">share</span>
           </button>
+          @if (canAiEdit()) {
+            <button class="header-icon-btn" (click)="showAiEditDialog.set(true)" title="Edit via AI">
+              <span class="material-icons">auto_awesome</span>
+            </button>
+          }
         }
       </header>
 
@@ -82,6 +91,16 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
 
         <!-- Content area -->
         <main class="preview-content">
+          <app-ai-edit-step-back
+            [spaceId]="spaceId"
+            [undo]="aiEditUndo()"
+            [viewingPrevious]="viewingAiPrevious()"
+            [canPreview]="renderMode() === 'markdown'"
+            (showPrevious)="onAiPreviewPrevious($event)"
+            (showCurrent)="onAiPreviewCurrent()"
+            (dismissed)="aiEditUndo.set(null)"
+            (reverted)="onAiReverted()"
+          />
           @if (loading()) {
             <div class="loading-state">
               <svg class="animate-spin h-8 w-8" fill="none" viewBox="0 0 24 24">
@@ -183,6 +202,15 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
         [spaceId]="spaceId"
         [filePath]="currentPath()!"
         (close)="showShareDialog.set(false)"
+      />
+    }
+
+    @if (showAiEditDialog() && currentPath()) {
+      <app-ai-edit-dialog
+        [spaceId]="spaceId"
+        [filePath]="currentPath()"
+        (closed)="showAiEditDialog.set(false)"
+        (applied)="onAiEditApplied($event)"
       />
     }
 
@@ -446,6 +474,12 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
       min-width: 0;
     }
 
+    .preview-content app-ai-edit-step-back {
+      display: block;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
     .folder-welcome {
       display: flex;
       flex-direction: column;
@@ -565,6 +599,9 @@ export class PreviewComponent implements OnInit, OnDestroy {
 
   sidebarOpen = signal(false);
   showShareDialog = signal(false);
+  showAiEditDialog = signal(false);
+  aiEditUndo = signal<AiEditUndoState | null>(null);
+  viewingAiPrevious = signal(false);
   fileTree = signal<FileNode[]>([]);
   treeLoading = signal(true);
   expandedFolders = signal<Set<string>>(new Set());
@@ -580,6 +617,10 @@ export class PreviewComponent implements OnInit, OnDestroy {
     const path = this.currentPath();
     return path ? path.split('/').pop() || '' : '';
   });
+
+  canAiEdit = computed(() =>
+    this.caps.aiEnabled() && !!this.currentPath() && isAiEditable(this.currentPath())
+  );
 
   breadcrumbSegments = computed(() => {
     const space = this.space();
@@ -601,7 +642,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
     private markdownService: MarkdownRenderService,
     private annotationsService: AnnotationsService,
     private sanitizer: DomSanitizer,
-    private elementRef: ElementRef<HTMLElement>
+    private elementRef: ElementRef<HTMLElement>,
+    protected caps: CapabilitiesService
   ) {
     // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
     effect(() => {
@@ -675,6 +717,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
 
   navigateToFile(node: FileNode): void {
     if (node.isDirectory) return;
+    this.resetAiEditState();
     this.currentPath.set(node.path);
     this.loadFileContent(node.path);
     this.location.replaceState(`/preview/${this.spaceId}/${node.path}`);
@@ -746,11 +789,51 @@ export class PreviewComponent implements OnInit, OnDestroy {
       event,
       `/preview/${this.spaceId}/`,
       (filePath) => {
+        this.resetAiEditState();
         this.currentPath.set(filePath);
         this.expandTreeToPath(filePath);
         this.loadFileContent(filePath);
         this.location.replaceState(`/preview/${this.spaceId}/${filePath}`);
       }
     );
+  }
+
+  // ── Edit via AI ──
+
+  private resetAiEditState(): void {
+    this.showAiEditDialog.set(false);
+    this.aiEditUndo.set(null);
+    this.viewingAiPrevious.set(false);
+  }
+
+  onAiEditApplied(result: AiEditResult): void {
+    this.showAiEditDialog.set(false);
+    this.aiEditUndo.set({ path: result.path, previousContent: result.previousContent });
+    this.viewingAiPrevious.set(false);
+    this.loadFileContent(this.currentPath());
+  }
+
+  /** Read-only preview of the pre-AI-edit version — rendered locally, nothing is written. */
+  onAiPreviewPrevious(previousContent: string): void {
+    const path = this.currentPath();
+    const docDir = path.substring(0, path.lastIndexOf('/') + 1);
+    this.viewingAiPrevious.set(true);
+    this.renderedHtml.set(this.markdownService.render(
+      previousContent,
+      docDir,
+      `/api/spaces/${this.spaceId}/files`,
+      `/preview/${this.spaceId}`
+    ));
+  }
+
+  onAiPreviewCurrent(): void {
+    this.viewingAiPrevious.set(false);
+    this.loadFileContent(this.currentPath());
+  }
+
+  onAiReverted(): void {
+    this.aiEditUndo.set(null);
+    this.viewingAiPrevious.set(false);
+    this.loadFileContent(this.currentPath());
   }
 }

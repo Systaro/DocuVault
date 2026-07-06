@@ -5,6 +5,7 @@ import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.requireSpaceWritable
 import com.docuvault.service.git.FileNode
@@ -32,7 +33,8 @@ class DocumentController(
     private val userRepository: UserRepository,
     private val permissionService: PermissionService,
     private val gitService: GitService,
-    private val embeddingService: EmbeddingService
+    private val embeddingService: EmbeddingService,
+    private val writingAssistantService: WritingAssistantService
 ) {
     private fun extractDocumentPath(requestURI: String, spaceId: UUID): String? {
         val basePath = "/api/spaces/$spaceId/documents/"
@@ -282,18 +284,53 @@ class DocumentController(
         val documentPath = extractDocumentPath(servletRequest.requestURI, spaceId)
             ?: return ResponseEntity.badRequest().build()
 
-        // Write file to git
-        if (!gitService.writeFile(space, documentPath, request.content)) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        val saved = persistDocument(
+            space = space,
+            user = user,
+            documentPath = documentPath,
+            content = request.content,
+            title = request.title,
+            autoCommit = request.autoCommit == true,
+            commitMessage = request.commitMessage
+        ) ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
+        return ResponseEntity.ok(
+            DocumentContentDto(
+                id = saved.id,
+                path = saved.path,
+                title = saved.title,
+                content = request.content,
+                contentHash = saved.contentHash,
+                lastSyncedAt = saved.lastSyncedAt
+            )
+        )
+    }
+
+    /**
+     * Shared write path: writes the file into the space repo, upserts the Document
+     * row, refreshes embeddings and optionally commits+pushes (git-backed spaces only).
+     * Returns null when the file could not be written.
+     */
+    private fun persistDocument(
+        space: com.docuvault.domain.space.Space,
+        user: com.docuvault.domain.user.User,
+        documentPath: String,
+        content: String,
+        title: String?,
+        autoCommit: Boolean,
+        commitMessage: String?
+    ): Document? {
+        if (!gitService.writeFile(space, documentPath, content)) {
+            return null
         }
 
-        val contentHash = hashContent(request.content)
+        val contentHash = hashContent(content)
         val now = Instant.now()
 
-        var document = documentRepository.findBySpaceIdAndPath(spaceId, documentPath)
+        var document = documentRepository.findBySpaceIdAndPath(space.id!!, documentPath)
 
         if (document != null) {
-            document.title = request.title ?: extractTitle(request.content, documentPath)
+            document.title = title ?: extractTitle(content, documentPath)
             document.contentHash = contentHash
             document.lastSyncedAt = now
             document.updatedAt = now
@@ -301,7 +338,7 @@ class DocumentController(
             document = Document(
                 space = space,
                 path = documentPath,
-                title = request.title ?: extractTitle(request.content, documentPath),
+                title = title ?: extractTitle(content, documentPath),
                 contentHash = contentHash,
                 lastSyncedAt = now
             )
@@ -310,14 +347,14 @@ class DocumentController(
         val saved = documentRepository.save(document)
 
         // Re-generate embeddings
-        embeddingService.processDocument(saved.id!!, request.content)
+        embeddingService.processDocument(saved.id!!, content)
 
         // Commit and push if autoCommit is requested — skip for non-git-backed spaces
-        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
+        if (autoCommit && !space.gitlabUrl.isNullOrBlank()) {
             try {
                 gitService.commitAndPush(
                     space = space,
-                    message = request.commitMessage ?: "Update ${documentPath}",
+                    message = commitMessage ?: "Update $documentPath",
                     authorName = user.name,
                     authorEmail = user.email
                 )
@@ -327,14 +364,68 @@ class DocumentController(
             }
         }
 
+        return saved
+    }
+
+    @PostMapping("/ai-edit")
+    fun aiEditDocument(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: AiEditDocumentRequest
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        requireSpaceWritable(space)
+
+        val documentPath = request.path.trim().trimStart('/')
+        if (documentPath.isEmpty()) return ResponseEntity.badRequest().build()
+
+        val extension = documentPath.substringAfterLast('.', "").lowercase()
+        if (extension in AI_EDIT_BLOCKED_EXTENSIONS) {
+            return ResponseEntity.badRequest()
+                .body(mapOf("error" to "AI editing is not available for binary or image files."))
+        }
+
+        val previousContent = gitService.readFile(space, documentPath)
+            ?: return ResponseEntity.notFound().build()
+
+        // Binary-content safety net for extensions not in the blocklist
+        if (previousContent.contains('\u0000') || previousContent.contains('\uFFFD')) {
+            return ResponseEntity.badRequest()
+                .body(mapOf("error" to "AI editing is not available for binary files."))
+        }
+
+        val editedContent = writingAssistantService.editDocument(
+            fileName = documentPath.substringAfterLast('/'),
+            content = previousContent,
+            instruction = request.instruction
+        ) ?: return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(mapOf("error" to "AI edit failed. Check that an AI API key is configured."))
+
+        val commitMessage = "AI edit: ${request.instruction.replace('\n', ' ').take(72)}"
+        persistDocument(
+            space = space,
+            user = user,
+            documentPath = documentPath,
+            content = editedContent,
+            title = null,
+            autoCommit = true,
+            commitMessage = commitMessage
+        ) ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
         return ResponseEntity.ok(
-            DocumentContentDto(
-                id = saved.id,
-                path = saved.path,
-                title = saved.title,
-                content = request.content,
-                contentHash = contentHash,
-                lastSyncedAt = saved.lastSyncedAt
+            AiEditDocumentResponse(
+                path = documentPath,
+                content = editedContent,
+                previousContent = previousContent
             )
         )
     }
@@ -713,6 +804,37 @@ class DocumentController(
         return hash.joinToString("") { "%02x".format(it) }
     }
 }
+
+/**
+ * Extensions AI editing is never offered for. Mirrors AI_EDIT_BLOCKED_EXTENSIONS
+ * in frontend/src/app/shared/utils/file-utils.ts — keep the two in sync.
+ */
+val AI_EDIT_BLOCKED_EXTENSIONS = setOf(
+    // images
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "avif", "tif", "tiff", "psd",
+    // documents & archives
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pps", "odt", "rtf",
+    "zip", "7z", "rar", "gz", "gz2", "tgz", "tar", "iso", "dmg", "jar", "apk", "msi",
+    // media
+    "mp3", "mp4", "mpeg", "mkv", "mov", "avi", "webm", "flac", "ogg", "wav", "wma", "wmv",
+    "flv", "swf", "3gp", "asf", "divx", "aac",
+    // executables & fonts
+    "exe", "dll", "sys", "bat", "ttf", "otf", "woff", "woff2", "eot"
+)
+
+data class AiEditDocumentRequest(
+    @field:NotBlank(message = "Path is required")
+    val path: String,
+
+    @field:NotBlank(message = "Instruction is required")
+    val instruction: String
+)
+
+data class AiEditDocumentResponse(
+    val path: String,
+    val content: String,
+    val previousContent: String
+)
 
 data class CreateDocumentRequest(
     @field:NotBlank(message = "Path is required")
