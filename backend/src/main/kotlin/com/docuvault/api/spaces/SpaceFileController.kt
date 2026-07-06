@@ -6,17 +6,23 @@ import com.docuvault.service.PermissionService
 import com.docuvault.service.git.GitService
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.CacheControl
+import org.springframework.http.ContentDisposition
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import java.io.ByteArrayOutputStream
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.*
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @RestController
 @RequestMapping("/spaces/{spaceId}/files")
@@ -29,6 +35,7 @@ class SpaceFileController(
     @GetMapping("/**")
     fun getFile(
         @PathVariable spaceId: UUID,
+        @RequestParam(required = false) download: Boolean?,
         @AuthenticationPrincipal userDetails: UserDetails,
         request: HttpServletRequest
     ): ResponseEntity<ByteArray> {
@@ -58,6 +65,12 @@ class SpaceFileController(
             return ResponseEntity.badRequest().build()
         }
 
+        val wantsDownload = download == true
+
+        if (wantsDownload && Files.isDirectory(resolved)) {
+            return zipDirectory(resolved, repoPath.normalize())
+        }
+
         if (!Files.exists(resolved) || !Files.isRegularFile(resolved)) {
             return ResponseEntity.notFound().build()
         }
@@ -66,8 +79,8 @@ class SpaceFileController(
         val extension = filePath.substringAfterLast('.', "").lowercase()
         val isHtml = extension in listOf("html", "htm")
 
-        // For HTML files, inject the annotation bridge script
-        if (isHtml) {
+        // For HTML files, inject the annotation bridge script (not when downloading the raw file)
+        if (isHtml && !wantsDownload) {
             val html = Files.readString(resolved)
             val injected = injectAnnotationBridge(html, "/api/spaces/$spaceId/files/${filePath.substringBeforeLast('/')}/")
             return ResponseEntity.ok()
@@ -84,10 +97,47 @@ class SpaceFileController(
             CacheControl.noCache()
         }
 
-        return ResponseEntity.ok()
+        val response = ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
             .cacheControl(cachePolicy)
-            .body(bytes)
+        if (wantsDownload) {
+            response.header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment()
+                    .filename(resolved.fileName.toString(), StandardCharsets.UTF_8)
+                    .build()
+                    .toString()
+            )
+        }
+        return response.body(bytes)
+    }
+
+    private fun zipDirectory(dir: Path, repoPath: Path): ResponseEntity<ByteArray> {
+        val folderName = dir.fileName?.toString() ?: "folder"
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            Files.walk(dir).use { paths ->
+                paths.filter { Files.isRegularFile(it) }
+                    .filter { path -> repoPath.relativize(path).none { segment -> segment.toString() == ".git" } }
+                    .sorted()
+                    .forEach { file ->
+                        zip.putNextEntry(ZipEntry("$folderName/${dir.relativize(file).joinToString("/")}"))
+                        Files.copy(file, zip)
+                        zip.closeEntry()
+                    }
+            }
+        }
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("application/zip"))
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment()
+                    .filename("$folderName.zip", StandardCharsets.UTF_8)
+                    .build()
+                    .toString()
+            )
+            .cacheControl(CacheControl.noCache())
+            .body(output.toByteArray())
     }
 
     private fun injectAnnotationBridge(html: String, baseHref: String): String {

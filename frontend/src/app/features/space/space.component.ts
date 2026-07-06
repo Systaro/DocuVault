@@ -305,6 +305,10 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                         <span class="material-icons">share</span>
                         Share folder
                       </button>
+                      <button class="tree-dropdown-item" (click)="downloadFolder(node); openMenuPath.set(null)">
+                        <span class="material-icons">download</span>
+                        Download folder
+                      </button>
                     </div>
                   }
                 </div>
@@ -1738,6 +1742,15 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     const space = this.spaceSignal();
     if (!space) return;
     this.router.navigate(['/preview', space.id, filePath]);
+  }
+
+  downloadFolder(node: FileNode): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    const a = document.createElement('a');
+    a.href = `/api/spaces/${space.id}/files/${node.path}?download=true`;
+    a.download = `${node.name}.zip`;
+    a.click();
   }
 
   openShareDialog(filePath: string, isDirectory = false): void {

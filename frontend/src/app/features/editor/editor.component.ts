@@ -1603,7 +1603,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   downloadFile(): void {
     const space = this.space();
     if (!space || !this.documentPath) return;
-    const url = `/api/spaces/${space.id}/files/${this.documentPath}`;
+    const url = `/api/spaces/${space.id}/files/${this.documentPath}?download=true`;
     const filename = this.documentPath.split('/').pop() || 'document';
     const a = document.createElement('a');
     a.href = url;

@@ -168,7 +168,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
             <div class="download-state">
               <span class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ currentFileName() }}</h2>
-              <a [href]="rawUrl()" download class="btn btn-primary">
+              <a [href]="rawUrl() + '?download=true'" download class="btn btn-primary">
                 <span class="material-icons">download</span>
                 Download File
               </a>
