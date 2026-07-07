@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.*
 
@@ -49,10 +50,12 @@ class SpaceStateController(
         @PathVariable key: String,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<SpaceStateDto> {
-        if (!canRead(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        if (!canRead(userDetails, spaceId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this space")
+        }
 
         val state = spaceStateRepository.findBySpaceIdAndKey(spaceId, key)
-            ?: return ResponseEntity.notFound().build()
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "State key not found")
 
         return ResponseEntity.ok(state.toDto())
     }
@@ -65,10 +68,12 @@ class SpaceStateController(
         @Valid @RequestBody request: PutStateRequest,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<SpaceStateDto> {
-        if (!canWrite(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        if (!canWrite(userDetails, spaceId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this space")
+        }
 
         val space = spaceRepository.findById(spaceId).orElse(null)
-            ?: return ResponseEntity.notFound().build()
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Space not found")
 
         val existing = spaceStateRepository.findBySpaceIdAndKey(spaceId, key)
 
@@ -93,7 +98,9 @@ class SpaceStateController(
         @PathVariable key: String,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<Void> {
-        if (!canWrite(userDetails, spaceId)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        if (!canWrite(userDetails, spaceId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this space")
+        }
 
         spaceStateRepository.deleteBySpaceIdAndKey(spaceId, key)
         return ResponseEntity.noContent().build()
