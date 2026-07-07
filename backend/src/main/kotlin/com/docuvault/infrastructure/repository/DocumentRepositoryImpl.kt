@@ -31,15 +31,32 @@ class DocumentRepositoryImpl(
             """.trimIndent()
         }
 
+        // Relevance: where a term matches matters more than recency. A term in
+        // the title far outweighs one in the path, which outweighs a body-only
+        // hit; the whole query appearing verbatim in the title gets an extra
+        // boost so exact-title hits beat scattered per-term matches.
+        val termScores = terms.indices.joinToString(" + ") { i ->
+            """
+            (CASE WHEN LOWER(d.title) LIKE :term$i ESCAPE '\' THEN 100 ELSE 0 END)
+            + (CASE WHEN LOWER(d.path) LIKE :term$i ESCAPE '\' THEN 40 ELSE 0 END)
+            + (CASE WHEN EXISTS (SELECT 1 FROM DocumentEmbedding de
+                                 WHERE de.document = d
+                                 AND LOWER(de.content) LIKE :term$i ESCAPE '\') THEN 10 ELSE 0 END)
+            """.trimIndent()
+        }
+        val scoreExpr =
+            "(CASE WHEN LOWER(d.title) LIKE :phrase ESCAPE '\\' THEN 50 ELSE 0 END) + $termScores"
+
         val jpql = """
             SELECT d FROM Document d
             WHERE d.space.id IN :spaceIds
             AND $clauses
-            ORDER BY d.updatedAt DESC
+            ORDER BY $scoreExpr DESC, d.updatedAt DESC
         """.trimIndent()
 
         val typedQuery = entityManager.createQuery(jpql, Document::class.java)
         typedQuery.setParameter("spaceIds", spaceIds)
+        typedQuery.setParameter("phrase", "%${escapeLike(query.trim().lowercase())}%")
         terms.forEachIndexed { i, term ->
             typedQuery.setParameter("term$i", "%${escapeLike(term.lowercase())}%")
         }

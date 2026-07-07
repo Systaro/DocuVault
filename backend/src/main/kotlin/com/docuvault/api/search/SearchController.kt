@@ -46,8 +46,8 @@ class SearchController(
         // Literal substring match over title, path, and content (via the chunks
         // already indexed for embeddings). The query is split into whitespace
         // terms that are AND-ed, so multi-word searches match across fields.
-        // pg_trgm GIN index on de.content keeps this sub-50ms regardless of
-        // corpus size — see V014.
+        // Results are ordered by field-weighted relevance (title > path >
+        // content), not recency — see DocumentRepositoryImpl.searchByTerms.
         val documents = documentRepository.searchByTerms(spaceIds, q, limit)
 
         val results = documents.map { doc ->

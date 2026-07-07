@@ -12,6 +12,10 @@ interface DocumentRepositoryCustom {
      * "ava local" find a doc that has "ava" in the title and "local" in the
      * body — a plain LIKE '%ava local%' only matches the contiguous phrase and
      * returns nothing for almost every multi-word query.
+     *
+     * Results are ordered by field-weighted relevance (title matches outrank
+     * path matches outrank content-only matches, plus a verbatim-phrase-in-title
+     * bonus), with recency only as tiebreaker.
      */
     fun searchByTerms(spaceIds: List<UUID>, query: String, limit: Int): List<Document>
 }
