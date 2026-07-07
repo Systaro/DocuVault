@@ -114,9 +114,9 @@ interface BreadcrumbItem {
                     </a>
                   } @else {
                     <a [routerLink]="child.fullPath | spaceRoute" class="child-card repo-card">
-                      @if (child.logoUrl) {
+                      @if (child.logoUrl || inheritedLogo(); as logo) {
                         <div class="child-logo">
-                          <img [src]="child.logoUrl" [alt]="child.name" />
+                          <img [src]="logo" [alt]="child.name" />
                         </div>
                       } @else {
                         <div class="child-icon repo">
@@ -452,6 +452,9 @@ export class GroupComponent implements OnInit, OnChanges {
 
   group = signal<Space | null>(null);
   children = signal<Space[]>([]);
+  /** Logo shown on repo cards that have no logoUrl of their own — this
+   *  group's logo, or the nearest ancestor group's. */
+  inheritedLogo = signal<string | null>(null);
   breadcrumbs = signal<BreadcrumbItem[]>([]);
   loading = signal(false);
   showCreateModal = signal(false);
@@ -472,7 +475,25 @@ export class GroupComponent implements OnInit, OnChanges {
       this.group.set(this.space);
       this.buildBreadcrumbs(this.space);
       this.loadChildren(this.space.id);
+      this.inheritedLogo.set(this.space.logoUrl || null);
+      if (!this.space.logoUrl && this.space.parentId) {
+        this.resolveParentLogo(this.space.parentId);
+      }
     }
+  }
+
+  /** Walks up the group chain until a logo is found (spaces don't carry their parent's logoUrl). */
+  private resolveParentLogo(parentId: string): void {
+    this.spacesService.getSpace(parentId).subscribe({
+      next: parent => {
+        if (parent.logoUrl) {
+          this.inheritedLogo.set(parent.logoUrl);
+        } else if (parent.parentId) {
+          this.resolveParentLogo(parent.parentId);
+        }
+      },
+      error: () => {}
+    });
   }
 
   loadChildren(parentId: string): void {
