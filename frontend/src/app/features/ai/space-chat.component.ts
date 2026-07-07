@@ -876,6 +876,13 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
   ) {}
 
   ngOnInit(): void {
+    // Arriving from a document's AI bubble: seed the input so the chat is
+    // scoped to that document from the first message.
+    const aboutDoc = this.route.snapshot.queryParams['aboutDoc'];
+    if (aboutDoc && !this.messageInput) {
+      this.messageInput = `Regarding "${aboutDoc}": `;
+    }
+
     this.route.parent?.params.subscribe(params => {
       const parts: string[] = [];
       if (params['path1']) parts.push(params['path1']);

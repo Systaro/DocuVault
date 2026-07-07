@@ -36,6 +36,8 @@ import { AnnotationOverlayComponent } from '../../shared/components/annotation-o
 import { ToastService } from '../../shared/services/toast.service';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
+import { spaceRoute } from '../../shared/utils/route-utils';
+import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
@@ -599,6 +601,13 @@ import { marked } from 'marked';
           [filePath]="documentPath"
           (close)="showShareDialog.set(false)"
         />
+      }
+
+      <!-- Floating AI chat entry — same bubble as the dashboard, scoped to this document -->
+      @if (caps.aiChat() && space() && documentPath && !showAiEditDialog()) {
+        <button class="ai-fab" title="Chat with AI about this document" (click)="openAiChat()">
+          <span class="material-icons">auto_awesome</span>
+        </button>
       }
 
       @if (showDeleteConfirm()) {
@@ -1217,6 +1226,34 @@ import { marked } from 'marked';
         cursor: not-allowed;
       }
     }
+
+    .ai-fab {
+      position: fixed;
+      bottom: var(--spacing-xl);
+      right: var(--spacing-xl);
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border: none;
+      color: white;
+      cursor: pointer;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition);
+      z-index: 50;
+
+      .material-icons {
+        font-size: 24px;
+      }
+
+      &:hover {
+        transform: scale(1.1);
+        box-shadow: var(--shadow-xl);
+      }
+    }
   `]
 })
 export class EditorComponent implements OnInit, OnDestroy {
@@ -1334,14 +1371,21 @@ export class EditorComponent implements OnInit, OnDestroy {
   isDraggingImage = signal(false);
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
   // A freshly-created document that has never been saved is editable even in a
-  // git-backed space — only existing git-synced files are read-only.
+  // git-backed space.
   isNewDocument = signal(false);
-  isReadOnly = computed(() => this.isGitSpace() && !this.isNewDocument());
+  private isMarkdownDoc = computed(() => {
+    const ext = this.documentPathSignal().split('.').pop()?.toLowerCase() || '';
+    return ext === 'md' || ext === 'markdown';
+  });
+  // Markdown files are editable everywhere: saves go through a minimal-diff
+  // merge (mergeMarkdownEdits) so untouched blocks keep their original
+  // formatting and git diffs stay small. Other file types in git-backed
+  // spaces stay read-only — round-tripping them through TipTap would mangle them.
+  isReadOnly = computed(() => this.isGitSpace() && !this.isNewDocument() && !this.isMarkdownDoc());
   annotationPermission = signal<AnnotationPermission>('VIEW');
 
   // Read/edit split: documents open in rendered read mode; the user clicks Edit
-  // to switch to the TipTap editor. Git-synced files can't be edited at all
-  // (canEdit false), so they stay in read mode permanently.
+  // to switch to the TipTap editor.
   editMode = signal(false);
   canEdit = computed(() => !this.isReadOnly());
   // True only when the TipTap editor + toolbar should be shown.
@@ -1357,6 +1401,14 @@ export class EditorComponent implements OnInit, OnDestroy {
   // Raw (title-stripped) markdown for the current document — feeds both the
   // read-mode render and the TipTap editor when entering edit mode.
   private markdownContent = signal('');
+  // Leading "# Title" line (incl. trailing newlines) stripped on load; saves
+  // re-prepend it because the backend persists content verbatim.
+  private strippedH1: string | null = null;
+  // Minimal-diff save support: the markdown as loaded and the serializer's
+  // output for the untouched editor. mergeMarkdownEdits() diffs against these
+  // so unedited blocks keep their original formatting byte-for-byte.
+  private editSessionOriginal: string | null = null;
+  private editSessionBaseline: string | null = null;
 
   // Read render (markdown pipeline). Bypasses TipTap so Mermaid blocks render as SVG.
   readonlyHtml = signal<SafeHtml>('');
@@ -1674,6 +1726,16 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.showAiEditDialog.set(true);
   }
 
+  /** Opens the space AI chat pre-scoped to the current document. */
+  openAiChat(): void {
+    const space = this.space();
+    if (!space) return;
+    this.router.navigate(
+      spaceRoute(space.fullPath, 'chat'),
+      { queryParams: { aboutDoc: this.documentPath } }
+    );
+  }
+
   onAiEditApplied(result: AiEditResult): void {
     this.showAiEditDialog.set(false);
     this.aiEditUndo.set({ path: result.path, previousContent: result.previousContent });
@@ -1863,11 +1925,15 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.document.set(doc);
         this.isNewDocument.set(false);
         this.documentTitle = doc.title || '';
-        // Strip leading H1 if it matches the title to avoid duplicate heading
+        // Strip leading H1 if it matches the title to avoid duplicate heading.
+        // Remember the exact stripped text — saves must re-prepend it, since
+        // the backend writes content verbatim.
         let content = doc.content;
+        this.strippedH1 = null;
         const h1Match = content.match(/^#\s+(.+)\n*/);
         if (h1Match && h1Match[1].trim() === this.documentTitle.trim()) {
           content = content.substring(h1Match[0].length);
+          this.strippedH1 = h1Match[0];
         }
         this.loading.set(false);
         // Documents open in read mode; the user clicks Edit to switch.
@@ -1915,6 +1981,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   initializeNewDocument(): void {
     this.documentTitle = '';
     this.isNewDocument.set(true);
+    this.strippedH1 = null;
     this.loading.set(false);
     // A freshly-created document opens straight in edit mode — you made it to write.
     this.markdownContent.set('');
@@ -2129,6 +2196,11 @@ export class EditorComponent implements OnInit, OnDestroy {
         }
       }
     });
+
+    // Snapshot for the minimal-diff save: the loaded markdown and what the
+    // serializer emits for this document before any user edit.
+    this.editSessionOriginal = content;
+    this.editSessionBaseline = this.editorMarkdown();
   }
 
   /**
@@ -2142,7 +2214,9 @@ export class EditorComponent implements OnInit, OnDestroy {
     if (this.hasChanges()) {
       this.saveDocument(true);
     } else {
-      this.exitToReadView(this.editorMarkdown());
+      // Nothing changed — drop back to the loaded content, not the serializer
+      // round-trip, so the next edit session still diffs against the real file.
+      this.exitToReadView(this.markdownContent());
     }
   }
 
@@ -2160,11 +2234,40 @@ export class EditorComponent implements OnInit, OnDestroy {
     return this.turndownService.turndown(html);
   }
 
+  /**
+   * Serialized editor content ready to persist: the raw serializer output is
+   * merged against the load-time snapshot so unedited blocks keep their
+   * original formatting, then the stripped title H1 is re-prepended.
+   */
+  private serializeForSave(): { body: string; content: string; raw: string } {
+    const raw = this.editorMarkdown();
+    const body = this.editSessionOriginal !== null && this.editSessionBaseline !== null
+      ? mergeMarkdownEdits(this.editSessionOriginal, this.editSessionBaseline, raw)
+      : raw;
+    return { body, content: this.withTitleHeading(body), raw };
+  }
+
+  /** Re-attach the load-time "# Title" line, following a title rename. */
+  private withTitleHeading(body: string): string {
+    if (!this.strippedH1) return body;
+    const originalTitle = this.strippedH1.match(/^#\s+(.+)/)?.[1]?.trim();
+    const currentTitle = (this.documentTitle || '').trim();
+    if (!currentTitle || originalTitle === currentTitle) return this.strippedH1 + body;
+    const newlines = this.strippedH1.substring(this.strippedH1.indexOf('\n'));
+    return `# ${currentTitle}${newlines}${body}`;
+  }
+
+  /** After a successful save the persisted state becomes the new diff base. */
+  private rebaseEditSession(body: string, raw: string): void {
+    this.editSessionOriginal = body;
+    this.editSessionBaseline = raw;
+  }
+
   saveDocument(returnToRead = false): void {
     const space = this.space();
     if (!space || !this.editor || this.saving()) return;
 
-    const markdown = this.editorMarkdown();
+    const { body, content, raw } = this.serializeForSave();
 
     this.saving.set(true);
 
@@ -2176,7 +2279,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       // Update existing document
       this.documentsService.updateDocument(space.id, this.documentPath, {
         title: this.documentTitle,
-        content: markdown,
+        content,
         autoCommit: isGit,
         commitMessage: isGit ? `Update ${this.documentTitle || this.documentPath}` : undefined
       }).subscribe({
@@ -2185,7 +2288,8 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.saving.set(false);
           this.lastSaved.set(true);
           this.hasChanges.set(false);
-          if (returnToRead) this.exitToReadView(markdown);
+          this.rebaseEditSession(body, raw);
+          if (returnToRead) this.exitToReadView(body);
         },
         error: () => {
           this.saving.set(false);
@@ -2197,7 +2301,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       this.documentsService.createDocument(space.id, {
         path,
         title: this.documentTitle,
-        content: markdown,
+        content,
         autoCommit: isGit,
         commitMessage: isGit ? `Add ${this.documentTitle || path}` : undefined
       }).subscribe({
@@ -2207,7 +2311,8 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.saving.set(false);
           this.lastSaved.set(true);
           this.hasChanges.set(false);
-          if (returnToRead) this.exitToReadView(markdown);
+          this.rebaseEditSession(body, raw);
+          if (returnToRead) this.exitToReadView(body);
         },
         error: () => {
           this.saving.set(false);
@@ -2228,12 +2333,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     const user = this.authService.user();
     if (!space || !this.editor || !user) return;
 
-    let html = this.editor.getHTML();
-    html = html.replace(
-      /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
-      '$1$2$3'
-    );
-    const markdown = this.turndownService.turndown(html);
+    const { body, content, raw } = this.serializeForSave();
 
     this.saving.set(true);
 
@@ -2241,7 +2341,7 @@ export class EditorComponent implements OnInit, OnDestroy {
 
     this.documentsService.updateDocument(space.id, path, {
       title: this.documentTitle,
-      content: markdown,
+      content,
       autoCommit: true,
       commitMessage: `Update ${this.documentTitle || path}`
     }).subscribe({
@@ -2251,6 +2351,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.saving.set(false);
         this.lastSaved.set(true);
         this.hasChanges.set(false);
+        this.rebaseEditSession(body, raw);
       },
       error: () => {
         this.saving.set(false);
