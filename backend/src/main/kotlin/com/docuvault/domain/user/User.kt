@@ -35,6 +35,9 @@ data class User(
     @Column(name = "notification_token", unique = true)
     var notificationToken: String? = null,
 
+    @Column(name = "notifications_seen_at")
+    var notificationsSeenAt: Instant? = null,
+
     @Column(nullable = false)
     var enabled: Boolean = true,
 
