@@ -2,11 +2,12 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SettingsService, AppSettings, TestResult } from '../../core/api/settings.service';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -141,22 +142,11 @@ import { SettingsService, AppSettings, TestResult } from '../../core/api/setting
 
             <div class="form-group">
               <label for="chatModel">Chat Model</label>
-              <select
+              <app-searchable-select
                 id="chatModel"
+                [options]="chatModelOptions"
                 [(ngModel)]="chatModel"
-                class="form-select"
-              >
-                <option value="gpt-5.1">GPT-5.1 (Recommended)</option>
-                <option value="gpt-5">GPT-5</option>
-                <option value="gpt-5-nano">GPT-5 Nano (Budget)</option>
-                <option value="gpt-4.1">GPT-4.1</option>
-                <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
-                <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-4o-mini">GPT-4o Mini</option>
-                <option value="o4-mini">o4-mini (Reasoning)</option>
-                <option value="o3">o3 (Reasoning)</option>
-              </select>
+              />
               <span class="source-badge" [class.database]="settings()?.['openai.chat-model']?.source === 'database'">
                 {{ settings()?.['openai.chat-model']?.source === 'database' ? 'From database' : 'From environment' }}
               </span>
@@ -164,15 +154,12 @@ import { SettingsService, AppSettings, TestResult } from '../../core/api/setting
 
             <div class="form-group">
               <label for="embeddingModel">Embedding Model</label>
-              <select
+              <app-searchable-select
                 id="embeddingModel"
+                [options]="embeddingModelOptions"
                 [(ngModel)]="embeddingModel"
-                class="form-select"
-              >
-                <option value="text-embedding-3-small">text-embedding-3-small (Recommended)</option>
-                <option value="text-embedding-3-large">text-embedding-3-large (Higher quality)</option>
-                <option value="text-embedding-ada-002">text-embedding-ada-002 (Legacy)</option>
-              </select>
+                [searchable]="false"
+              />
               <span class="source-badge" [class.database]="settings()?.['openai.embedding-model']?.source === 'database'">
                 {{ settings()?.['openai.embedding-model']?.source === 'database' ? 'From database' : 'From environment' }}
               </span>
@@ -487,7 +474,7 @@ import { SettingsService, AppSettings, TestResult } from '../../core/api/setting
       }
     }
 
-    .form-input, .form-select {
+    .form-input {
       width: 100%;
       padding: 10px 12px;
       border: 1px solid var(--border);
@@ -506,10 +493,6 @@ import { SettingsService, AppSettings, TestResult } from '../../core/api/setting
       &::placeholder {
         color: var(--text-muted);
       }
-    }
-
-    .form-select {
-      cursor: pointer;
     }
 
     .source-badge {
@@ -692,6 +675,25 @@ export class SettingsComponent implements OnInit {
   openaiApiKey = '';
   chatModel = 'gpt-4o';
   embeddingModel = 'text-embedding-3-small';
+
+  readonly chatModelOptions: SelectOption[] = [
+    { value: 'gpt-5.1', label: 'GPT-5.1 (Recommended)' },
+    { value: 'gpt-5', label: 'GPT-5' },
+    { value: 'gpt-5-nano', label: 'GPT-5 Nano (Budget)' },
+    { value: 'gpt-4.1', label: 'GPT-4.1' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'o4-mini', label: 'o4-mini (Reasoning)' },
+    { value: 'o3', label: 'o3 (Reasoning)' }
+  ];
+
+  readonly embeddingModelOptions: SelectOption[] = [
+    { value: 'text-embedding-3-small', label: 'text-embedding-3-small (Recommended)' },
+    { value: 'text-embedding-3-large', label: 'text-embedding-3-large (Higher quality)' },
+    { value: 'text-embedding-ada-002', label: 'text-embedding-ada-002 (Legacy)' }
+  ];
   testingOpenai = signal(false);
   savingOpenai = signal(false);
   openaiTestResult = signal<TestResult | null>(null);

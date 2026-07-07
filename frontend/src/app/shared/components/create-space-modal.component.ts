@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnInit, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -6,11 +6,12 @@ import { LogoUploadComponent } from './logo-upload.component';
 import { SpacesService, Space, CreateSpaceRequest, SpaceType } from '../../core/api/spaces.service';
 import { GitService, GitLabProject } from '../../core/api/git.service';
 import { ToastService } from '../services/toast.service';
+import { SearchableSelectComponent, SelectOption } from './searchable-select.component';
 
 @Component({
   selector: 'app-create-space-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, LogoUploadComponent],
+  imports: [CommonModule, FormsModule, LogoUploadComponent, SearchableSelectComponent],
   template: `
     <div class="modal-overlay" (click)="close.emit()">
       <div class="modal" (click)="$event.stopPropagation()">
@@ -94,19 +95,13 @@ import { ToastService } from '../services/toast.service';
             @if (gitConnected()) {
               <div class="form-group">
                 <label class="form-label">GitLab Project</label>
-                <div class="input-icon">
-                  <span class="material-icons">cloud_sync</span>
-                  <select
-                    [(ngModel)]="newSpace.gitlabProjectId"
-                    name="gitlabProjectId"
-                    class="input"
-                  >
-                    <option [ngValue]="undefined">-- Select a project --</option>
-                    @for (project of gitlabProjects(); track project.id) {
-                      <option [ngValue]="project.id">{{ project.path }}</option>
-                    }
-                  </select>
-                </div>
+                <app-searchable-select
+                  [options]="gitlabProjectOptions()"
+                  [(ngModel)]="newSpace.gitlabProjectId"
+                  name="gitlabProjectId"
+                  placeholder="-- Select a project --"
+                  searchPlaceholder="Search projects..."
+                />
               </div>
             } @else {
               <div class="form-group">
@@ -272,6 +267,10 @@ export class CreateSpaceModalComponent implements OnInit {
   gitConnected = signal(false);
   gitlabProjects = signal<GitLabProject[]>([]);
   spaceMode = signal<'standalone' | 'git'>('standalone');
+
+  gitlabProjectOptions = computed<SelectOption[]>(() =>
+    this.gitlabProjects().map(project => ({ value: project.id, label: project.path }))
+  );
 
   pendingLogoFile: File | null = null;
   slugManuallyEdited = false;

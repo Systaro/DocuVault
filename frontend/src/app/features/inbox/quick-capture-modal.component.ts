@@ -1,14 +1,15 @@
-import { Component, OnInit, Output, EventEmitter, signal, HostListener } from '@angular/core';
+import { Component, OnInit, Output, EventEmitter, signal, computed, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { InboxService } from '../../core/api/inbox.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 @Component({
   selector: 'app-quick-capture-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="capture-overlay" (click)="closeIfOutside($event)">
       <div class="capture-modal" #modal>
@@ -27,17 +28,13 @@ import { ToastService } from '../../shared/services/toast.service';
         <!-- Space selector -->
         <div class="space-selector">
           <label>Space</label>
-          <div class="space-select-wrapper">
-            <select class="space-select" [(ngModel)]="selectedSpaceId" [disabled]="spaces().length === 0">
-              @if (spaces().length === 0) {
-                <option value="">Loading spaces...</option>
-              }
-              @for (space of spaces(); track space.id) {
-                <option [value]="space.id">{{ space.name }}</option>
-              }
-            </select>
-            <span class="material-icons select-arrow">unfold_more</span>
-          </div>
+          <app-searchable-select
+            [options]="spaceOptions()"
+            [placeholder]="spaces().length === 0 ? 'Loading spaces...' : 'Select a space'"
+            searchPlaceholder="Search spaces..."
+            [(ngModel)]="selectedSpaceId"
+            (ngModelChange)="onSpaceChange()"
+          />
         </div>
 
         <!-- Mini toolbar -->
@@ -178,41 +175,9 @@ import { ToastService } from '../../shared/services/toast.service';
         color: var(--text-muted);
         flex-shrink: 0;
       }
-    }
 
-    .space-select-wrapper {
-      flex: 1;
-      position: relative;
-      display: flex;
-      align-items: center;
-
-      .select-arrow {
-        position: absolute;
-        right: 8px;
-        font-size: 16px;
-        color: var(--text-muted);
-        pointer-events: none;
-      }
-    }
-
-    .space-select {
-      width: 100%;
-      appearance: none;
-      background: var(--surface-raised, var(--background));
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md, 6px);
-      padding: 7px 32px 7px 12px;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-primary);
-      cursor: pointer;
-      font-family: inherit;
-      transition: border-color var(--transition);
-
-      &:focus {
-        outline: none;
-        border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(111, 179, 184, 0.12);
+      app-searchable-select {
+        flex: 1;
       }
     }
 
@@ -302,11 +267,30 @@ export class QuickCaptureModalComponent implements OnInit {
   @Output() noteCreated = new EventEmitter<void>();
 
   spaces = signal<Space[]>([]);
+  private allSpaces = signal<Space[]>([]);
   selectedSpaceId = '';
   content = '';
   submitting = signal(false);
 
   canSubmit = signal(false);
+
+  /** Repositories grouped under their parent group's name chain for the picker. */
+  spaceOptions = computed<SelectOption[]>(() => {
+    const byId = new Map(this.allSpaces().map(s => [s.id, s]));
+    return this.spaces().map(space => {
+      const groupNames: string[] = [];
+      let parent = space.parentId ? byId.get(space.parentId) : undefined;
+      while (parent) {
+        groupNames.unshift(parent.name);
+        parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+      }
+      return {
+        value: space.id,
+        label: space.name,
+        group: groupNames.join(' / ') || undefined
+      };
+    });
+  });
 
   constructor(
     private spacesService: SpacesService,
@@ -317,6 +301,7 @@ export class QuickCaptureModalComponent implements OnInit {
   ngOnInit(): void {
     this.spacesService.getSpaces().subscribe({
       next: (spaces) => {
+        this.allSpaces.set(spaces);
         // Only show repositories (not groups) that can have inboxes
         const repos = spaces.filter(s => s.type === 'REPOSITORY');
         this.spaces.set(repos);
@@ -327,10 +312,20 @@ export class QuickCaptureModalComponent implements OnInit {
     });
   }
 
+  onSpaceChange(): void {
+    this.canSubmit.set(this.stripHtml(this.content).trim().length > 0 && !!this.selectedSpaceId);
+  }
+
   onInput(event: Event): void {
     const el = event.target as HTMLElement;
     this.content = el.innerHTML;
     this.canSubmit.set(el.innerText.trim().length > 0 && !!this.selectedSpaceId);
+  }
+
+  private stripHtml(html: string): string {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.innerText;
   }
 
   onKeydown(event: KeyboardEvent): void {

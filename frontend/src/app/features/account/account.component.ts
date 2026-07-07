@@ -6,11 +6,12 @@ import { ApiTokensService, ApiToken } from '../../core/api/api-tokens.service';
 import { UsersService } from '../../core/api/users.service';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { NotificationSettingsComponent } from './notification-settings.component';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 @Component({
   selector: 'app-account',
   standalone: true,
-  imports: [CommonModule, FormsModule, LayoutComponent, NotificationSettingsComponent],
+  imports: [CommonModule, FormsModule, LayoutComponent, NotificationSettingsComponent, SearchableSelectComponent],
   template: `
     <app-layout>
       <div class="account-page">
@@ -152,12 +153,12 @@ import { NotificationSettingsComponent } from './notification-settings.component
                   class="form-input"
                   [disabled]="creating()"
                 />
-                <select [(ngModel)]="newTokenExpiry" class="form-select">
-                  <option [ngValue]="30">30 days</option>
-                  <option [ngValue]="90">90 days</option>
-                  <option [ngValue]="365">1 year</option>
-                  <option [ngValue]="null">No expiry</option>
-                </select>
+                <app-searchable-select
+                  class="expiry-select"
+                  [options]="tokenExpiryOptions"
+                  [(ngModel)]="newTokenExpiry"
+                  [searchable]="false"
+                />
                 <button
                   class="btn btn-primary"
                   (click)="createToken()"
@@ -492,15 +493,8 @@ import { NotificationSettingsComponent } from './notification-settings.component
       }
     }
 
-    .form-select {
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      font-size: 14px;
-      background: var(--background);
-      color: var(--text-primary);
-      outline: none;
-      cursor: pointer;
+    app-searchable-select.expiry-select {
+      flex: 0 0 140px;
     }
 
     .form-error {
@@ -843,8 +837,12 @@ import { NotificationSettingsComponent } from './notification-settings.component
         flex-direction: column;
       }
 
-      .form-input, .form-select {
+      .form-input {
         width: 100%;
+      }
+
+      .expiry-select {
+        flex: 1 1 auto;
       }
 
       .token-table {
@@ -877,6 +875,13 @@ export class AccountComponent implements OnInit {
 
   newTokenName = '';
   newTokenExpiry: number | null = 90;
+
+  readonly tokenExpiryOptions: SelectOption[] = [
+    { value: 30, label: '30 days' },
+    { value: 90, label: '90 days' },
+    { value: 365, label: '1 year' },
+    { value: null, label: 'No expiry' }
+  ];
 
   mcpConfig: string;
 

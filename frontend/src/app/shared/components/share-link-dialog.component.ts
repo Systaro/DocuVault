@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { ToastService } from '../services/toast.service';
+import { SearchableSelectComponent, SelectOption } from './searchable-select.component';
 
 @Component({
   selector: 'app-share-link-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="modal-overlay" (click)="close.emit()">
       <div class="share-dialog" (click)="$event.stopPropagation()">
@@ -41,12 +42,12 @@ import { ToastService } from '../services/toast.service';
           <div class="create-section">
             <div class="section-label">Generate Public Link</div>
             <div class="create-row">
-              <select class="expiry-select" [(ngModel)]="selectedExpiry">
-                <option [ngValue]="null">Never expires</option>
-                <option [ngValue]="7">7 days</option>
-                <option [ngValue]="30">30 days</option>
-                <option [ngValue]="90">90 days</option>
-              </select>
+              <app-searchable-select
+                class="expiry-select"
+                [options]="expiryOptions"
+                [(ngModel)]="selectedExpiry"
+                [searchable]="false"
+              />
               <button
                 class="btn btn-primary btn-sm"
                 [disabled]="creating() || (usePassword && !sharePassword)"
@@ -276,14 +277,7 @@ import { ToastService } from '../services/toast.service';
       align-items: center;
     }
 
-    .expiry-select {
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      background: var(--surface);
-      color: var(--text-primary);
-      cursor: pointer;
+    app-searchable-select.expiry-select {
       flex: 1;
     }
 
@@ -551,6 +545,13 @@ export class ShareLinkDialogComponent implements OnInit {
   loading = signal(false);
   creating = signal(false);
   selectedExpiry: number | null = null;
+
+  readonly expiryOptions: SelectOption[] = [
+    { value: null, label: 'Never expires' },
+    { value: 7, label: '7 days' },
+    { value: 30, label: '30 days' },
+    { value: 90, label: '90 days' }
+  ];
   usePassword = false;
   sharePassword = '';
   shareAsFolder = false;

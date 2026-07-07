@@ -6,11 +6,12 @@ import { forkJoin } from 'rxjs';
 import { UsersService, Invitation, UserPermission } from '../../core/api/users.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { AuthService, User } from '../../core/auth/auth.service';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 @Component({
   selector: 'app-users',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="users-management">
       <div class="management-header">
@@ -247,14 +248,12 @@ import { AuthService, User } from '../../core/auth/auth.service';
 
                 <div class="form-group">
                   <label class="form-label">Role</label>
-                  <div class="input-icon">
-                    <span class="material-icons">badge</span>
-                    <select [(ngModel)]="inviteRole" name="role" class="input">
-                      <option value="VIEWER">Viewer - Can view documents</option>
-                      <option value="EDITOR">Editor - Can edit documents</option>
-                      <option value="ORG_ADMIN">Org Admin - Can manage spaces</option>
-                    </select>
-                  </div>
+                  <app-searchable-select
+                    [options]="inviteRoleOptions"
+                    [(ngModel)]="inviteRole"
+                    name="role"
+                    [searchable]="false"
+                  />
                 </div>
 
                 <div class="modal-footer">
@@ -312,15 +311,11 @@ import { AuthService, User } from '../../core/auth/auth.service';
                   </div>
                   <div class="form-group">
                     <label class="form-label">Role</label>
-                    <div class="input-icon">
-                      <span class="material-icons">badge</span>
-                      <select [(ngModel)]="editForm.role" class="input">
-                        <option value="VIEWER">Viewer</option>
-                        <option value="EDITOR">Editor</option>
-                        <option value="ORG_ADMIN">Org Admin</option>
-                        <option value="SUPER_ADMIN">Super Admin</option>
-                      </select>
-                    </div>
+                    <app-searchable-select
+                      [options]="editRoleOptions"
+                      [(ngModel)]="editForm.role"
+                      [searchable]="false"
+                    />
                   </div>
                 </div>
               </div>
@@ -362,16 +357,13 @@ import { AuthService, User } from '../../core/auth/auth.service';
                               <button type="button" class="btn-bulk btn-bulk-clear" (click)="setAllChildren(space, '')">Clear</button>
                             </div>
                           } @else {
-                            <select
+                            <app-searchable-select
+                              class="permission-select"
+                              [options]="permissionLevelOptions"
                               [ngModel]="getSpacePermission(space.id)"
                               (ngModelChange)="setSpacePermission(space.id, $event)"
-                              class="permission-select"
-                            >
-                              <option value="">No access</option>
-                              <option value="VIEW">View</option>
-                              <option value="EDIT">Edit</option>
-                              <option value="ADMIN">Admin</option>
-                            </select>
+                              [searchable]="false"
+                            />
                           }
                         </div>
                       </div>
@@ -953,20 +945,8 @@ import { AuthService, User } from '../../core/auth/auth.service';
       margin-left: var(--spacing-md);
     }
 
-    .permission-select {
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface);
-      color: var(--text-primary);
-      font-size: 13px;
-      cursor: pointer;
-      min-width: 100px;
-
-      &:focus {
-        outline: none;
-        border-color: var(--primary);
-      }
+    app-searchable-select.permission-select {
+      width: 140px;
     }
 
     .is-group {
@@ -1059,6 +1039,26 @@ export class UsersComponent implements OnInit {
 
   inviteEmail = '';
   inviteRole = 'VIEWER';
+
+  readonly inviteRoleOptions: SelectOption[] = [
+    { value: 'VIEWER', label: 'Viewer - Can view documents' },
+    { value: 'EDITOR', label: 'Editor - Can edit documents' },
+    { value: 'ORG_ADMIN', label: 'Org Admin - Can manage spaces' }
+  ];
+
+  readonly editRoleOptions: SelectOption[] = [
+    { value: 'VIEWER', label: 'Viewer' },
+    { value: 'EDITOR', label: 'Editor' },
+    { value: 'ORG_ADMIN', label: 'Org Admin' },
+    { value: 'SUPER_ADMIN', label: 'Super Admin' }
+  ];
+
+  readonly permissionLevelOptions: SelectOption[] = [
+    { value: '', label: 'No access' },
+    { value: 'VIEW', label: 'View' },
+    { value: 'EDIT', label: 'Edit' },
+    { value: 'ADMIN', label: 'Admin' }
+  ];
 
   editForm = {
     name: '',

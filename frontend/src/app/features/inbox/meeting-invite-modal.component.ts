@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { MeetingService, MeetingInvite, MeetingPlatform, meetingPhaseLabel } from '../../core/api/meeting.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 /**
  * Creates and manages meeting transcription invites for a space. Each invite
@@ -13,7 +14,7 @@ import { ToastService } from '../../shared/services/toast.service';
 @Component({
   selector: 'app-meeting-invite-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="modal-overlay" (click)="close.emit()">
       <div class="modal-box" (click)="$event.stopPropagation()">
@@ -63,15 +64,13 @@ import { ToastService } from '../../shared/services/toast.service';
             placeholder="Meeting-Bezeichnung, z. B. Sprint Planning"
             (keyup.enter)="create()"
           />
-          <select
-            class="input lang-select"
+          <app-searchable-select
+            class="lang-select"
+            [options]="languageOptions"
             [(ngModel)]="languageInput"
+            [searchable]="false"
             title="Gesprochene Sprache des Meetings — fixiert die Transkription und die Sprache des Protokolls."
-          >
-            @for (lang of languages; track lang.code) {
-              <option [value]="lang.code">{{ lang.label }}</option>
-            }
-          </select>
+          />
           <button class="btn btn-primary" [disabled]="!canCreate()" (click)="create()">
             <span class="material-icons">add</span>
             @if (platform() === 'TEAMS') {
@@ -229,7 +228,7 @@ import { ToastService } from '../../shared/services/toast.service';
     }
     .create-row { display: flex; gap: 8px; }
     .create-row .input { flex: 1; }
-    .create-row .lang-select { flex: 0 0 auto; width: auto; min-width: 116px; }
+    .create-row app-searchable-select.lang-select { flex: 0 0 auto; width: 150px; }
     .url-input { width: 100%; }
 
     .platform-toggle { display: flex; gap: 6px; }
@@ -347,6 +346,8 @@ export class MeetingInviteModalComponent implements OnInit, OnDestroy {
     { code: 'es', label: 'Español' },
     { code: 'it', label: 'Italiano' },
   ];
+
+  readonly languageOptions: SelectOption[] = this.languages.map(l => ({ value: l.code, label: l.label }));
 
   /** Guest name the Teams bot joins under — matches TEAMS_BOT_NAME on the bot
    *  (default in meeting-bot config.ts) so the lobby-admit hint names it right. */

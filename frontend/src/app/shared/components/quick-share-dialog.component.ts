@@ -7,11 +7,12 @@ import { SpacesService, SpacePermission } from '../../core/api/spaces.service';
 import { UsersService, UserSearchResult } from '../../core/api/users.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { ToastService } from '../services/toast.service';
+import { SearchableSelectComponent, SelectOption } from './searchable-select.component';
 
 @Component({
   selector: 'app-quick-share-dialog',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent],
   template: `
     <div class="modal-overlay" (click)="close.emit()">
       <div class="share-dialog" (click)="$event.stopPropagation()">
@@ -56,11 +57,12 @@ import { ToastService } from '../services/toast.service';
                         <div class="user-name">{{ user.name }}</div>
                         <div class="user-email">{{ user.email }}</div>
                       </div>
-                      <select class="permission-select" [(ngModel)]="addPermissionLevel">
-                        <option value="READ">Viewer</option>
-                        <option value="WRITE">Editor</option>
-                        <option value="ADMIN">Admin</option>
-                      </select>
+                      <app-searchable-select
+                        class="permission-select"
+                        [options]="permissionLevelOptions"
+                        [(ngModel)]="addPermissionLevel"
+                        [searchable]="false"
+                      />
                       <button class="btn btn-sm btn-primary" (click)="addUser(user)">
                         <span class="material-icons">person_add</span>
                       </button>
@@ -133,15 +135,13 @@ import { ToastService } from '../services/toast.service';
                     <div class="user-name">{{ perm.userName }}</div>
                     <div class="user-email">{{ perm.userEmail }}</div>
                   </div>
-                  <select
+                  <app-searchable-select
                     class="permission-select"
+                    [options]="permissionLevelOptions"
                     [ngModel]="perm.permissionLevel"
                     (ngModelChange)="updatePermission(perm.userId, $event)"
-                  >
-                    <option value="READ">Viewer</option>
-                    <option value="WRITE">Editor</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
+                    [searchable]="false"
+                  />
                   <button class="icon-btn remove-btn" (click)="removeMember(perm.userId)" title="Remove access">
                     <span class="material-icons">close</span>
                   </button>
@@ -382,15 +382,9 @@ import { ToastService } from '../services/toast.service';
       text-overflow: ellipsis;
     }
 
-    .permission-select {
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      background: var(--surface);
-      color: var(--text-primary);
-      cursor: pointer;
+    app-searchable-select.permission-select {
       flex-shrink: 0;
+      width: 110px;
     }
 
     .remove-btn {
@@ -434,6 +428,12 @@ export class QuickShareDialogComponent implements OnInit, OnDestroy {
   showResults = signal(false);
   addPermissionLevel = 'READ';
   inviteEmail = '';
+
+  readonly permissionLevelOptions: SelectOption[] = [
+    { value: 'READ', label: 'Viewer' },
+    { value: 'WRITE', label: 'Editor' },
+    { value: 'ADMIN', label: 'Admin' }
+  ];
 
   private search$ = new Subject<string>();
   private subscription = new Subscription();
