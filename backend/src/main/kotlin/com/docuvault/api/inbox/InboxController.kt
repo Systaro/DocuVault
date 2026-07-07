@@ -103,6 +103,7 @@ class InboxController(
     fun generateSuggestion(
         @PathVariable spaceId: UUID,
         @PathVariable noteId: UUID,
+        @RequestBody(required = false) request: SuggestRequest?,
         @AuthenticationPrincipal userDetails: UserDetails
     ): ResponseEntity<InboxNoteDto> {
         val user = userRepository.findByEmail(userDetails.username)
@@ -115,7 +116,7 @@ class InboxController(
         val note = inboxService.getNote(noteId) ?: return ResponseEntity.notFound().build()
         if (note.space.id != spaceId) return ResponseEntity.notFound().build()
 
-        val updated = inboxService.generateSuggestion(noteId)
+        val updated = inboxService.generateSuggestion(noteId, request?.hint)
         return ResponseEntity.ok(updated.toDto())
     }
 
@@ -263,6 +264,10 @@ class InboxController(
 
 data class CreateNoteRequest(
     @field:NotBlank val content: String
+)
+
+data class SuggestRequest(
+    val hint: String? = null
 )
 
 data class FileNoteRequest(

@@ -8,6 +8,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { QuickShareDialogComponent } from '../../shared/components/quick-share-dialog.component';
+import { InboxService, SpaceUnsortedCount } from '../../core/api/inbox.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
@@ -162,6 +163,12 @@ interface BreadcrumbItem {
                         <span class="material-icons">folder</span>
                         Group
                       </div>
+                      @if (inboxCount(space) > 0) {
+                        <div class="inbox-count-badge" title="Unsorted inbox notes">
+                          <span class="material-icons">move_to_inbox</span>
+                          {{ inboxCount(space) }}
+                        </div>
+                      }
                     </div>
                   </div>
                 } @else {
@@ -259,6 +266,12 @@ interface BreadcrumbItem {
                           Sync disabled
                         }
                       </div>
+                      @if (inboxCount(space) > 0) {
+                        <div class="inbox-count-badge" title="Unsorted inbox notes">
+                          <span class="material-icons">move_to_inbox</span>
+                          {{ inboxCount(space) }}
+                        </div>
+                      }
                     </div>
                   </a>
                 }
@@ -530,6 +543,20 @@ interface BreadcrumbItem {
       position: absolute;
       top: var(--spacing-md);
       right: var(--spacing-md);
+    }
+
+    .inbox-count-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary-dark);
+      background: rgba(111, 179, 184, 0.15);
+      border-radius: var(--radius-sm);
+
+      .material-icons { font-size: 14px; }
     }
 
     .dropdown-menu {
@@ -1069,9 +1096,13 @@ export class DashboardComponent implements OnInit {
   breadcrumbs = signal<BreadcrumbItem[]>([]);
   createType = signal<SpaceType>('GROUP');
 
+  /** Unsorted inbox notes per space full path — group cards sum their descendants. */
+  unsortedCounts = signal<SpaceUnsortedCount[]>([]);
+
   constructor(
     private spacesService: SpacesService,
     private toastService: ToastService,
+    private inboxService: InboxService,
     private router: Router,
     public authService: AuthService,
     protected caps: CapabilitiesService
@@ -1084,6 +1115,17 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadSpaces();
+    this.inboxService.getUnsortedCounts().subscribe({
+      next: (counts) => this.unsortedCounts.set(counts),
+      error: () => this.unsortedCounts.set([])
+    });
+  }
+
+  /** Unsorted notes in this space, including everything below it for groups. */
+  inboxCount(space: Space): number {
+    return this.unsortedCounts()
+      .filter(c => c.spaceFullPath === space.fullPath || c.spaceFullPath.startsWith(space.fullPath + '/'))
+      .reduce((sum, c) => sum + c.count, 0);
   }
 
   loadSpaces(): void {

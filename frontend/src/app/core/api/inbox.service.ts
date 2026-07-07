@@ -52,6 +52,12 @@ export interface CreateNoteRequest {
   content: string;
 }
 
+export interface SpaceUnsortedCount {
+  spaceId: string;
+  spaceFullPath: string;
+  count: number;
+}
+
 export interface FileNoteRequest {
   documentPath: string;
   mergedContent: string;
@@ -101,8 +107,16 @@ export class InboxService {
     return this.http.post<InboxNote>(`/api/spaces/${spaceId}/inbox/notes`, { content } as CreateNoteRequest);
   }
 
-  generateSuggestion(spaceId: string, noteId: string): Observable<InboxNote> {
-    return this.http.post<InboxNote>(`/api/spaces/${spaceId}/inbox/notes/${noteId}/suggest`, {});
+  generateSuggestion(spaceId: string, noteId: string, hint?: string): Observable<InboxNote> {
+    return this.http.post<InboxNote>(
+      `/api/spaces/${spaceId}/inbox/notes/${noteId}/suggest`,
+      { hint: hint?.trim() || null }
+    );
+  }
+
+  /** Unsorted note counts for all spaces the user can access (dashboard badges). */
+  getUnsortedCounts(): Observable<SpaceUnsortedCount[]> {
+    return this.http.get<SpaceUnsortedCount[]>('/api/inbox/unsorted-counts');
   }
 
   fileNote(spaceId: string, noteId: string, request: FileNoteRequest): Observable<InboxNote> {

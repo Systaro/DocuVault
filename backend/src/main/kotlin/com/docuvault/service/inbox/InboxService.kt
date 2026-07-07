@@ -57,7 +57,7 @@ class InboxService(
     }
 
     @Transactional
-    fun generateSuggestion(noteId: UUID): InboxNote {
+    fun generateSuggestion(noteId: UUID, hint: String? = null): InboxNote {
         val note = inboxNoteRepository.findById(noteId).orElseThrow { IllegalArgumentException("Note not found") }
         val space = note.space
         val documents = documentRepository.findBySpaceId(space.id!!)
@@ -104,6 +104,11 @@ JSON schema:
             appendLine()
             appendLine("Note content:")
             appendLine(note.content.replace(Regex("<[^>]+>"), " ").trim())
+            if (!hint.isNullOrBlank()) {
+                appendLine()
+                appendLine("The user gave this hint about where/how to file the note — follow it unless it is impossible:")
+                appendLine(hint.trim())
+            }
             if (currentDocContent != null && matchedDoc != null) {
                 appendLine()
                 appendLine("Current content of suggested target document (${matchedDoc!!.path}):")

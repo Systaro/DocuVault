@@ -145,9 +145,29 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                         </button>
                       }
                     </div>
+                    <div class="hint-row">
+                      <input
+                        type="text"
+                        class="hint-input"
+                        placeholder="Not quite right? Give the AI a hint (e.g. 'put it in the CRM notes')..."
+                        [(ngModel)]="suggestionHint"
+                        (keydown.enter)="requestSuggestion()"
+                      />
+                      <button class="btn btn-ghost btn-sm" (click)="requestSuggestion()" title="Re-analyze with your hint">
+                        <span class="material-icons">refresh</span>
+                        Re-analyze
+                      </button>
+                    </div>
                   }
                 } @else {
                   <div class="suggestion-empty">
+                    <input
+                      type="text"
+                      class="hint-input"
+                      placeholder="Optional hint for the AI (e.g. 'this belongs to the customer docs')..."
+                      [(ngModel)]="suggestionHint"
+                      (keydown.enter)="requestSuggestion()"
+                    />
                     <button class="btn btn-secondary" (click)="requestSuggestion()">
                       <span class="material-icons">auto_awesome</span>
                       Analyze where to put this
@@ -610,7 +630,34 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
 
     .suggestion-empty {
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hint-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .hint-input {
+      flex: 1;
+      width: 100%;
+      max-width: 480px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      outline: none;
+      transition: border-color var(--transition);
+
+      &::placeholder { color: var(--text-secondary); }
+      &:focus { border-color: var(--primary); }
     }
 
     .action-row {
@@ -772,6 +819,8 @@ export class InboxComponent implements OnInit, OnDestroy {
   showDontAskDialog = signal(false);
   showMeetingModal = signal(false);
   ruleConditionInput = '';
+  /** Optional user hint passed to the AI when analysing where to file a note. */
+  suggestionHint = '';
 
   activeNotes = computed(() =>
     this.activeTab() === 'unsorted' ? this.unsortedNotes() : this.filedNotes()
@@ -855,6 +904,7 @@ export class InboxComponent implements OnInit, OnDestroy {
   selectNote(note: InboxNote): void {
     this.selectedNote.set(note);
     this.showDiff.set(false);
+    this.suggestionHint = '';
 
     // Show existing suggestion if there is one, otherwise wait for the user
     // to click "Analyze where to put this" — AI runs only on demand.
@@ -866,7 +916,7 @@ export class InboxComponent implements OnInit, OnDestroy {
     if (!note || this.suggestingNote()) return;
 
     this.suggestingNote.set(true);
-    this.inboxService.generateSuggestion(this.spaceId, note.id).subscribe({
+    this.inboxService.generateSuggestion(this.spaceId, note.id, this.suggestionHint).subscribe({
       next: (updated) => {
         this.updateNoteInList(updated);
         this.selectedNote.set(updated);
