@@ -64,7 +64,17 @@ import { getFileIcon } from '../../shared/utils/file-utils';
               </div>
               <div class="sidebar-search">
                 <span class="material-icons">search</span>
-                <input type="text" placeholder="Search files…" [(ngModel)]="fileTreeFilter" />
+                <input
+                  type="text"
+                  placeholder="Search files…"
+                  [(ngModel)]="fileTreeFilter"
+                  (ngModelChange)="fileTreeFilterQuery.set($event)"
+                />
+                @if (fileTreeFilterQuery()) {
+                  <button class="search-clear" (click)="clearFileTreeFilter()" title="Clear">
+                    <span class="material-icons">close</span>
+                  </button>
+                }
               </div>
               @if (creatingFolderUnder() === '') {
                 <div class="tree-new-folder-row" [style.padding-left.px]="12">
@@ -114,14 +124,16 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                     }
                   </a>
                 }
-                <a
-                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'settings'"
-                  routerLinkActive="active"
-                  class="nav-item"
-                >
-                  <span class="material-icons">settings</span>
-                  Settings
-                </a>
+                @if (canManageSpace()) {
+                  <a
+                    [routerLink]="spaceSignal()?.fullPath | spaceRoute:'settings'"
+                    routerLinkActive="active"
+                    class="nav-item"
+                  >
+                    <span class="material-icons">settings</span>
+                    Settings
+                  </a>
+                }
               </nav>
 
               <!-- File Tree -->
@@ -135,8 +147,13 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                     <span class="material-icons">folder_off</span>
                     <p>No files yet</p>
                   </div>
+                } @else if (visibleFileTree().length === 0) {
+                  <div class="tree-empty">
+                    <span class="material-icons">search_off</span>
+                    <p>No files match "{{ fileTreeFilterQuery() }}"</p>
+                  </div>
                 } @else {
-                  <ng-container *ngTemplateOutlet="fileTreeTemplate; context: { nodes: fileTree(), level: 0 }"></ng-container>
+                  <ng-container *ngTemplateOutlet="fileTreeTemplate; context: { nodes: visibleFileTree(), level: 0 }"></ng-container>
                 }
               </div>
 
@@ -256,7 +273,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 <button
                   (click)="openFolder(node.path)"
                   class="tree-item"
-                  [class.expanded]="expandedFolders().has(node.path)"
+                  [class.expanded]="isTreeExpanded(node.path)"
                   [class.active]="currentFolderPath() === node.path"
                   [class.dragging]="draggingNode()?.path === node.path"
                   [draggable]="renamingPath() !== node.path"
@@ -266,7 +283,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 >
                   <span class="material-icons expand-icon">chevron_right</span>
                   <span class="material-icons folder-icon">
-                    {{ expandedFolders().has(node.path) ? 'folder_open' : 'folder' }}
+                    {{ isTreeExpanded(node.path) ? 'folder_open' : 'folder' }}
                   </span>
                   @if (renamingPath() === node.path) {
                     <input
@@ -313,7 +330,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   }
                 </div>
               </div>
-              @if (expandedFolders().has(node.path) && node.children) {
+              @if (isTreeExpanded(node.path) && node.children) {
                 <div class="tree-children">
                   @if (creatingFolderUnder() === node.path) {
                     <div class="tree-new-folder-row" [style.padding-left.px]="12 + (level + 1) * 16">
@@ -732,6 +749,18 @@ import { getFileIcon } from '../../shared/utils/file-utils';
         &::placeholder {
           color: var(--text-muted);
         }
+      }
+
+      .search-clear {
+        display: flex;
+        align-items: center;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--text-muted);
+        cursor: pointer;
+
+        &:hover { color: var(--text-primary); }
       }
     }
 
@@ -1378,6 +1407,9 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
    *  title isn't available for that path. */
   documentTitles = signal<Map<string, string>>(new Map());
   unsortedCount = signal(0);
+  /** True when the current user has ADMIN on this space (or is super admin) —
+   *  gates the Settings nav item; the backend enforces the same rule. */
+  canManageSpace = signal(false);
   loading = signal(false);
   expandedFolders = signal<Set<string>>(new Set());
 
@@ -1396,8 +1428,45 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
    *  null when not browsing a folder (doc editor, inbox, root etc.). */
   currentFolderPath = signal<string | null>(null);
 
-  /** Sidebar file-tree filter (placeholder until full search lands). */
+  /** Sidebar file-tree filter: live-filters the tree, keeping folders whose
+   *  descendants match and auto-expanding while a query is active. */
   fileTreeFilter = '';
+  fileTreeFilterQuery = signal('');
+
+  visibleFileTree = computed<FileNode[]>(() => {
+    const query = this.fileTreeFilterQuery().toLowerCase().trim();
+    if (!query) return this.fileTree();
+
+    const titles = this.documentTitles();
+    const matches = (node: FileNode): boolean =>
+      node.name.toLowerCase().includes(query) ||
+      (titles.get(node.path)?.toLowerCase().includes(query) ?? false) ||
+      this.prefs.prettify(node.name, node.isDirectory).toLowerCase().includes(query);
+
+    const filterNodes = (nodes: FileNode[]): FileNode[] =>
+      nodes.flatMap(node => {
+        if (node.isDirectory) {
+          const children = filterNodes(node.children ?? []);
+          if (children.length > 0 || matches(node)) {
+            return [{ ...node, children: children.length > 0 ? children : node.children }];
+          }
+          return [];
+        }
+        return matches(node) ? [node] : [];
+      });
+
+    return filterNodes(this.fileTree());
+  });
+
+  /** Folders render expanded while a filter query is active. */
+  isTreeExpanded(path: string): boolean {
+    return this.expandedFolders().has(path) || !!this.fileTreeFilterQuery();
+  }
+
+  clearFileTreeFilter(): void {
+    this.fileTreeFilter = '';
+    this.fileTreeFilterQuery.set('');
+  }
   currentDocPath = signal<string | null>(null);
   /** Active translation language (?lang=) for the currently-open document, or null. */
   currentLang = signal<string | null>(null);
@@ -1507,9 +1576,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.loadAnnotationCounts(this.space.id);
       this.buildPathBreadcrumbs();
       this.loadInboxCount(this.space.id);
+      this.loadMyPermission(this.space.id);
       this.loadContextLogo(this.space);
       this.updateTitle();
     }
+  }
+
+  private loadMyPermission(spaceId: string): void {
+    this.canManageSpace.set(false);
+    this.annotationsService.getMyPermission(spaceId).subscribe({
+      next: (res) => this.canManageSpace.set(res.level === 'ADMIN'),
+      error: () => this.canManageSpace.set(false)
+    });
   }
 
   private loadContextLogo(space: Space): void {
