@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -58,6 +59,19 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(
                 status = ex.statusCode.value(),
                 message = ex.reason ?: "Request failed"
+            ))
+    }
+
+    /** Unmatched routes surface as NoResourceFoundException in Boot 3.2 — map them
+     *  to a deterministic 404 instead of letting them fall through to the generic
+     *  500 handler. */
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFound(ex: NoResourceFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                status = 404,
+                message = "Resource not found"
             ))
     }
 
