@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -9,7 +9,9 @@ import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { InboxService, RoutingRule, RuleType, RuleAction } from '../../core/api/inbox.service';
+import { AnnotationsService } from '../../core/api/annotations.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
+import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 
 interface SpaceTokenDto {
   id: string;
@@ -23,7 +25,7 @@ interface SpaceTokenDto {
 @Component({
   selector: 'app-space-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, LogoUploadComponent],
+  imports: [CommonModule, FormsModule, LogoUploadComponent, SearchableSelectComponent],
   template: `
     <div class="p-8">
       <div class="max-w-2xl mx-auto">
@@ -164,16 +166,12 @@ interface SpaceTokenDto {
               <div class="flex gap-2 items-end">
                 <div class="flex-1">
                   <label class="block text-sm font-medium text-gray-700 mb-1">Parent Group</label>
-                  <select [(ngModel)]="selectedParentId" class="input">
-                    @if (space()?.type === 'GROUP') {
-                      <option value="">Top Level (no parent)</option>
-                    }
-                    @for (group of availableGroups(); track group.id) {
-                      <option [value]="group.id" [disabled]="group.id === space()?.id">
-                        {{ group.fullPath }}
-                      </option>
-                    }
-                  </select>
+                  <app-searchable-select
+                    [options]="parentGroupOptions()"
+                    [(ngModel)]="selectedParentId"
+                    placeholder="Select parent group"
+                    searchPlaceholder="Search groups..."
+                  />
                 </div>
                 <button
                   (click)="moveToGroup()"
@@ -222,15 +220,13 @@ interface SpaceTokenDto {
                       <div class="text-sm text-gray-500">{{ perm.userEmail }}</div>
                     </div>
                     <div class="flex items-center gap-4">
-                      <select
-                        [value]="perm.permissionLevel"
-                        (change)="updatePermission(perm.userId, $event)"
-                        class="input w-32 text-sm"
-                      >
-                        <option value="VIEW">View</option>
-                        <option value="EDIT">Edit</option>
-                        <option value="ADMIN">Admin</option>
-                      </select>
+                      <app-searchable-select
+                        class="w-32 text-sm"
+                        [options]="permissionOptions"
+                        [ngModel]="perm.permissionLevel"
+                        (ngModelChange)="updatePermission(perm.userId, $event)"
+                        [searchable]="false"
+                      />
                       <button
                         (click)="removePermission(perm.userId)"
                         class="text-red-600 hover:text-red-700"
@@ -248,17 +244,19 @@ interface SpaceTokenDto {
             <!-- Add User -->
             <div class="mt-4 pt-4 border-t border-gray-200">
               <div class="flex gap-2">
-                <select [(ngModel)]="newPermission.userId" class="input flex-1">
-                  <option value="">Select a user...</option>
-                  @for (user of availableUsers(); track user.id) {
-                    <option [value]="user.id">{{ user.name }} ({{ user.email }})</option>
-                  }
-                </select>
-                <select [(ngModel)]="newPermission.level" class="input w-32">
-                  <option value="VIEW">View</option>
-                  <option value="EDIT">Edit</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
+                <app-searchable-select
+                  class="flex-1"
+                  [options]="userOptions()"
+                  [(ngModel)]="newPermission.userId"
+                  placeholder="Select a user..."
+                  searchPlaceholder="Search users..."
+                />
+                <app-searchable-select
+                  class="w-32"
+                  [options]="permissionOptions"
+                  [(ngModel)]="newPermission.level"
+                  [searchable]="false"
+                />
                 <button
                   (click)="addPermission()"
                   [disabled]="!newPermission.userId"
@@ -315,20 +313,22 @@ interface SpaceTokenDto {
                 <summary class="text-sm font-medium text-gray-700 cursor-pointer mb-3">+ Add rule</summary>
                 <div class="add-rule-form">
                   <div class="flex gap-2 flex-wrap">
-                    <select [(ngModel)]="newRule.type" class="input input-sm">
-                      <option value="CATEGORY">Category</option>
-                      <option value="PATTERN">Pattern</option>
-                    </select>
+                    <app-searchable-select
+                      [options]="ruleTypeOptions"
+                      [(ngModel)]="newRule.type"
+                      [searchable]="false"
+                    />
                     <input
                       type="text"
                       [(ngModel)]="newRule.condition"
                       class="input input-sm flex-1"
                       placeholder="e.g. meeting notes or #incident"
                     />
-                    <select [(ngModel)]="newRule.actionType" class="input input-sm">
-                      <option value="APPEND_TO_DOCUMENT">Append to doc</option>
-                      <option value="CREATE_DOCUMENT">Create new doc</option>
-                    </select>
+                    <app-searchable-select
+                      [options]="ruleActionOptions"
+                      [(ngModel)]="newRule.actionType"
+                      [searchable]="false"
+                    />
                   </div>
                   <div class="flex gap-2 flex-wrap mt-2">
                     <input
@@ -586,6 +586,7 @@ await state.save();</pre>
     .add-rule-details summary { list-style: none; }
     .add-rule-details summary::-webkit-details-marker { display: none; }
     .add-rule-form { margin-top: 10px; }
+    .add-rule-form app-searchable-select { flex: 0 0 auto; min-width: 150px; }
     .input-sm { padding: 5px 8px; font-size: 13px; }
     .icon-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; padding: 4px; border-radius: 4px; transition: color 0.15s; }
     .icon-btn:hover { color: #dc2626; }
@@ -776,6 +777,38 @@ export class SpaceSettingsComponent implements OnInit {
   stateKey = '';
   newTokenName = '';
 
+  readonly permissionOptions: SelectOption[] = [
+    { value: 'VIEW', label: 'View' },
+    { value: 'EDIT', label: 'Edit' },
+    { value: 'ADMIN', label: 'Admin' }
+  ];
+
+  readonly ruleTypeOptions: SelectOption[] = [
+    { value: 'CATEGORY', label: 'Category' },
+    { value: 'PATTERN', label: 'Pattern' }
+  ];
+
+  readonly ruleActionOptions: SelectOption[] = [
+    { value: 'APPEND_TO_DOCUMENT', label: 'Append to doc' },
+    { value: 'CREATE_DOCUMENT', label: 'Create new doc' }
+  ];
+
+  parentGroupOptions = computed<SelectOption[]>(() => {
+    const options: SelectOption[] = [];
+    if (this.space()?.type === 'GROUP') {
+      options.push({ value: '', label: 'Top Level (no parent)' });
+    }
+    const selfId = this.space()?.id;
+    for (const group of this.availableGroups()) {
+      options.push({ value: group.id, label: group.fullPath, disabled: group.id === selfId });
+    }
+    return options;
+  });
+
+  userOptions = computed<SelectOption[]>(() =>
+    this.availableUsers().map(user => ({ value: user.id, label: user.name, sublabel: user.email }))
+  );
+
   newRule = {
     type: 'CATEGORY' as RuleType,
     condition: '',
@@ -807,7 +840,8 @@ export class SpaceSettingsComponent implements OnInit {
     private spacesService: SpacesService,
     private usersService: UsersService,
     private toastService: ToastService,
-    private inboxService: InboxService
+    private inboxService: InboxService,
+    private annotationsService: AnnotationsService
   ) {}
 
   ngOnInit(): void {
@@ -829,22 +863,42 @@ export class SpaceSettingsComponent implements OnInit {
   loadSpaceByPath(fullPath: string): void {
     this.spacesService.getSpaceByPath(fullPath).subscribe({
       next: (space) => {
-        this.space.set(space);
-        this.selectedParentId = space.parentId || '';
-        this.settings = {
-          name: space.name,
-          description: space.description || '',
-          branch: space.branch,
-          syncEnabled: space.syncEnabled,
-          syncIntervalMinutes: space.syncIntervalMinutes
-        };
-        this.loadPermissions(space.id);
-        if (space.type === 'REPOSITORY') {
-          this.loadRules(space.id);
-          this.loadSpaceTokens(space.id);
-        }
+        // Settings are admin-only (the backend rejects non-admins anyway) —
+        // bounce deep links from users who merely have view/edit access.
+        this.annotationsService.getMyPermission(space.id).subscribe({
+          next: (res) => {
+            if (res.level !== 'ADMIN') {
+              this.redirectNonAdmin(fullPath);
+              return;
+            }
+            this.initSettings(space);
+          },
+          error: () => this.redirectNonAdmin(fullPath)
+        });
       }
     });
+  }
+
+  private redirectNonAdmin(fullPath: string): void {
+    this.toastService.error('No access', 'Only space admins can open space settings.');
+    this.router.navigate(['/spaces', ...fullPath.split('/')]);
+  }
+
+  private initSettings(space: Space): void {
+    this.space.set(space);
+    this.selectedParentId = space.parentId || '';
+    this.settings = {
+      name: space.name,
+      description: space.description || '',
+      branch: space.branch,
+      syncEnabled: space.syncEnabled,
+      syncIntervalMinutes: space.syncIntervalMinutes
+    };
+    this.loadPermissions(space.id);
+    if (space.type === 'REPOSITORY') {
+      this.loadRules(space.id);
+      this.loadSpaceTokens(space.id);
+    }
   }
 
   loadRules(spaceId: string): void {
@@ -1008,11 +1062,10 @@ export class SpaceSettingsComponent implements OnInit {
     });
   }
 
-  updatePermission(userId: string, event: Event): void {
+  updatePermission(userId: string, level: string): void {
     const space = this.space();
     if (!space) return;
 
-    const level = (event.target as HTMLSelectElement).value;
     this.spacesService.addPermission(space.id, userId, level).subscribe();
   }
 

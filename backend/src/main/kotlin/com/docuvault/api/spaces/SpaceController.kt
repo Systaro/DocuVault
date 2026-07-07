@@ -299,7 +299,7 @@ class SpaceController(
         var space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -388,7 +388,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -414,7 +414,7 @@ class SpaceController(
             return ResponseEntity.notFound().build()
         }
 
-        if (!permissionService.hasEditAccess(user.id!!, id, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, id, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -434,7 +434,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -472,7 +472,7 @@ class SpaceController(
             return ResponseEntity.notFound().build()
         }
 
-        if (!permissionService.hasEditAccess(user.id!!, id, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, id, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -492,7 +492,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -580,7 +580,7 @@ class SpaceController(
         val space = spaceRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
 
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
