@@ -40,6 +40,16 @@ export function getFileIcon(name: string): string {
   return `assets/file-icons/file-extension-${slug}-icon.png`;
 }
 
+/** Material-icons glyph for a file path (used where PNG icons are too heavy, e.g. search results). */
+export function getFileIconGlyph(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'md') return 'description';
+  if (['html', 'htm'].includes(ext)) return 'code';
+  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
+  if (ext === 'pdf') return 'picture_as_pdf';
+  return 'insert_drive_file';
+}
+
 /**
  * Extensions AI editing is never offered for (binary or image formats).
  * Mirrors AI_EDIT_BLOCKED_EXTENSIONS in the backend DocumentController — keep in sync.

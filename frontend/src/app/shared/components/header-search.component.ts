@@ -1,198 +1,191 @@
-import { Component, output, signal, ElementRef, ViewChild, AfterViewInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, signal, ElementRef, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { SearchService, SearchResult } from '../../core/api/search.service';
 import { getFileIconGlyph } from '../utils/file-utils';
 import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil } from 'rxjs';
 
+/**
+ * Always-visible search field in the app header with a typeahead results
+ * dropdown. Complements the full-screen GlobalSearchComponent modal, which
+ * remains the entry point on small screens.
+ */
 @Component({
-  selector: 'app-global-search',
+  selector: 'app-header-search',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="search-overlay" (click)="close.emit()">
-      <div class="search-dialog" (click)="$event.stopPropagation()">
-        <!-- Search Input -->
-        <div class="search-input-row">
-          <span class="material-icons search-icon">search</span>
-          <input
-            #searchInput
-            type="text"
-            placeholder="Search documents..."
-            class="search-input"
-            [value]="query()"
-            (input)="onInput($event)"
-            (keydown)="onKeydown($event)"
-            autocomplete="off"
-          />
-          <kbd class="kbd">ESC</kbd>
-        </div>
+    <div class="header-search">
+      <span class="material-icons search-icon">search</span>
+      <input
+        type="text"
+        class="search-field"
+        placeholder="Search documents..."
+        [value]="query()"
+        (input)="onInput($event)"
+        (keydown)="onKeydown($event)"
+        (focus)="onFocus()"
+        autocomplete="off"
+      />
+      @if (query()) {
+        <button class="clear-btn" (click)="clear()" title="Clear">
+          <span class="material-icons">close</span>
+        </button>
+      }
 
-        <!-- Results -->
-        <div class="search-results" *ngIf="query().length >= 2">
+      @if (open() && query().length >= 2) {
+        <div class="search-dropdown">
           @if (loading()) {
-            <div class="search-status">
+            <div class="dropdown-status">
               <span class="material-icons spin">sync</span>
               Searching...
             </div>
-          } @else if (results().length === 0 && query().length >= 2) {
-            <div class="search-status">
+          } @else if (results().length === 0) {
+            <div class="dropdown-status">
               <span class="material-icons">search_off</span>
               No documents found
             </div>
           } @else {
             @for (result of results(); track result.documentPath + result.spaceId; let i = $index) {
               <button
-                class="search-result"
+                class="dropdown-result"
                 [class.active]="i === activeIndex()"
                 (click)="navigateTo(result)"
                 (mouseenter)="activeIndex.set(i)"
               >
-                <div class="result-icon">
-                  <span class="material-icons">{{ getFileIcon(result.documentPath) }}</span>
-                </div>
-                <div class="result-body">
-                  <div class="result-title">{{ result.documentTitle }}</div>
-                  <div class="result-meta">
+                <span class="material-icons result-icon">{{ fileIcon(result.documentPath) }}</span>
+                <span class="result-body">
+                  <span class="result-title">{{ result.documentTitle }}</span>
+                  <span class="result-meta">
                     <span class="result-space">{{ result.spaceName }}</span>
                     <span class="result-path">{{ result.documentPath }}</span>
-                  </div>
-                  @if (result.snippet) {
-                    <div class="result-snippet">{{ result.snippet }}</div>
-                  }
-                </div>
+                  </span>
+                </span>
               </button>
             }
           }
         </div>
-      </div>
+      }
     </div>
   `,
   styles: [`
-    .search-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.5);
-      z-index: 1000;
-      display: flex;
-      justify-content: center;
-      padding-top: 10vh;
-    }
-
-    .search-dialog {
-      width: 100%;
-      max-width: 640px;
-      max-height: 70vh;
-      background: var(--surface);
-      border-radius: 12px;
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      align-self: flex-start;
-    }
-
-    .search-input-row {
+    .header-search {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
     }
 
     .search-icon {
+      position: absolute;
+      left: 10px;
+      font-size: 18px;
       color: var(--text-secondary);
-      font-size: 22px;
+      pointer-events: none;
     }
 
-    .search-input {
-      flex: 1;
-      border: none;
-      outline: none;
-      font-size: 16px;
-      background: transparent;
+    .search-field {
+      width: 220px;
+      padding: 7px 30px 7px 34px;
+      font-size: 13px;
+      font-family: inherit;
       color: var(--text-primary);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      outline: none;
+      transition: all var(--transition);
 
-      &::placeholder {
-        color: var(--text-secondary);
+      &::placeholder { color: var(--text-secondary); }
+
+      &:focus {
+        width: 300px;
+        border-color: var(--primary);
+        background: var(--surface);
       }
     }
 
-    .kbd {
-      padding: 2px 8px;
-      font-size: 11px;
-      font-family: inherit;
+    .clear-btn {
+      position: absolute;
+      right: 6px;
+      display: flex;
+      align-items: center;
+      padding: 2px;
+      border: none;
+      background: none;
       color: var(--text-secondary);
-      background: var(--background);
-      border: 1px solid var(--border);
-      border-radius: 4px;
+      cursor: pointer;
+      border-radius: 50%;
+
+      .material-icons { font-size: 16px; }
+
+      &:hover { color: var(--text-primary); }
     }
 
-    .search-results {
+    .search-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      width: 420px;
+      max-height: 60vh;
       overflow-y: auto;
-      padding: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+      padding: 6px;
+      z-index: 200;
     }
 
-    .search-status {
+    .dropdown-status {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 24px;
+      padding: 18px;
       color: var(--text-secondary);
-      font-size: 14px;
+      font-size: 13px;
+
+      .material-icons { font-size: 18px; }
     }
 
-    .spin {
-      animation: spin 1s linear infinite;
-    }
+    .spin { animation: spin 1s linear infinite; }
 
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
 
-    .search-result {
+    .dropdown-result {
       display: flex;
-      gap: 12px;
-      padding: 10px 12px;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 10px;
       border: none;
       background: none;
-      width: 100%;
       text-align: left;
       cursor: pointer;
-      border-radius: 8px;
-      transition: background 0.1s;
+      border-radius: var(--radius-md);
       color: var(--text-primary);
 
-      &:hover, &.active {
-        background: var(--background);
-      }
+      &:hover, &.active { background: var(--background); }
     }
 
     .result-icon {
       flex-shrink: 0;
-      width: 36px;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 8px;
-      background: rgba(111, 179, 184, 0.1);
+      font-size: 18px;
       color: var(--primary);
-
-      .material-icons {
-        font-size: 20px;
-      }
     }
 
     .result-body {
       flex: 1;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     .result-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
       white-space: nowrap;
       overflow: hidden;
@@ -202,14 +195,15 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
     .result-meta {
       display: flex;
       gap: 8px;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--text-secondary);
-      margin-top: 2px;
+      min-width: 0;
     }
 
     .result-space {
       font-weight: 500;
       color: var(--primary);
+      flex-shrink: 0;
     }
 
     .result-path {
@@ -217,27 +211,13 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
       overflow: hidden;
       text-overflow: ellipsis;
     }
-
-    .result-snippet {
-      margin-top: 4px;
-      font-size: 12px;
-      color: var(--text-secondary);
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      line-height: 1.4;
-    }
   `]
 })
-export class GlobalSearchComponent implements AfterViewInit, OnDestroy {
-  close = output();
-
-  @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;
-
+export class HeaderSearchComponent implements OnDestroy {
   query = signal('');
   results = signal<SearchResult[]>([]);
   loading = signal(false);
+  open = signal(false);
   activeIndex = signal(0);
 
   private search$ = new Subject<string>();
@@ -245,7 +225,8 @@ export class GlobalSearchComponent implements AfterViewInit, OnDestroy {
 
   constructor(
     private searchService: SearchService,
-    private router: Router
+    private router: Router,
+    private host: ElementRef<HTMLElement>
   ) {
     this.search$.pipe(
       debounceTime(250),
@@ -265,30 +246,36 @@ export class GlobalSearchComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  ngAfterViewInit(): void {
-    setTimeout(() => this.searchInput.nativeElement.focus());
-  }
-
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
   }
 
-  @HostListener('document:keydown.escape')
-  onEscape(): void {
-    this.close.emit();
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (!this.host.nativeElement.contains(event.target as Node)) {
+      this.open.set(false);
+    }
+  }
+
+  onFocus(): void {
+    if (this.query().length >= 2) this.open.set(true);
   }
 
   onInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.query.set(value);
-    if (value.length >= 2) {
-      this.loading.set(true);
-    }
+    this.open.set(true);
+    if (value.length >= 2) this.loading.set(true);
     this.search$.next(value);
   }
 
   onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      this.open.set(false);
+      (event.target as HTMLInputElement).blur();
+      return;
+    }
     const results = this.results();
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -302,15 +289,21 @@ export class GlobalSearchComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  clear(): void {
+    this.query.set('');
+    this.results.set([]);
+    this.open.set(false);
+  }
+
   navigateTo(result: SearchResult): void {
-    this.close.emit();
+    this.open.set(false);
     this.router.navigate(
       ['/spaces', ...result.spaceFullPath.split('/'), 'doc'],
       { queryParams: { path: result.documentPath } }
     );
   }
 
-  getFileIcon(path: string): string {
+  fileIcon(path: string): string {
     return getFileIconGlyph(path);
   }
 }

@@ -4,13 +4,15 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { GlobalSearchComponent } from './global-search.component';
+import { HeaderSearchComponent } from './header-search.component';
+import { HeaderNotificationsComponent } from './header-notifications.component';
 import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-modal.component';
 import { APP_VERSION } from '../version';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, QuickCaptureModalComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, QuickCaptureModalComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
@@ -43,16 +45,15 @@ import { APP_VERSION } from '../version';
         </nav>
 
         <div class="header-actions">
+          <app-header-search class="desktop-search" />
           <button class="quick-note-btn" title="Quick Note (⌘K)" (click)="showCapture.set(true)">
             <span class="material-icons">add</span>
             Quick Note
           </button>
-          <button class="icon-btn" title="Search (Ctrl+K)" (click)="showSearch.set(true)">
+          <button class="icon-btn mobile-search-btn" title="Search" (click)="showSearch.set(true)">
             <span class="material-icons">search</span>
           </button>
-          <button class="icon-btn" title="Notifications">
-            <span class="material-icons">notifications</span>
-          </button>
+          <app-header-notifications />
           <button class="icon-btn" (click)="themeService.toggle()" [title]="themeService.darkMode() ? 'Light mode' : 'Dark mode'">
             <span class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
           </button>
@@ -187,6 +188,11 @@ import { APP_VERSION } from '../version';
       gap: var(--spacing-sm);
     }
 
+    /* Inline search on desktop; icon-button + modal on small screens */
+    .mobile-search-btn {
+      display: none;
+    }
+
     .quick-note-btn {
       display: flex;
       align-items: center;
@@ -271,6 +277,14 @@ import { APP_VERSION } from '../version';
 
       .header-user .btn {
         display: none;
+      }
+
+      .desktop-search {
+        display: none;
+      }
+
+      .mobile-search-btn {
+        display: flex;
       }
     }
   `]
