@@ -1380,7 +1380,9 @@ import { marked } from 'marked';
     }
 
     .history-panel {
-      position: fixed;
+      /* Anchored to the editor host (position: relative), not the viewport —
+         a fixed top:0 panel would hide its header under the app header bar. */
+      position: absolute;
       top: 0;
       right: 0;
       bottom: 0;
