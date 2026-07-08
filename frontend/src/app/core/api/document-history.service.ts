@@ -18,6 +18,13 @@ export interface VersionContent {
   content: string;
 }
 
+export interface VersionDiff {
+  path: string;
+  sha: string;
+  /** Unified diff text; empty when the commit did not touch the file. */
+  diff: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentHistoryService {
   constructor(private http: HttpClient) {}
@@ -32,6 +39,13 @@ export class DocumentHistoryService {
   /** Document content as it existed at the given version. */
   getVersionContent(spaceId: string, path: string, sha: string): Observable<VersionContent> {
     return this.http.get<VersionContent>(`/api/spaces/${spaceId}/document-history/content`, {
+      params: { path, sha }
+    });
+  }
+
+  /** What the given version's commit changed in the document, as a unified diff. */
+  getVersionDiff(spaceId: string, path: string, sha: string): Observable<VersionDiff> {
+    return this.http.get<VersionDiff>(`/api/spaces/${spaceId}/document-history/diff`, {
       params: { path, sha }
     });
   }

@@ -106,6 +106,40 @@ class GitDiffService(
         }
     }
 
+    /**
+     * Unified diff of what the given commit changed in the given file (vs the
+     * commit's parent; the first commit diffs against the empty tree). Returns
+     * null when the repo or commit is missing, an empty string when the commit
+     * did not touch the file.
+     */
+    fun fileDiffAtCommit(space: Space, sha: String, path: String): String? {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists()) return null
+
+        return try {
+            Git.open(repoDir).use { git ->
+                val repo = git.repository
+                val commitId = repo.resolve(sha) ?: return null
+                RevWalk(repo).use { walk ->
+                    val commit = walk.parseCommit(commitId)
+                    val parent = commit.parents.firstOrNull()?.let { walk.parseCommit(it) }
+                    val out = java.io.ByteArrayOutputStream()
+                    org.eclipse.jgit.diff.DiffFormatter(out).use { formatter ->
+                        formatter.setRepository(repo)
+                        formatter.isDetectRenames = true
+                        val entries = formatter.scan(parent?.tree, commit.tree)
+                            .filter { it.newPath == path || it.oldPath == path }
+                        entries.forEach { formatter.format(it) }
+                    }
+                    out.toString(Charsets.UTF_8)
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to compute diff for '$path' at $sha in space '${space.name}': ${e.message}")
+            null
+        }
+    }
+
     /** File content as it existed at the given commit, or null when absent there. */
     fun fileAtCommit(space: Space, sha: String, path: String): String? {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()

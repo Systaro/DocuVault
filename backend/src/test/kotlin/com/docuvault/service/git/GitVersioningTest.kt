@@ -76,6 +76,33 @@ class GitVersioningTest {
     }
 
     @Test
+    fun `diff of a commit shows what it changed in the file`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "docs/a.md", "line one\nline two\n")
+        gitService.commitAndPush(space, "Add docs/a.md", "Tester", "tester@example.com")
+        gitService.writeFile(space, "docs/a.md", "line one\nline two changed\n")
+        gitService.commitAndPush(space, "Update docs/a.md", "Tester", "tester@example.com")
+
+        val history = diffService.fileHistory(space, "docs/a.md")
+
+        val updateDiff = diffService.fileDiffAtCommit(space, history[0].sha, "docs/a.md")!!
+        assertTrue(updateDiff.contains("-line two"))
+        assertTrue(updateDiff.contains("+line two changed"))
+
+        // First commit diffs against the empty tree — the whole file is additions.
+        val addDiff = diffService.fileDiffAtCommit(space, history[1].sha, "docs/a.md")!!
+        assertTrue(addDiff.contains("+line one"))
+
+        // A commit that only touched other files yields an empty diff for this path.
+        gitService.writeFile(space, "docs/b.md", "unrelated")
+        gitService.commitAndPush(space, "Add docs/b.md", "Tester", "tester@example.com")
+        val latest = diffService.fileHistory(space, "docs/b.md")[0]
+        assertEquals("", diffService.fileDiffAtCommit(space, latest.sha, "docs/a.md"))
+    }
+
+    @Test
     fun `commit with no changes is a no-op instead of an empty commit`() {
         val (gitService, diffService) = services()
         val space = localSpace()

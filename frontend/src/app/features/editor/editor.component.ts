@@ -44,6 +44,12 @@ import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
 
+/** One renderable line of a parsed unified diff. */
+interface DiffLine {
+  type: 'add' | 'del' | 'ctx' | 'hunk';
+  text: string;
+}
+
 @Component({
   selector: 'app-editor',
   standalone: true,
@@ -508,12 +514,18 @@ import { marked } from 'marked';
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                     <span>
-                      Time capsule — viewing the version from
+                      Time capsule —
+                      {{ historyViewMode() === 'diff' ? 'changes in the version from' : 'viewing the version from' }}
                       <strong>{{ version.committedAt | date:'MMM d, y, HH:mm' }}</strong>
                       @if (version.authorName) { by {{ version.authorName }} }
                     </span>
                     <div class="timecapsule-actions">
-                      @if (canEdit()) {
+                      @if (!isCurrentVersion(version)) {
+                        <button type="button" class="timecapsule-back" (click)="historyViewMode() === 'diff' ? viewVersion(version) : viewDiff(version)">
+                          {{ historyViewMode() === 'diff' ? 'Show document' : 'Show changes' }}
+                        </button>
+                      }
+                      @if (canEdit() && !isCurrentVersion(version)) {
                         <button type="button" class="timecapsule-restore" [disabled]="restoring()" (click)="restoreVersion(version)">
                           @if (restoring()) {
                             <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -575,12 +587,27 @@ import { marked } from 'marked';
                     }
                   </div>
                 }
-                <article
-                  #readonlyElement
-                  class="markdown-readonly"
-                  [innerHTML]="readonlyHtml()"
-                  (click)="onMarkdownClick($event)"
-                ></article>
+                @if (viewingVersion() && historyViewMode() === 'diff') {
+                  <div class="diff-view">
+                    @for (line of diffLines(); track $index) {
+                      <div
+                        class="diff-line"
+                        [class.diff-add]="line.type === 'add'"
+                        [class.diff-del]="line.type === 'del'"
+                        [class.diff-hunk]="line.type === 'hunk'"
+                      >@if (line.type !== 'hunk') {<span class="diff-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' ' }}</span>}{{ line.text }}</div>
+                    } @empty {
+                      <p class="diff-empty">This version did not change this document.</p>
+                    }
+                  </div>
+                } @else {
+                  <article
+                    #readonlyElement
+                    class="markdown-readonly"
+                    [innerHTML]="readonlyHtml()"
+                    (click)="onMarkdownClick($event)"
+                  ></article>
+                }
               } @else {
                 <!-- TipTap Editor Container -->
                 <div
@@ -706,31 +733,44 @@ import { marked } from 'marked';
           } @else {
             <div class="history-list">
               @for (v of historyVersions(); track v.sha; let i = $index) {
-                <button
-                  type="button"
-                  class="history-item"
-                  [class.active]="viewingVersion()?.sha === v.sha || (i === 0 && !viewingVersion())"
-                  (click)="viewVersion(v, i === 0)"
-                >
-                  <div class="history-item-top">
-                    <span class="history-item-date">{{ v.committedAt | date:'MMM d, y, HH:mm' }}</span>
-                    @if (i === 0) {
-                      <span class="history-badge-current">Current</span>
+                <div class="history-item-wrap">
+                  <button
+                    type="button"
+                    class="history-item"
+                    [class.active]="viewingVersion()?.sha === v.sha || (i === 0 && !viewingVersion())"
+                    (click)="viewVersion(v)"
+                  >
+                    <div class="history-item-top">
+                      <span class="history-item-date">{{ v.committedAt | date:'MMM d, y, HH:mm' }}</span>
+                      @if (i === 0) {
+                        <span class="history-badge-current">Current</span>
+                      }
+                      @if (versionLoadingSha() === v.sha) {
+                        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                      }
+                    </div>
+                    @if (v.message) {
+                      <div class="history-item-msg">{{ v.message }}</div>
                     }
-                    @if (versionLoadingSha() === v.sha) {
-                      <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                      </svg>
+                    @if (v.authorName) {
+                      <div class="history-item-author">{{ v.authorName }}</div>
                     }
-                  </div>
-                  @if (v.message) {
-                    <div class="history-item-msg">{{ v.message }}</div>
-                  }
-                  @if (v.authorName) {
-                    <div class="history-item-author">{{ v.authorName }}</div>
-                  }
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    class="history-item-diff"
+                    title="Show changes in this version"
+                    [class.active]="viewingVersion()?.sha === v.sha && historyViewMode() === 'diff'"
+                    (click)="viewDiff(v); $event.stopPropagation()"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5v14m-3-3h6M15 8h6"/>
+                    </svg>
+                  </button>
+                </div>
               }
             </div>
           }
@@ -1428,6 +1468,15 @@ import { marked } from 'marked';
       gap: 4px;
     }
 
+    .history-item-wrap {
+      position: relative;
+
+      &:hover .history-item-diff,
+      .history-item-diff.active {
+        opacity: 1;
+      }
+    }
+
     .history-item {
       display: block;
       width: 100%;
@@ -1446,6 +1495,80 @@ import { marked } from 'marked';
         border-color: var(--primary);
         background: color-mix(in srgb, var(--primary) 8%, var(--surface));
       }
+    }
+
+    .history-item-diff {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity var(--transition);
+
+      &:hover {
+        background: var(--surface-hover);
+        color: var(--text-primary);
+      }
+
+      &.active {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+    }
+
+    .diff-view {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+      background: var(--surface);
+    }
+
+    .diff-line {
+      display: flex;
+      padding: 0 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text-primary);
+
+      &.diff-add {
+        background: color-mix(in srgb, #16a34a 14%, var(--surface));
+      }
+
+      &.diff-del {
+        background: color-mix(in srgb, #dc2626 12%, var(--surface));
+      }
+
+      &.diff-hunk {
+        padding: 3px 10px;
+        background: var(--background);
+        color: var(--text-muted);
+        font-size: 0.75rem;
+      }
+    }
+
+    .diff-sign {
+      flex-shrink: 0;
+      width: 16px;
+      user-select: none;
+      color: var(--text-muted);
+    }
+
+    .diff-empty {
+      padding: 16px;
+      color: var(--text-muted);
+      font-size: 0.8125rem;
     }
 
     .history-item-top {
@@ -1623,7 +1746,11 @@ export class EditorComponent implements OnInit, OnDestroy {
   historyLoading = signal(false);
   versionLoadingSha = signal<string | null>(null);
   viewingVersion = signal<DocumentVersion | null>(null);
+  // 'doc' renders the version's content, 'diff' what its commit changed.
+  historyViewMode = signal<'doc' | 'diff'>('doc');
+  diffLines = signal<DiffLine[]>([]);
   restoring = signal(false);
+  isCurrentVersion = (version: DocumentVersion) => version.sha === this.historyVersions()[0]?.sha;
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
@@ -1914,14 +2041,14 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   /** Render the document as it existed at the given version (read-only time capsule). */
-  viewVersion(version: DocumentVersion, isCurrent = false): void {
+  viewVersion(version: DocumentVersion): void {
     const space = this.space();
     if (!space || this.versionLoadingSha()) return;
-    if (isCurrent) {
+    if (this.isCurrentVersion(version)) {
       this.backToCurrent();
       return;
     }
-    if (this.viewingVersion()?.sha === version.sha) return;
+    if (this.viewingVersion()?.sha === version.sha && this.historyViewMode() === 'doc') return;
     this.versionLoadingSha.set(version.sha);
     this.documentHistoryService.getVersionContent(space.id, this.documentPath, version.sha)
       .pipe(takeUntil(this.destroy$))
@@ -1929,6 +2056,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         next: (res) => {
           this.versionLoadingSha.set(null);
           this.viewingVersion.set(version);
+          this.historyViewMode.set('doc');
           this.translationLang.set(null);
           this.viewingAiPrevious.set(false);
           this.renderReadView(this.stripTitleH1(res.content));
@@ -1940,11 +2068,58 @@ export class EditorComponent implements OnInit, OnDestroy {
       });
   }
 
+  /** Show what the given version's commit changed in this document. */
+  viewDiff(version: DocumentVersion): void {
+    const space = this.space();
+    if (!space || this.versionLoadingSha()) return;
+    if (this.viewingVersion()?.sha === version.sha && this.historyViewMode() === 'diff') return;
+    this.versionLoadingSha.set(version.sha);
+    this.documentHistoryService.getVersionDiff(space.id, this.documentPath, version.sha)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.versionLoadingSha.set(null);
+          this.viewingVersion.set(version);
+          this.historyViewMode.set('diff');
+          this.diffLines.set(this.parseUnifiedDiff(res.diff));
+          this.translationLang.set(null);
+          this.viewingAiPrevious.set(false);
+        },
+        error: () => {
+          this.versionLoadingSha.set(null);
+          this.toastService.error('Changes unavailable', 'Could not load the changes for this version.');
+        }
+      });
+  }
+
   /** Leave the time capsule and show the live document again. */
   backToCurrent(): void {
     if (!this.viewingVersion()) return;
     this.viewingVersion.set(null);
+    this.historyViewMode.set('doc');
+    this.diffLines.set([]);
     this.renderReadView(this.markdownContent());
+  }
+
+  /**
+   * Unified diff → renderable lines. File headers and no-newline markers are
+   * dropped; hunk headers stay as separators.
+   */
+  private parseUnifiedDiff(diff: string): DiffLine[] {
+    const skip = /^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|old mode|new mode|similarity index|rename from|rename to|\\ No newline)/;
+    const lines: DiffLine[] = [];
+    for (const raw of diff.split('\n')) {
+      if (skip.test(raw)) continue;
+      if (raw.startsWith('@@')) lines.push({ type: 'hunk', text: raw });
+      else if (raw.startsWith('+')) lines.push({ type: 'add', text: raw.substring(1) });
+      else if (raw.startsWith('-')) lines.push({ type: 'del', text: raw.substring(1) });
+      else lines.push({ type: 'ctx', text: raw.startsWith(' ') ? raw.substring(1) : raw });
+    }
+    // The final newline of the diff text splits into a trailing empty context line.
+    while (lines.length && lines[lines.length - 1].type === 'ctx' && lines[lines.length - 1].text === '') {
+      lines.pop();
+    }
+    return lines;
   }
 
   /** Write the viewed version back as a new version on top of the history. */

@@ -21,6 +21,13 @@ The **Version history** panel lists every version of the current document,
 newest first, with timestamp, author and change message. The topmost entry is
 the live document (marked **Current**).
 
+## Diff viewer
+
+Every entry in the panel has a **± button** (visible on hover) that shows what
+that version changed in the document: a line-by-line diff with additions in
+green and removals in red. While viewing a version in the time capsule you can
+also toggle between **Show document** and **Show changes**.
+
 ## Time capsule
 
 Click any older version to view the document exactly as it was at that point
@@ -36,6 +43,7 @@ in time. The view is read-only and marked with a banner.
 
 - `GET /api/spaces/{spaceId}/document-history?path=…` — version list
 - `GET /api/spaces/{spaceId}/document-history/content?path=…&sha=…` — content at a version
+- `GET /api/spaces/{spaceId}/document-history/diff?path=…&sha=…` — unified diff of what that version changed
 - `POST /api/spaces/{spaceId}/document-history/restore` (`{path, sha}`) — restore
 
 Reading history requires view access to the space; restoring requires edit

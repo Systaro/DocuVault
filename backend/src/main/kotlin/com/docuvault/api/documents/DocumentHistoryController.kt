@@ -81,6 +81,29 @@ class DocumentHistoryController(
         return ResponseEntity.ok(VersionContentDto(path = path, sha = sha, content = content))
     }
 
+    @GetMapping("/diff")
+    fun getVersionDiff(
+        @PathVariable spaceId: UUID,
+        @RequestParam path: String,
+        @RequestParam sha: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<VersionDiffDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val diff = gitDiffService.fileDiffAtCommit(space, sha, path)
+            ?: return ResponseEntity.notFound().build()
+
+        return ResponseEntity.ok(VersionDiffDto(path = path, sha = sha, diff = diff))
+    }
+
     @PostMapping("/restore")
     fun restoreVersion(
         @PathVariable spaceId: UUID,
@@ -138,4 +161,11 @@ data class VersionContentDto(
     val path: String,
     val sha: String,
     val content: String
+)
+
+data class VersionDiffDto(
+    val path: String,
+    val sha: String,
+    /** Unified diff text; empty when the commit did not touch the file. */
+    val diff: String
 )
