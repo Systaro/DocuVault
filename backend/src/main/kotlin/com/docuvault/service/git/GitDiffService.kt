@@ -22,6 +22,15 @@ data class DetectedChange(
     val authorName: String?
 )
 
+data class FileVersion(
+    val sha: String,
+    val shortSha: String,
+    val message: String?,
+    val authorName: String?,
+    val authorEmail: String?,
+    val committedAt: java.time.Instant
+)
+
 @Service
 class GitDiffService(
     private val gitService: GitService
@@ -63,6 +72,61 @@ class GitDiffService(
         } catch (e: Exception) {
             logger.warn("Failed to compute git diff for space '${space.name}' ($fromRef..$toRef): ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * All commits that touched the given file, newest first — the version track for
+     * the document history / time-capsule view.
+     */
+    fun fileHistory(space: Space, path: String, limit: Int = 200): List<FileVersion> {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists()) return emptyList()
+
+        return try {
+            Git.open(repoDir).use { git ->
+                git.log()
+                    .addPath(path)
+                    .setMaxCount(limit)
+                    .call()
+                    .map { commit ->
+                        FileVersion(
+                            sha = commit.name,
+                            shortSha = commit.name.take(8),
+                            message = commit.shortMessage,
+                            authorName = commit.authorIdent?.name,
+                            authorEmail = commit.authorIdent?.emailAddress,
+                            committedAt = java.time.Instant.ofEpochSecond(commit.commitTime.toLong())
+                        )
+                    }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to read file history for '${path}' in space '${space.name}': ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** File content as it existed at the given commit, or null when absent there. */
+    fun fileAtCommit(space: Space, sha: String, path: String): String? {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists()) return null
+
+        return try {
+            Git.open(repoDir).use { git ->
+                val repo = git.repository
+                val commitId = repo.resolve(sha) ?: return null
+                RevWalk(repo).use { walk ->
+                    val commit = walk.parseCommit(commitId)
+                    val treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(repo, path, commit.tree)
+                        ?: return null
+                    treeWalk.use {
+                        String(repo.open(it.getObjectId(0)).bytes, Charsets.UTF_8)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to read '$path' at $sha in space '${space.name}': ${e.message}")
+            null
         }
     }
 

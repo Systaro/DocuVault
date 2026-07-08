@@ -93,4 +93,7 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Mockito's Byte Buddy lags behind the newest JDKs (e.g. local Java 23);
+    // the experimental flag keeps mocks working there and is a no-op otherwise.
+    systemProperty("net.bytebuddy.experimental", true)
 }

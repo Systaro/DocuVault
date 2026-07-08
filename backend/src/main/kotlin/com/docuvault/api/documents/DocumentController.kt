@@ -4,6 +4,7 @@ import com.docuvault.domain.space.Document
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
@@ -21,7 +22,6 @@ import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.*
 
@@ -34,8 +34,12 @@ class DocumentController(
     private val permissionService: PermissionService,
     private val gitService: GitService,
     private val embeddingService: EmbeddingService,
-    private val writingAssistantService: WritingAssistantService
+    private val writingAssistantService: WritingAssistantService,
+    private val documentPersistService: DocumentPersistService
 ) {
+    private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
+    private fun hashContent(content: String) = documentPersistService.hashContent(content)
+
     private fun extractDocumentPath(requestURI: String, spaceId: UUID): String? {
         val basePath = "/api/spaces/$spaceId/documents/"
         if (!requestURI.startsWith(basePath)) return null
@@ -176,21 +180,12 @@ class DocumentController(
             uploaded.add(UploadedFileDto(path = path, name = originalName))
         }
 
-        // Auto-commit uploaded files for git-backed spaces
-        if (uploaded.isNotEmpty() && !space.gitlabUrl.isNullOrBlank()) {
-            try {
-                val fileNames = uploaded.joinToString(", ") { it.name }
-                gitService.commitAndPush(
-                    space = space,
-                    message = "Upload ${uploaded.size} file(s): $fileNames",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                // Files are written but commit failed — store the reason so the UI can show it
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
+        if (uploaded.isNotEmpty()) {
+            val fileNames = uploaded.joinToString(", ") { it.name }
+            documentPersistService.commitIfRequested(
+                space, autoCommit = true,
+                message = "Upload ${uploaded.size} file(s): $fileNames", user = user
+            )
         }
 
         return ResponseEntity.ok(uploaded)
@@ -234,20 +229,10 @@ class DocumentController(
         // Generate embeddings asynchronously
         embeddingService.processDocument(saved.id!!, request.content)
 
-        // Commit and push if autoCommit is requested — skip for non-git-backed spaces
-        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = request.commitMessage ?: "Add ${request.path}",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
+        documentPersistService.commitIfRequested(
+            space, autoCommit = request.autoCommit == true,
+            message = request.commitMessage ?: "Add ${request.path}", user = user
+        )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
             DocumentContentDto(
@@ -306,11 +291,6 @@ class DocumentController(
         )
     }
 
-    /**
-     * Shared write path: writes the file into the space repo, upserts the Document
-     * row, refreshes embeddings and optionally commits+pushes (git-backed spaces only).
-     * Returns null when the file could not be written.
-     */
     private fun persistDocument(
         space: com.docuvault.domain.space.Space,
         user: com.docuvault.domain.user.User,
@@ -319,53 +299,9 @@ class DocumentController(
         title: String?,
         autoCommit: Boolean,
         commitMessage: String?
-    ): Document? {
-        if (!gitService.writeFile(space, documentPath, content)) {
-            return null
-        }
-
-        val contentHash = hashContent(content)
-        val now = Instant.now()
-
-        var document = documentRepository.findBySpaceIdAndPath(space.id!!, documentPath)
-
-        if (document != null) {
-            document.title = title ?: extractTitle(content, documentPath)
-            document.contentHash = contentHash
-            document.lastSyncedAt = now
-            document.updatedAt = now
-        } else {
-            document = Document(
-                space = space,
-                path = documentPath,
-                title = title ?: extractTitle(content, documentPath),
-                contentHash = contentHash,
-                lastSyncedAt = now
-            )
-        }
-
-        val saved = documentRepository.save(document)
-
-        // Re-generate embeddings
-        embeddingService.processDocument(saved.id!!, content)
-
-        // Commit and push if autoCommit is requested — skip for non-git-backed spaces
-        if (autoCommit && !space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = commitMessage ?: "Update $documentPath",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
-
-        return saved
-    }
+    ): Document? = documentPersistService.persistDocument(
+        space, user, documentPath, content, title, autoCommit, commitMessage
+    )
 
     @PostMapping("/ai-edit")
     fun aiEditDocument(
@@ -607,20 +543,10 @@ class DocumentController(
         // Re-generate embeddings
         embeddingService.processDocument(saved.id!!, content)
 
-        // Commit if requested — skip for non-git-backed spaces
-        if (request.autoCommit == true && !space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = request.commitMessage ?: "Update ${documentPath}",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
+        documentPersistService.commitIfRequested(
+            space, autoCommit = request.autoCommit == true,
+            message = request.commitMessage ?: "Update ${documentPath}", user = user
+        )
 
         return ResponseEntity.ok(
             DocumentContentDto(
@@ -675,20 +601,9 @@ class DocumentController(
         val document = documentRepository.findBySpaceIdAndPath(spaceId, documentPath)
         document?.let { documentRepository.delete(it) }
 
-        // Commit and push the deletion so it persists for git-backed spaces
-        if (!space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = "Delete $documentPath",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
+        documentPersistService.commitIfRequested(
+            space, autoCommit = true, message = "Delete $documentPath", user = user
+        )
 
         return ResponseEntity.noContent().build()
     }
@@ -715,20 +630,10 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
 
-        // Commit and push the folder marker (.gitkeep) so the empty folder persists in git
-        if (!space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = "Create folder ${request.path}",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
+        // Commit the folder marker (.gitkeep) so the empty folder persists
+        documentPersistService.commitIfRequested(
+            space, autoCommit = true, message = "Create folder ${request.path}", user = user
+        )
 
         return ResponseEntity.ok().build()
     }
@@ -769,40 +674,14 @@ class DocumentController(
             doc?.let { documentRepository.save(it.copy(path = request.newPath)) }
         }
 
-        // Commit and push the rename/move so it persists for git-backed spaces
-        if (!space.gitlabUrl.isNullOrBlank()) {
-            try {
-                gitService.commitAndPush(
-                    space = space,
-                    message = "Rename ${request.oldPath} to ${request.newPath}",
-                    authorName = user.name,
-                    authorEmail = user.email
-                )
-            } catch (e: Exception) {
-                space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"
-                spaceRepository.save(space)
-            }
-        }
+        documentPersistService.commitIfRequested(
+            space, autoCommit = true,
+            message = "Rename ${request.oldPath} to ${request.newPath}", user = user
+        )
 
         return ResponseEntity.ok().build()
     }
 
-    private fun extractTitle(content: String, path: String): String {
-        // Try to extract title from markdown heading
-        val headingMatch = Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)
-        if (headingMatch != null) {
-            return headingMatch.groupValues[1].trim()
-        }
-
-        // Fall back to filename without extension
-        return path.substringAfterLast("/").substringBeforeLast(".")
-    }
-
-    private fun hashContent(content: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(content.toByteArray())
-        return hash.joinToString("") { "%02x".format(it) }
-    }
 }
 
 /**

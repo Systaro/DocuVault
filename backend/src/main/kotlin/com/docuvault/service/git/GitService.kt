@@ -15,6 +15,7 @@ import java.net.UnknownHostException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 @Service
 class GitService(
@@ -23,11 +24,46 @@ class GitService(
 ) {
     private val logger = LoggerFactory.getLogger(GitService::class.java)
 
+    // Serializes commit/init operations per space — concurrent saves (autosave from
+    // several sessions) would otherwise clash on JGit's index.lock.
+    private val repoLocks = ConcurrentHashMap<UUID, Any>()
+
+    private fun lockFor(spaceId: UUID): Any = repoLocks.computeIfAbsent(spaceId) { Any() }
+
     private fun getCredentialsProvider(): UsernamePasswordCredentialsProvider {
         return UsernamePasswordCredentialsProvider("oauth2", settingsService.getGitlabToken())
     }
 
     fun getRepoPath(spaceId: UUID): Path = Path.of(reposPath, spaceId.toString())
+
+    /**
+     * Lazily turns a space's plain content directory into a local Git repository so
+     * every space is versioned, remote or not. Existing on-disk content is captured
+     * as a baseline commit so the first real change diffs against the pre-existing
+     * state instead of being mixed into it. No-op when a repo already exists.
+     */
+    fun ensureLocalRepo(space: Space) {
+        val repoDir = getRepoPath(space.id!!)
+        if (Files.exists(repoDir.resolve(".git"))) return
+        synchronized(lockFor(space.id!!)) {
+            if (Files.exists(repoDir.resolve(".git"))) return
+            try {
+                Files.createDirectories(repoDir)
+                Git.init().setDirectory(repoDir.toFile()).call().use { git ->
+                    if (!git.status().call().isClean) {
+                        git.add().addFilepattern(".").call()
+                        git.commit()
+                            .setMessage("DocuVault: baseline snapshot of existing content")
+                            .setAuthor("docuvault-bot", "bot@docuvault.systaro.de")
+                            .call()
+                    }
+                }
+                logger.info("Initialized local git repository for space '${space.name}' (${space.id})")
+            } catch (e: Exception) {
+                logger.error("Failed to init local git repository for space '${space.name}': ${e.message}", e)
+            }
+        }
+    }
 
     /**
      * Clones a repository for the given space.
@@ -151,47 +187,59 @@ class GitService(
     }
 
     /**
-     * Commits and pushes changes to the remote repository.
+     * Commits pending changes and, when the space has a remote configured, pushes
+     * them. Spaces without a remote commit into their lazily-initialized local
+     * repository — every space is versioned, only the push is conditional.
      * @throws GitOperationException with specific error codes on failure
      */
     fun commitAndPush(space: Space, message: String, authorName: String, authorEmail: String) {
-        validateConfiguration(space)
+        val hasRemote = !space.gitlabUrl.isNullOrBlank()
+        if (hasRemote) validateConfiguration(space)
 
         val repoDir = getRepoPath(space.id!!).toFile()
 
-        if (!repoDir.exists()) {
-            throw GitOperationException(
-                GitErrorCode.REPO_NOT_FOUND,
-                "Repository not found. Please sync from Git first."
-            )
+        if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
+            if (hasRemote) {
+                throw GitOperationException(
+                    GitErrorCode.REPO_NOT_FOUND,
+                    "Repository not found. Please sync from Git first."
+                )
+            }
+            ensureLocalRepo(space)
         }
 
-        logger.info("Committing and pushing changes for space '${space.name}' by $authorName")
+        logger.info("Committing changes for space '${space.name}' by $authorName (push: $hasRemote)")
 
         try {
-            Git.open(repoDir).use { git ->
-                git.add().addFilepattern(".").call()
+            synchronized(lockFor(space.id!!)) {
+                Git.open(repoDir).use { git ->
+                    git.add().addFilepattern(".").call()
 
-                val status = git.status().call()
-                val removed = status.missing + status.removed
-                if (removed.isNotEmpty()) {
-                    val rm = git.rm()
-                    removed.forEach { rm.addFilepattern(it) }
-                    rm.call()
+                    val status = git.status().call()
+                    val removed = status.missing + status.removed
+                    if (removed.isNotEmpty()) {
+                        val rm = git.rm()
+                        removed.forEach { rm.addFilepattern(it) }
+                        rm.call()
+                    }
+
+                    if (!git.status().call().isClean) {
+                        git.commit()
+                            .setMessage(message)
+                            .setAuthor(authorName, authorEmail)
+                            .call()
+                    }
+
+                    if (hasRemote) {
+                        git.push()
+                            .setCredentialsProvider(getCredentialsProvider())
+                            .call()
+                    }
                 }
-
-                git.commit()
-                    .setMessage(message)
-                    .setAuthor(authorName, authorEmail)
-                    .call()
-
-                git.push()
-                    .setCredentialsProvider(getCredentialsProvider())
-                    .call()
             }
-            logger.info("Successfully pushed changes for space '${space.name}'")
+            logger.info("Successfully committed changes for space '${space.name}'")
         } catch (e: Exception) {
-            logger.error("Failed to push changes for space '${space.name}': ${e.message}", e)
+            logger.error("Failed to commit/push changes for space '${space.name}': ${e.message}", e)
             throw mapException(e, GitErrorCode.PUSH_FAILED, "push changes")
         }
     }
@@ -219,7 +267,13 @@ class GitService(
         }
     }
 
+    /** Baseline-snapshot local spaces before the first mutation so history diffs stay clean. */
+    private fun ensureVersionedBeforeMutation(space: Space) {
+        if (space.gitlabUrl.isNullOrBlank()) ensureLocalRepo(space)
+    }
+
     fun writeFile(space: Space, path: String, content: String): Boolean {
+        ensureVersionedBeforeMutation(space)
         val repoDir = getRepoPath(space.id!!)
         val filePath = validatePath(repoDir, path)
 
@@ -234,6 +288,7 @@ class GitService(
     }
 
     fun writeBinaryFile(space: Space, path: String, bytes: ByteArray): Boolean {
+        ensureVersionedBeforeMutation(space)
         val repoDir = getRepoPath(space.id!!)
         val filePath = validatePath(repoDir, path)
 
@@ -248,6 +303,7 @@ class GitService(
     }
 
     fun deleteFile(space: Space, path: String): Boolean {
+        ensureVersionedBeforeMutation(space)
         val repoDir = getRepoPath(space.id!!)
         val filePath = validatePath(repoDir, path)
 
@@ -309,6 +365,7 @@ class GitService(
     }
 
     fun renameItem(space: Space, oldPath: String, newPath: String): Boolean {
+        ensureVersionedBeforeMutation(space)
         val repoDir = getRepoPath(space.id!!)
         val sourcePath = validatePath(repoDir, oldPath)
         val targetPath = validatePath(repoDir, newPath)

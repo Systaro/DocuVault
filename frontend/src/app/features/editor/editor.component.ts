@@ -23,6 +23,7 @@ import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
+import { DocumentHistoryService, DocumentVersion } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
@@ -184,7 +185,7 @@ import { marked } from 'marked';
           <div></div>
         }
         <div class="flex items-center gap-2" [class.ml-auto]="!showEditor()">
-          @if (!showEditor() && canEdit()) {
+          @if (!showEditor() && canEdit() && !viewingVersion()) {
             <button class="btn-edit" (click)="enterEditMode()" title="Edit document">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
               Edit
@@ -252,6 +253,14 @@ import { marked } from 'marked';
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
                       </svg>
                       Translate
+                    </button>
+                  }
+                  @if (!showEditor()) {
+                    <button class="action-menu-item" (click)="openHistory()">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      Version history
                     </button>
                   }
                   <div class="action-menu-divider"></div>
@@ -493,6 +502,32 @@ import { marked } from 'marked';
 
               @if (!showEditor()) {
                 <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
+                @if (viewingVersion(); as version) {
+                  <div class="timecapsule-banner">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>
+                      Time capsule — viewing the version from
+                      <strong>{{ version.committedAt | date:'MMM d, y, HH:mm' }}</strong>
+                      @if (version.authorName) { by {{ version.authorName }} }
+                    </span>
+                    <div class="timecapsule-actions">
+                      @if (canEdit()) {
+                        <button type="button" class="timecapsule-restore" [disabled]="restoring()" (click)="restoreVersion(version)">
+                          @if (restoring()) {
+                            <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                          }
+                          Restore this version
+                        </button>
+                      }
+                      <button type="button" class="timecapsule-back" (click)="backToCurrent()">Back to current</button>
+                    </div>
+                  </div>
+                }
                 @if (caps.aiEnabled() && availableLangs().length > 0) {
                   <div class="translation-banner">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -641,6 +676,65 @@ import { marked } from 'marked';
             </div>
           </div>
         </div>
+      }
+
+      @if (showHistoryPanel()) {
+        <aside class="history-panel" (click)="$event.stopPropagation()">
+          <div class="history-header">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Version history</span>
+            <button class="editor-icon-btn ml-auto" title="Close" (click)="closeHistory()">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          @if (historyLoading()) {
+            <div class="history-loading">
+              <svg class="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </div>
+          } @else if (historyVersions().length === 0) {
+            <p class="history-empty">
+              No versions recorded yet. Every save from now on becomes a version you can
+              come back to here.
+            </p>
+          } @else {
+            <div class="history-list">
+              @for (v of historyVersions(); track v.sha; let i = $index) {
+                <button
+                  type="button"
+                  class="history-item"
+                  [class.active]="viewingVersion()?.sha === v.sha || (i === 0 && !viewingVersion())"
+                  (click)="viewVersion(v, i === 0)"
+                >
+                  <div class="history-item-top">
+                    <span class="history-item-date">{{ v.committedAt | date:'MMM d, y, HH:mm' }}</span>
+                    @if (i === 0) {
+                      <span class="history-badge-current">Current</span>
+                    }
+                    @if (versionLoadingSha() === v.sha) {
+                      <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                      </svg>
+                    }
+                  </div>
+                  @if (v.message) {
+                    <div class="history-item-msg">{{ v.message }}</div>
+                  }
+                  @if (v.authorName) {
+                    <div class="history-item-author">{{ v.authorName }}</div>
+                  }
+                </button>
+              }
+            </div>
+          }
+        </aside>
       }
     </div>
   `,
@@ -1227,6 +1321,167 @@ import { marked } from 'marked';
       }
     }
 
+    .timecapsule-banner {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--primary);
+      background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+      color: var(--text-primary);
+      font-size: 0.8125rem;
+
+      .timecapsule-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .timecapsule-restore {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: none;
+        background: var(--primary);
+        color: white;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+          background: var(--primary-dark);
+        }
+
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+      }
+
+      .timecapsule-back {
+        padding: 5px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text-primary);
+        font-size: 0.8125rem;
+        cursor: pointer;
+
+        &:hover {
+          background: var(--surface-hover);
+        }
+      }
+    }
+
+    .history-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      z-index: 60;
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+    }
+
+    .history-loading {
+      display: flex;
+      justify-content: center;
+      padding: 32px 0;
+      color: var(--text-muted);
+    }
+
+    .history-empty {
+      padding: 20px 16px;
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+    }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .history-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--surface-hover);
+      }
+
+      &.active {
+        border-color: var(--primary);
+        background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+      }
+    }
+
+    .history-item-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .history-item-date {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .history-badge-current {
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--primary);
+      color: white;
+      font-size: 0.6875rem;
+      font-weight: 600;
+    }
+
+    .history-item-msg {
+      margin-top: 2px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-item-author {
+      margin-top: 2px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
     .ai-fab {
       position: fixed;
       bottom: var(--spacing-xl);
@@ -1359,6 +1614,14 @@ export class EditorComponent implements OnInit, OnDestroy {
     !!this.documentPathSignal() &&
     isAiEditable(this.documentPathSignal())
   );
+  // Version history ("time capsule"): drawer with every commit that touched the
+  // document; selecting one renders it read-only, restore writes it as a new version.
+  showHistoryPanel = signal(false);
+  historyVersions = signal<DocumentVersion[]>([]);
+  historyLoading = signal(false);
+  versionLoadingSha = signal<string | null>(null);
+  viewingVersion = signal<DocumentVersion | null>(null);
+  restoring = signal(false);
   gitLinkCopied = signal(false);
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
@@ -1500,6 +1763,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     private router: Router,
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
+    private documentHistoryService: DocumentHistoryService,
     private aiService: AiService,
     private gitService: GitService,
     private authService: AuthService,
@@ -1572,6 +1836,7 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.translatingLang.set(null);
           this.translationLang.set(code);
           this.viewingAiPrevious.set(false);
+          this.viewingVersion.set(null);
           // Surface a newly-created language in the read-mode bar right away.
           if (!this.availableLangs().includes(code)) {
             this.availableLangs.update(langs => [...langs, code].sort());
@@ -1590,6 +1855,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   showOriginal(): void {
     this.translationLang.set(null);
     this.viewingAiPrevious.set(false);
+    this.viewingVersion.set(null);
     this.renderReadView(this.markdownContent());
     this.closeActionMenus();
   }
@@ -1613,6 +1879,101 @@ export class EditorComponent implements OnInit, OnDestroy {
   private closeActionMenus(): void {
     this.showTranslateMenu.set(false);
     this.showActionMenu.set(false);
+  }
+
+  /** Open the version-history drawer and load the document's commit track. */
+  openHistory(): void {
+    this.closeActionMenus();
+    this.showHistoryPanel.set(true);
+    this.loadHistory();
+  }
+
+  private loadHistory(): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.historyLoading.set(true);
+    this.documentHistoryService.getHistory(space.id, this.documentPath)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (versions) => {
+          this.historyVersions.set(versions);
+          this.historyLoading.set(false);
+        },
+        error: () => {
+          this.historyLoading.set(false);
+          this.toastService.error('History unavailable', 'Could not load the version history for this document.');
+        }
+      });
+  }
+
+  closeHistory(): void {
+    this.showHistoryPanel.set(false);
+    if (this.viewingVersion()) this.backToCurrent();
+  }
+
+  /** Render the document as it existed at the given version (read-only time capsule). */
+  viewVersion(version: DocumentVersion, isCurrent = false): void {
+    const space = this.space();
+    if (!space || this.versionLoadingSha()) return;
+    if (isCurrent) {
+      this.backToCurrent();
+      return;
+    }
+    if (this.viewingVersion()?.sha === version.sha) return;
+    this.versionLoadingSha.set(version.sha);
+    this.documentHistoryService.getVersionContent(space.id, this.documentPath, version.sha)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (res) => {
+          this.versionLoadingSha.set(null);
+          this.viewingVersion.set(version);
+          this.translationLang.set(null);
+          this.viewingAiPrevious.set(false);
+          this.renderReadView(this.stripTitleH1(res.content));
+        },
+        error: () => {
+          this.versionLoadingSha.set(null);
+          this.toastService.error('Version unavailable', 'Could not load this version. Please try again.');
+        }
+      });
+  }
+
+  /** Leave the time capsule and show the live document again. */
+  backToCurrent(): void {
+    if (!this.viewingVersion()) return;
+    this.viewingVersion.set(null);
+    this.renderReadView(this.markdownContent());
+  }
+
+  /** Write the viewed version back as a new version on top of the history. */
+  restoreVersion(version: DocumentVersion): void {
+    const space = this.space();
+    if (!space || this.restoring()) return;
+    this.restoring.set(true);
+    this.documentHistoryService.restoreVersion(space.id, this.documentPath, version.sha)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.restoring.set(false);
+          this.viewingVersion.set(null);
+          this.toastService.success('Version restored', 'The document was restored — the previous state stays available in the history.');
+          this.loadDocument();
+          this.loadHistory();
+        },
+        error: () => {
+          this.restoring.set(false);
+          this.toastService.error('Restore failed', 'Could not restore this version. Please try again.');
+        }
+      });
+  }
+
+  /** Same leading-H1 strip rule as loadDocument, for rendering historical content. */
+  private stripTitleH1(content: string): string {
+    const h1Match = content.match(/^#\s+(.+)\n*/);
+    if (h1Match && h1Match[1].trim() === (this.documentTitle || '').trim()) {
+      return content.substring(h1Match[0].length);
+    }
+    return content;
   }
 
   getGitUrl(): string | null {
@@ -1918,6 +2279,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.translationLang.set(null);
     this.availableLangs.set([]);
+    this.viewingVersion.set(null);
+    if (this.showHistoryPanel()) this.loadHistory();
     this.loadDocumentSettings(space.id, this.documentPath);
     this.loadAvailableTranslations(space.id, this.documentPath);
     this.documentsService.getDocument(space.id, this.documentPath).subscribe({
@@ -2289,6 +2652,10 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.lastSaved.set(true);
           this.hasChanges.set(false);
           this.rebaseEditSession(body, raw);
+          // Keep the read-view base in sync — without this, leaving the editor
+          // after an autosave (Done with no pending changes) shows stale content.
+          this.markdownContent.set(body);
+          if (this.showHistoryPanel()) this.loadHistory();
           if (returnToRead) this.exitToReadView(body);
         },
         error: () => {
@@ -2312,6 +2679,8 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.lastSaved.set(true);
           this.hasChanges.set(false);
           this.rebaseEditSession(body, raw);
+          this.markdownContent.set(body);
+          if (this.showHistoryPanel()) this.loadHistory();
           if (returnToRead) this.exitToReadView(body);
         },
         error: () => {
@@ -2352,6 +2721,8 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.lastSaved.set(true);
         this.hasChanges.set(false);
         this.rebaseEditSession(body, raw);
+        this.markdownContent.set(body);
+        if (this.showHistoryPanel()) this.loadHistory();
       },
       error: () => {
         this.saving.set(false);
