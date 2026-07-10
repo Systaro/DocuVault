@@ -983,6 +983,17 @@ body {
     margin: 4px 0;
   }
 
+  mark {
+    padding: 0.05em 0.15em;
+    border-radius: 3px;
+    // Highlights carry an inline light background; pin dark text so it stays
+    // legible in both themes (the inline bg would otherwise inherit the theme's
+    // near-white body colour in dark mode).
+    color: #1a1a1a;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
   code {
     background: #f3f4f6;
     padding: 2px 6px;

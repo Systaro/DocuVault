@@ -44,6 +44,33 @@ import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
 
+/**
+ * Highlight with a persisted colour. TipTap's stock multicolor renderHTML also
+ * emits `color: inherit` inline, which pins the text colour to the theme's body
+ * colour — near-white in dark mode, illegible on the light pastel swatches.
+ * We drop that inline colour and let CSS (`mark` under `.ProseMirror,
+ * .markdown-readonly`) set a fixed dark text colour that reads in both themes.
+ * `data-color` is kept so the exact swatch value round-trips through Markdown.
+ */
+const ColorHighlight = Highlight.extend({
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: (element) =>
+          element.getAttribute('data-color') || (element as HTMLElement).style.backgroundColor || null,
+        renderHTML: (attributes) => {
+          if (!attributes['color']) return {};
+          return {
+            'data-color': attributes['color'],
+            style: `background-color: ${attributes['color']}`,
+          };
+        },
+      },
+    };
+  },
+});
+
 /** One renderable line of a parsed unified diff. */
 interface DiffLine {
   type: 'add' | 'del' | 'ctx' | 'hunk';
@@ -84,6 +111,40 @@ interface DiffLine {
             <button class="editor-icon-btn" [class.active]="isActive('code')" (click)="toggleCode()" title="Inline code">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
             </button>
+            <div class="relative">
+              <button
+                class="editor-icon-btn"
+                [class.active]="isActive('highlight')"
+                (click)="showHighlightMenu.set(!showHighlightMenu()); $event.stopPropagation()"
+                title="Highlight color"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                </svg>
+              </button>
+              @if (showHighlightMenu()) {
+                <div class="action-menu action-menu--left highlight-menu" (click)="$event.stopPropagation()">
+                  <div class="highlight-swatches">
+                    @for (c of highlightColors; track c.value) {
+                      <button
+                        type="button"
+                        class="highlight-swatch"
+                        [class.active]="isActive('highlight', { color: c.value })"
+                        [style.background-color]="c.value"
+                        [title]="c.name"
+                        (click)="setHighlight(c.value)"
+                      ></button>
+                    }
+                  </div>
+                  <div class="action-menu-divider"></div>
+                  <button class="action-menu-item" [disabled]="!isActive('highlight')" (click)="unsetHighlight()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    Remove highlight
+                  </button>
+                </div>
+              }
+            </div>
             <div class="toolbar-divider"></div>
             <button class="editor-icon-btn" [class.active]="isActive('heading', {level:1})" (click)="setHeading(1)" title="Heading 1">H1</button>
             <button class="editor-icon-btn" [class.active]="isActive('heading', {level:2})" (click)="setHeading(2)" title="Heading 2">H2</button>
@@ -1156,6 +1217,30 @@ interface DiffLine {
       color: var(--primary);
     }
 
+    .highlight-menu {
+      min-width: 0;
+      padding: 8px;
+    }
+
+    .highlight-swatches {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .highlight-swatch {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform 0.1s;
+
+      &:hover { transform: scale(1.12); }
+      &.active { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary); }
+    }
+
     .translation-banner {
       display: flex;
       align-items: center;
@@ -1663,6 +1748,21 @@ export class EditorComponent implements OnInit, OnDestroy {
         const inline = content.replace(/\n+/g, ' ').trim();
         return (node as HTMLElement).previousElementSibling ? '<br>' + inline : inline;
       },
+    })
+    // Highlights have no Markdown equivalent, so keep them as inline HTML (which
+    // marked passes through verbatim on load). The colour is carried both as
+    // data-color (parsed back into the mark's attribute) and an inline
+    // background-color (so it renders in read mode and any external Markdown
+    // viewer). Colourless highlights degrade to a bare <mark>.
+    .addRule('highlight', {
+      filter: 'mark',
+      replacement: (content, node) => {
+        if (!content.trim()) return content;
+        const el = node as HTMLElement;
+        const color = el.getAttribute('data-color') || el.style.backgroundColor;
+        if (!color) return `<mark>${content}</mark>`;
+        return `<mark data-color="${color}" style="background-color:${color}">${content}</mark>`;
+      },
     });
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
@@ -1706,6 +1806,20 @@ export class EditorComponent implements OnInit, OnDestroy {
   showActionMenu = signal(false);
   showTranslateMenu = signal(false);
   showTableMenu = signal(false);
+  showHighlightMenu = signal(false);
+
+  // Highlight palette. Light -200-ish shades that keep dark text legible in both
+  // themes; the hex is stored verbatim in the Markdown so it round-trips.
+  readonly highlightColors: { name: string; value: string }[] = [
+    { name: 'Yellow', value: '#fef08a' },
+    { name: 'Green', value: '#bbf7d0' },
+    { name: 'Blue', value: '#bfdbfe' },
+    { name: 'Pink', value: '#fbcfe8' },
+    { name: 'Orange', value: '#fed7aa' },
+    { name: 'Purple', value: '#e9d5ff' },
+    { name: 'Red', value: '#fecaca' },
+    { name: 'Gray', value: '#e5e7eb' }
+  ];
 
   // AI translation: offered set must mirror TranslationService.supportedLanguages on the backend.
   readonly translateLanguages = [
@@ -1943,6 +2057,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.showActionMenu.set(false);
     this.showTranslateMenu.set(false);
     this.showTableMenu.set(false);
+    this.showHighlightMenu.set(false);
   }
 
   languageLabel(code: string): string {
@@ -2718,7 +2833,9 @@ export class EditorComponent implements OnInit, OnDestroy {
         TaskItem.configure({
           nested: true
         }),
-        Highlight,
+        ColorHighlight.configure({
+          multicolor: true
+        }),
         CodeBlockLowlight.configure({
           lowlight
         })
@@ -3025,6 +3142,16 @@ export class EditorComponent implements OnInit, OnDestroy {
 
   toggleBlockquote(): void {
     this.editor?.chain().focus().toggleBlockquote().run();
+  }
+
+  setHighlight(color: string): void {
+    this.editor?.chain().focus().setHighlight({ color }).run();
+    this.showHighlightMenu.set(false);
+  }
+
+  unsetHighlight(): void {
+    this.editor?.chain().focus().unsetHighlight().run();
+    this.showHighlightMenu.set(false);
   }
 
   toggleCodeBlock(): void {
