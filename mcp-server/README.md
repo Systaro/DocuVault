@@ -39,6 +39,9 @@ An MCP (Model Context Protocol) server that gives Claude Code full access to you
 | `edit_document` | Surgical find-and-replace that preserves all formatting |
 | `insert_in_document` | Insert content at a specific location in a document |
 | `delete_document` | Delete a document from a space |
+| `list_space_state` | List the DocuVault state keys of a space |
+| `get_space_state` | Read a state bucket persisted by an HTML file via the State Library |
+| `set_space_state` | Write a state bucket (full JSON replace, requires edit access) |
 
 ## Configuration
 

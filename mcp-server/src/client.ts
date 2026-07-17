@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult, ShareLink } from './types.js';
+import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult, ShareLink, SpaceStateEntry, SpaceStateKey } from './types.js';
 
 export class DocuVaultClient {
   private baseUrl: string;
@@ -120,6 +120,21 @@ export class DocuVaultClient {
     return this.request<SemanticSearchResult[]>('/search/semantic', {
       method: 'POST',
       body: JSON.stringify({ query, spaceId, limit }),
+    });
+  }
+
+  async listSpaceState(spaceId: string): Promise<SpaceStateKey[]> {
+    return this.request<SpaceStateKey[]>(`/spaces/${spaceId}/state`);
+  }
+
+  async getSpaceState(spaceId: string, key: string): Promise<SpaceStateEntry> {
+    return this.request<SpaceStateEntry>(`/spaces/${spaceId}/state/${encodeURIComponent(key)}`);
+  }
+
+  async putSpaceState(spaceId: string, key: string, value: string): Promise<SpaceStateEntry> {
+    return this.request<SpaceStateEntry>(`/spaces/${spaceId}/state/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
     });
   }
 

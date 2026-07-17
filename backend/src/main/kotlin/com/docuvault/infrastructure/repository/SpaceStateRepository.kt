@@ -9,6 +9,8 @@ import java.util.*
 interface SpaceStateRepository : JpaRepository<SpaceState, UUID> {
     fun findBySpaceIdAndKey(spaceId: UUID, key: String): SpaceState?
 
+    fun findAllBySpaceIdOrderByKey(spaceId: UUID): List<SpaceState>
+
     @Modifying
     @Query("DELETE FROM SpaceState s WHERE s.space.id = :spaceId AND s.key = :key")
     fun deleteBySpaceIdAndKey(spaceId: UUID, key: String)

@@ -75,6 +75,17 @@ export interface PatchResult {
   lastSyncedAt?: string;
 }
 
+export interface SpaceStateEntry {
+  key: string;
+  value: string;
+  updatedAt: string;
+}
+
+export interface SpaceStateKey {
+  key: string;
+  updatedAt: string;
+}
+
 export interface ShareLink {
   id: string;
   token: string;

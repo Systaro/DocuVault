@@ -3,6 +3,7 @@ package com.docuvault.api.spaces
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.StateFreezeService
 import com.docuvault.service.git.GitService
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.CacheControl
@@ -30,12 +31,14 @@ class SpaceFileController(
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
     private val permissionService: PermissionService,
-    private val gitService: GitService
+    private val gitService: GitService,
+    private val stateFreezeService: StateFreezeService
 ) {
     @GetMapping("/**")
     fun getFile(
         @PathVariable spaceId: UUID,
         @RequestParam(required = false) download: Boolean?,
+        @RequestParam(required = false) includeState: Boolean?,
         @AuthenticationPrincipal userDetails: UserDetails,
         request: HttpServletRequest
     ): ResponseEntity<ByteArray> {
@@ -78,6 +81,25 @@ class SpaceFileController(
         val contentType = Files.probeContentType(resolved) ?: "application/octet-stream"
         val extension = filePath.substringAfterLast('.', "").lowercase()
         val isHtml = extension in listOf("html", "htm")
+
+        // Frozen export: embed a snapshot of the referenced DocuVault state so the
+        // downloaded HTML works standalone. Falls back to the raw file when the
+        // HTML doesn't use the state library.
+        if (isHtml && wantsDownload && includeState == true) {
+            val html = Files.readString(resolved)
+            val frozen = stateFreezeService.freezeHtml(html, spaceId) ?: html
+            return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .cacheControl(CacheControl.noCache())
+                .header(
+                    HttpHeaders.CONTENT_DISPOSITION,
+                    ContentDisposition.attachment()
+                        .filename(resolved.fileName.toString(), StandardCharsets.UTF_8)
+                        .build()
+                        .toString()
+                )
+                .body(frozen.toByteArray(Charsets.UTF_8))
+        }
 
         // For HTML files, inject the annotation bridge script (not when downloading the raw file)
         if (isHtml && !wantsDownload) {
