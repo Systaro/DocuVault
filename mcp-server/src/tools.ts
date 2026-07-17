@@ -650,6 +650,83 @@ RULES:
       }
     }
   );
+
+  // --- Space state tools ---
+
+  server.tool(
+    'list_space_state',
+    `List all DocuVault state keys of a space. State buckets are JSON objects persisted by HTML files hosted in DocuVault via the DocuVault State Library (interactive dashboards, forms, checklists store their data there). Use get_space_state to read a bucket's data. Access follows your space permissions.`,
+    {
+      spaceId: z.string().describe('The space ID (or name/path) whose state keys to list'),
+    },
+    async ({ spaceId }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        const entries = await client.listSpaceState(resolvedId);
+        if (entries.length === 0) {
+          return { content: [{ type: 'text', text: 'No state keys in this space.' }] };
+        }
+        const lines = entries.map(e => `- ${e.key} (updated ${e.updatedAt})`);
+        return { content: [{ type: 'text', text: `${entries.length} state key${entries.length !== 1 ? 's' : ''}:\n${lines.join('\n')}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to list state: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'get_space_state',
+    `Read a DocuVault state bucket — the JSON data an HTML file in the space persists via the DocuVault State Library. The key matches the "key" in the file's DocuVaultState.init() call. Requires read access to the space.`,
+    {
+      spaceId: z.string().describe('The space ID (or name/path) containing the state'),
+      key: z.string().describe('The state key (as used in DocuVaultState.init)'),
+    },
+    async ({ spaceId, key }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        const entry = await client.getSpaceState(resolvedId, key);
+        return { content: [{ type: 'text', text: `Key: ${entry.key}\nUpdated: ${entry.updatedAt}\n\n${entry.value}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to read state: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    'set_space_state',
+    `Write a DocuVault state bucket (full replace). The value must be a JSON object serialized as a string — the same shape the owning HTML file saves via the DocuVault State Library. Read the current value with get_space_state first and merge your changes; a partial value would wipe the rest of the bucket. Requires edit access to the space.`,
+    {
+      spaceId: z.string().describe('The space ID (or name/path) containing the state'),
+      key: z.string().describe('The state key (as used in DocuVaultState.init)'),
+      value: z.string().describe('The full state as a JSON object string, e.g. \'{"assignee":"Anna"}\''),
+    },
+    async ({ spaceId, key, value }) => {
+      try {
+        const resolvedId = resolveSpaceId(spaces, spaceId);
+        if (!resolvedId) {
+          return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        try {
+          const parsed = JSON.parse(value);
+          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            return { content: [{ type: 'text', text: 'The value must be a JSON object (e.g. {"field": "data"}), not an array or primitive.' }], isError: true };
+          }
+        } catch {
+          return { content: [{ type: 'text', text: 'The value is not valid JSON. Pass the full state as a serialized JSON object.' }], isError: true };
+        }
+        const entry = await client.putSpaceState(resolvedId, key, value);
+        return { content: [{ type: 'text', text: `State saved.\nKey: ${entry.key}\nUpdated: ${entry.updatedAt}` }] };
+      } catch (error) {
+        return { content: [{ type: 'text', text: `Failed to write state: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+      }
+    }
+  );
 }
 
 function findSubtree(

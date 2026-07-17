@@ -35,6 +35,8 @@ import { GitService } from '../../core/api/git.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
 import { ToastService } from '../../shared/services/toast.service';
+import { StateExportService } from '../../shared/services/state-export.service';
+import { ExportStateDialogComponent } from '../../shared/components/export-state-dialog.component';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
@@ -80,7 +82,7 @@ interface DiffLine {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -764,6 +766,14 @@ interface DiffLine {
             </div>
           </div>
         </div>
+      }
+
+      @if (showExportStateDialog()) {
+        <app-export-state-dialog
+          [fileName]="documentPath.split('/').pop() || 'document'"
+          (chosen)="onExportStateChosen($event)"
+          (closed)="showExportStateDialog.set(false)"
+        />
       }
 
       @if (showHistoryPanel()) {
@@ -1839,6 +1849,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   // A translation language requested via the ?lang= query param, applied once the document has loaded.
   private pendingLang: string | null = null;
   showDeleteConfirm = signal(false);
+  showExportStateDialog = signal(false);
   deleting = signal(false);
   // "Edit via AI": the AI applies a free-form instruction to the whole file and
   // saves the result as a commit; aiEditUndo powers the step-back banner.
@@ -2016,6 +2027,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     private markdownService: MarkdownRenderService,
     private dataFileService: DataFileRenderService,
     private documentSettingsService: DocumentSettingsService,
+    private stateExportService: StateExportService,
     protected prefs: DisplayPrefsService,
     protected caps: CapabilitiesService
   ) {
@@ -2367,12 +2379,23 @@ export class EditorComponent implements OnInit, OnDestroy {
   downloadFile(): void {
     const space = this.space();
     if (!space || !this.documentPath) return;
-    const url = `/api/spaces/${space.id}/files/${this.documentPath}?download=true`;
-    const filename = this.documentPath.split('/').pop() || 'document';
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
+    this.stateExportService.checkFileUsesState(space.id, this.documentPath).subscribe({
+      next: (usesState) => {
+        if (usesState) {
+          this.showExportStateDialog.set(true);
+        } else {
+          this.stateExportService.download(space.id, this.documentPath, false);
+        }
+      },
+      error: () => this.stateExportService.download(space.id, this.documentPath, false),
+    });
+  }
+
+  onExportStateChosen(withState: boolean): void {
+    this.showExportStateDialog.set(false);
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.stateExportService.download(space.id, this.documentPath, withState);
   }
 
   openAiEditDialog(): void {

@@ -13,6 +13,8 @@ import { AnnotationsService } from '../../core/api/annotations.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { StateExportService } from '../../shared/services/state-export.service';
+import { ExportStateDialogComponent } from '../../shared/components/export-state-dialog.component';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { getFileIcon } from '../../shared/utils/file-utils';
@@ -20,7 +22,7 @@ import { getFileIcon } from '../../shared/utils/file-utils';
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, SpaceRoutePipe],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -193,6 +195,14 @@ import { getFileIcon } from '../../shared/utils/file-utils';
             [filePath]="shareFilePath()!"
             [isDirectory]="shareIsDirectory()"
             (close)="onShareDialogClose()"
+          />
+        }
+
+        @if (exportStatePath(); as path) {
+          <app-export-state-dialog
+            [fileName]="path.split('/').pop() || 'document'"
+            (chosen)="onExportStateChosen($event)"
+            (closed)="exportStatePath.set(null)"
           />
         }
 
@@ -417,6 +427,10 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, false)">
                         <span class="material-icons">share</span>
                         Share file
+                      </button>
+                      <button class="tree-dropdown-item" (click)="downloadFile(node); openMenuPath.set(null)">
+                        <span class="material-icons">download</span>
+                        Download
                       </button>
                       <button class="tree-dropdown-item danger" (click)="startDeleteFile(node)">
                         <span class="material-icons">delete</span>
@@ -1493,6 +1507,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   parentLogoUrl = signal<string | null>(null);
   headerLogo = computed(() => this.spaceSignal()?.logoUrl || this.parentLogoUrl());
   shareFilePath = signal<string | null>(null);
+  exportStatePath = signal<string | null>(null);
   shareIsDirectory = signal(false);
   sharedFilePaths = signal<Set<string>>(new Set());
   annotationCounts = signal<Record<string, number>>({});
@@ -1553,7 +1568,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     private annotationsService: AnnotationsService,
     protected caps: CapabilitiesService,
     protected prefs: DisplayPrefsService,
-    private toastService: ToastService
+    private toastService: ToastService,
+    private stateExportService: StateExportService
   ) {}
 
   ngOnInit(): void {
@@ -1829,6 +1845,29 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     a.href = `/api/spaces/${space.id}/files/${node.path}?download=true`;
     a.download = `${node.name}.zip`;
     a.click();
+  }
+
+  downloadFile(node: FileNode): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.stateExportService.checkFileUsesState(space.id, node.path).subscribe({
+      next: (usesState) => {
+        if (usesState) {
+          this.exportStatePath.set(node.path);
+        } else {
+          this.stateExportService.download(space.id, node.path, false);
+        }
+      },
+      error: () => this.stateExportService.download(space.id, node.path, false),
+    });
+  }
+
+  onExportStateChosen(withState: boolean): void {
+    const space = this.spaceSignal();
+    const path = this.exportStatePath();
+    this.exportStatePath.set(null);
+    if (!space || !path) return;
+    this.stateExportService.download(space.id, path, withState);
   }
 
   openShareDialog(filePath: string, isDirectory = false): void {

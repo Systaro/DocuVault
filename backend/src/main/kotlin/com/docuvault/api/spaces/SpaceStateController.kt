@@ -43,6 +43,20 @@ class SpaceStateController(
         return permissionService.hasEditAccess(user.id!!, spaceId, user.role)
     }
 
+    @GetMapping
+    @Transactional(readOnly = true)
+    fun listState(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<SpaceStateKeyDto>> {
+        if (!canRead(userDetails, spaceId)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this space")
+        }
+
+        val entries = spaceStateRepository.findAllBySpaceIdOrderByKey(spaceId)
+        return ResponseEntity.ok(entries.map { SpaceStateKeyDto(key = it.key, updatedAt = it.updatedAt) })
+    }
+
     @GetMapping("/{key}")
     @Transactional(readOnly = true)
     fun getState(
@@ -115,6 +129,11 @@ data class PutStateRequest(
 data class SpaceStateDto(
     val key: String,
     val value: String,
+    val updatedAt: java.time.Instant
+)
+
+data class SpaceStateKeyDto(
+    val key: String,
     val updatedAt: java.time.Instant
 )
 
