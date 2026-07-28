@@ -107,12 +107,14 @@ class SyncScheduler(
 
         var indexed = 0
         var skipped = 0
+        var filesOnDisk = 0
 
         Files.walk(repoPath)
             .filter { it.isRegularFile() }
-            .filter { it.extension.lowercase() in indexableExtensions }
             .filter { !it.toString().contains("/.git/") }
             .forEach { filePath ->
+                filesOnDisk++
+                if (filePath.extension.lowercase() !in indexableExtensions) return@forEach
                 try {
                     val relativePath = repoPath.relativize(filePath).toString()
                     val rawContent = Files.readString(filePath)
@@ -158,11 +160,57 @@ class SyncScheduler(
                 }
             }
 
-        if (indexed > 0 || skipped > 0) {
-            logger.info("Indexing complete for space '${space.name}': $indexed indexed, $skipped unchanged")
+        val pruned = pruneMissingDocuments(space, filesOnDisk)
+
+        if (indexed > 0 || skipped > 0 || pruned > 0) {
+            logger.info(
+                "Indexing complete for space '${space.name}': " +
+                    "$indexed indexed, $skipped unchanged, $pruned pruned"
+            )
         }
 
-        return indexed
+        return indexed + pruned
+    }
+
+    /**
+     * Drops document rows whose file has left the working tree.
+     *
+     * Indexing only ever upserts, so a file moved or deleted outside the app —
+     * in a clone, in GitLab's UI, by an agent — left its old row behind forever.
+     * Search then offered a path that no longer resolves, and a moved document
+     * showed up once per path it had ever lived at.
+     *
+     * Existence is checked per stored path instead of against the set of files
+     * just walked, because rows also legitimately exist for extensions the
+     * indexer skips (css, js, svg written through the editor).
+     *
+     * Embeddings and cached translations follow via ON DELETE CASCADE.
+     */
+    private fun pruneMissingDocuments(space: Space, filesOnDisk: Int): Int {
+        val documents = documentRepository.findBySpaceId(space.id!!)
+        if (documents.isEmpty()) return 0
+
+        // An empty working tree means a broken or half-finished clone far more
+        // often than it means every document was genuinely deleted, and pruning
+        // on that reading would wipe the space's entire index.
+        if (filesOnDisk == 0) {
+            logger.warn(
+                "Skipping prune for space '${space.name}': working tree is empty " +
+                    "but ${documents.size} document(s) are indexed"
+            )
+            return 0
+        }
+
+        val missing = documents.filter { !gitService.regularFileExists(space, it.path) }
+        if (missing.isEmpty()) return 0
+
+        documentRepository.deleteAll(missing)
+        logger.info(
+            "Pruned ${missing.size} stale document(s) from space '${space.name}': " +
+                missing.take(10).joinToString(", ") { it.path } +
+                if (missing.size > 10) ", …" else ""
+        )
+        return missing.size
     }
 
     private fun extractHtmlTitle(html: String): String? {

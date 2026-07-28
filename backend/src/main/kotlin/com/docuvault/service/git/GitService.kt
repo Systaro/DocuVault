@@ -408,6 +408,22 @@ class GitService(
         return Files.isDirectory(filePath)
     }
 
+    /**
+     * Whether the space's working tree still holds a regular file at [path].
+     * A path that escapes the repository counts as absent rather than throwing,
+     * so callers reconciling stored paths against disk can't be derailed by one
+     * bad row.
+     */
+    fun regularFileExists(space: Space, path: String): Boolean {
+        val repoDir = getRepoPath(space.id!!)
+        val filePath = try {
+            validatePath(repoDir, path)
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        return Files.isRegularFile(filePath)
+    }
+
     fun deleteRepository(spaceId: UUID): Boolean {
         val repoDir = getRepoPath(spaceId).toFile()
         return try {
