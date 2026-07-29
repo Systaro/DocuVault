@@ -2,9 +2,12 @@ package com.docuvault.service
 
 import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
+import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.TeamMembershipRepository
+import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.*
@@ -12,37 +15,50 @@ import java.util.*
 @Service
 class PermissionService(
     private val spacePermissionRepository: SpacePermissionRepository,
-    private val spaceRepository: SpaceRepository
+    private val spaceRepository: SpaceRepository,
+    private val teamMembershipRepository: TeamMembershipRepository,
+    private val teamSpacePermissionRepository: TeamSpacePermissionRepository
 ) {
     /**
      * Gets the effective permission for a user on a space.
-     * Checks direct permission first, then traverses up the hierarchy.
+     * Combines the user's own grant with the grants of every team they belong to
+     * (highest level wins), then traverses up the hierarchy if nothing is set here.
      * Returns null if no permission is found at any level.
      */
+    @Transactional(readOnly = true)
     fun getEffectivePermission(userId: UUID, spaceId: UUID): PermissionLevel? {
         val space = spaceRepository.findById(spaceId).orElse(null) ?: return null
         return getEffectivePermissionForSpace(userId, space)
     }
 
     private fun getEffectivePermissionForSpace(userId: UUID, space: Space): PermissionLevel? {
-        // Check direct permission first
-        val directPermission = spacePermissionRepository.findByUserIdAndSpaceId(userId, space.id!!)
-        if (directPermission != null) {
-            return directPermission.permissionLevel
+        val teamIds = teamMembershipRepository.findTeamIdsByUserId(userId)
+        return resolve(userId, teamIds, space)
+    }
+
+    private fun resolve(userId: UUID, teamIds: List<UUID>, space: Space): PermissionLevel? {
+        val spaceId = space.id!!
+        val levels = mutableListOf<PermissionLevel>()
+
+        spacePermissionRepository.findByUserIdAndSpaceId(userId, spaceId)
+            ?.let { levels.add(it.permissionLevel) }
+
+        if (teamIds.isNotEmpty()) {
+            teamSpacePermissionRepository.findAllBySpaceIdAndTeamIdIn(spaceId, teamIds)
+                .forEach { levels.add(it.permissionLevel) }
         }
 
-        // Check parent permission (inheritance)
-        val parent = space.parent
-        if (parent != null) {
-            return getEffectivePermissionForSpace(userId, parent)
-        }
+        // Strongest grant at this level wins; only fall back to the parent when
+        // neither the user nor any of their teams has a say here.
+        levels.maxByOrNull { it.ordinal }?.let { return it }
 
-        return null
+        val parent = space.parent ?: return null
+        return resolve(userId, teamIds, parent)
     }
 
     /**
      * Checks if a user has at least the required permission level on a space.
-     * Takes inheritance into account.
+     * Takes inheritance and team membership into account.
      */
     fun hasPermission(userId: UUID, spaceId: UUID, requiredLevel: PermissionLevel): Boolean {
         val effectiveLevel = getEffectivePermission(userId, spaceId) ?: return false
@@ -82,7 +98,8 @@ class PermissionService(
 
     /**
      * Gets all spaces a user can access, considering hierarchy.
-     * Returns spaces where the user has direct permission or inherited permission.
+     * Returns spaces where the user has a direct grant, a grant through one of
+     * their teams, or an inherited permission from an ancestor of either.
      */
     @Transactional(readOnly = true)
     fun getAccessibleSpaces(userId: UUID, userRole: UserRole): List<Space> {
@@ -90,11 +107,10 @@ class PermissionService(
             return spaceRepository.findAll()
         }
 
-        // Get spaces with direct permissions
-        val directAccessSpaces = spaceRepository.findAllByUserId(userId)
+        val grantedSpaces = getGrantedSpaces(userId)
 
         val allAccessible = mutableSetOf<Space>()
-        directAccessSpaces.forEach { space ->
+        grantedSpaces.forEach { space ->
             // Include the space itself and all its children
             allAccessible.add(space)
             addChildrenRecursively(space, allAccessible)
@@ -103,6 +119,28 @@ class PermissionService(
         }
 
         return allAccessible.toList()
+    }
+
+    /**
+     * Spaces the user was explicitly granted, directly or through a team.
+     * Unlike [getAccessibleSpaces] this does not expand children or ancestors.
+     */
+    @Transactional(readOnly = true)
+    fun getGrantedSpaces(userId: UUID): List<Space> =
+        (spaceRepository.findAllByUserId(userId) + spaceRepository.findAllByTeamMemberUserId(userId))
+            .distinctBy { it.id }
+
+    /**
+     * Everyone holding a grant on this space — directly or through a team.
+     * Used to resolve notification recipients; does not walk the hierarchy.
+     */
+    @Transactional(readOnly = true)
+    fun membersOf(space: Space): Set<User> {
+        val spaceId = space.id!!
+        val members = mutableSetOf<User>()
+        members += spacePermissionRepository.findAllBySpaceId(spaceId).map { it.user }
+        members += teamSpacePermissionRepository.findUsersBySpaceId(spaceId)
+        return members
     }
 
     private fun addChildrenRecursively(space: Space, collection: MutableSet<Space>) {

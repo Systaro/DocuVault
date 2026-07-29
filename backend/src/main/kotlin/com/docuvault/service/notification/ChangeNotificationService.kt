@@ -11,10 +11,10 @@ import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.NotificationDispatchRepository
 import com.docuvault.infrastructure.repository.SpaceChangeEventRepository
-import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserPushTokenRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
+import com.docuvault.service.PermissionService
 import com.docuvault.service.git.DetectedChange
 import com.docuvault.service.git.GitDiffService
 import org.slf4j.LoggerFactory
@@ -28,7 +28,7 @@ class ChangeNotificationService(
     private val changeEventRepository: SpaceChangeEventRepository,
     private val dispatchRepository: NotificationDispatchRepository,
     private val pushTokenRepository: UserPushTokenRepository,
-    private val spacePermissionRepository: SpacePermissionRepository,
+    private val permissionService: PermissionService,
     private val userRepository: UserRepository,
     private val pushSenders: List<PushSender>,
     private val emailService: EmailService,
@@ -161,9 +161,9 @@ class ChangeNotificationService(
 
     private fun resolveRecipients(space: Space, triggeredBy: User?, authorEmail: String?): List<User> {
         val candidates = mutableSetOf<User>()
-        candidates += spacePermissionRepository.findAllBySpaceId(space.id!!).map { it.user }
+        candidates += permissionService.membersOf(space)
         space.parent?.let { parent ->
-            candidates += spacePermissionRepository.findAllBySpaceId(parent.id!!).map { it.user }
+            candidates += permissionService.membersOf(parent)
         }
         candidates += userRepository.findAll().filter {
             it.role == UserRole.SUPER_ADMIN || it.role == UserRole.ORG_ADMIN

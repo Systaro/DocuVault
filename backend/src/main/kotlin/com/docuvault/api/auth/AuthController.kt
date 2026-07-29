@@ -365,7 +365,9 @@ data class UserDto(
     val email: String,
     val name: String,
     val role: String,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** Populated only where team context matters (admin listings, /users/me). */
+    val teams: List<com.docuvault.api.teams.TeamBadgeDto> = emptyList()
 )
 
 data class ForgotPasswordRequest(

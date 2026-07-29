@@ -35,6 +35,15 @@ interface SpaceRepository : JpaRepository<Space, UUID> {
     @Query("SELECT s FROM Space s JOIN s.permissions p WHERE p.user.id = :userId AND s.parent IS NULL")
     fun findTopLevelByUserId(userId: UUID): List<Space>
 
+    /** Spaces the user reaches through a team they belong to, rather than a direct grant. */
+    @Query(
+        """
+        SELECT DISTINCT p.space FROM TeamSpacePermission p
+        WHERE p.team.id IN (SELECT m.team.id FROM TeamMembership m WHERE m.user.id = :userId)
+        """
+    )
+    fun findAllByTeamMemberUserId(userId: UUID): List<Space>
+
     // Sync queries - only for repositories
     @Query("SELECT s FROM Space s WHERE s.syncEnabled = true AND s.type = 'REPOSITORY'")
     fun findAllRepositoriesWithSyncEnabled(): List<Space>

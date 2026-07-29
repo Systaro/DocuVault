@@ -3,15 +3,20 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
-import { UsersService, Invitation, UserPermission } from '../../core/api/users.service';
+import { UsersService, Invitation } from '../../core/api/users.service';
+import { TeamsService, Team, TeamBadge, UserTeam } from '../../core/api/teams.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { AuthService, User } from '../../core/auth/auth.service';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
+import {
+  SpacePermissionPickerComponent,
+  InheritedGrant
+} from '../../shared/components/space-permission-picker.component';
 
 @Component({
   selector: 'app-users',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent, SpacePermissionPickerComponent],
   template: `
     <div class="users-management">
       <div class="management-header">
@@ -54,13 +59,21 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       <div class="users-table-container">
         <div class="table-header">
           <h2>Team Members</h2>
-          <div class="search-box">
-            <span class="material-icons">search</span>
-            <input
-              type="text"
-              [(ngModel)]="searchTerm"
-              placeholder="Search users..."
+          <div class="table-filters">
+            <app-searchable-select
+              class="team-filter"
+              [options]="teamFilterOptions()"
+              [(ngModel)]="teamFilter"
+              [searchable]="false"
             />
+            <div class="search-box">
+              <span class="material-icons">search</span>
+              <input
+                type="text"
+                [(ngModel)]="searchTerm"
+                placeholder="Search users..."
+              />
+            </div>
           </div>
         </div>
 
@@ -68,6 +81,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           <div class="table-head">
             <div class="table-row">
               <div class="table-cell user-col">User</div>
+              <div class="table-cell teams-col">Teams</div>
               <div class="table-cell role-col">Role</div>
               <div class="table-cell actions-col">Actions</div>
             </div>
@@ -86,6 +100,26 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                     </span>
                     <span class="user-email">{{ user.email }}</span>
                   </div>
+                </div>
+                <div class="table-cell teams-col">
+                  @if (user.teams?.length) {
+                    <div class="team-badges">
+                      @for (team of user.teams; track team.id) {
+                        <button
+                          type="button"
+                          class="team-badge"
+                          [style.background]="teamTint(team.color)"
+                          [style.color]="team.color || 'var(--primary)'"
+                          [title]="'Show only ' + team.name"
+                          (click)="teamFilter = team.id"
+                        >
+                          {{ team.name }}
+                        </button>
+                      }
+                    </div>
+                  } @else {
+                    <span class="no-team">—</span>
+                  }
                 </div>
                 <div class="table-cell role-col">
                   <span class="role-badge" [attr.data-role]="user.role.toLowerCase()">
@@ -320,58 +354,58 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 </div>
               </div>
 
+              <!-- Teams section -->
+              <div class="edit-section">
+                <h3 class="section-title">
+                  <span class="material-icons">groups</span>
+                  Teams
+                </h3>
+                <p class="section-hint">
+                  Membership grants every space the team has access to, on top of the permissions below.
+                </p>
+
+                <app-searchable-select
+                  [options]="availableTeamOptions()"
+                  [ngModel]="''"
+                  (ngModelChange)="addTeam($event)"
+                  placeholder="Add to a team..."
+                  searchPlaceholder="Search teams..."
+                />
+
+                @if (editTeamIds().length > 0) {
+                  <div class="team-chips">
+                    @for (team of selectedTeams(); track team.id) {
+                      <span class="team-chip" [style.background]="teamTint(team.color)">
+                        <span class="chip-dot" [style.background]="team.color || 'var(--primary)'"></span>
+                        <span class="chip-name">{{ team.name }}</span>
+                        <button type="button" class="chip-remove" (click)="removeTeam(team.id)" [attr.aria-label]="'Remove from ' + team.name">
+                          <span class="material-icons">close</span>
+                        </button>
+                      </span>
+                    }
+                  </div>
+                } @else {
+                  <p class="empty-hint">Not a member of any team.</p>
+                }
+              </div>
+
               <!-- Permissions section -->
               <div class="edit-section">
                 <h3 class="section-title">
                   <span class="material-icons">security</span>
                   Space Permissions
                 </h3>
-                <p class="section-hint">Grant or revoke access to spaces. Changes are saved together.</p>
+                <p class="section-hint">
+                  Personal grants for this user. Blue chips mark access already inherited from a team —
+                  the stronger of the two applies.
+                </p>
 
-                @if (loadingPermissions()) {
-                  <div class="loading-permissions">
-                    <span class="material-icons animate-spin">sync</span>
-                    Loading...
-                  </div>
-                } @else {
-                  <div class="permissions-list">
-                    @for (space of allSpaces(); track space.id) {
-                      <div class="permission-row"
-                           [class.has-permission]="space.type === 'GROUP' ? getGroupAccessStatus(space) !== 'none' : !!getSpacePermission(space.id)"
-                           [class.is-group]="space.type === 'GROUP'"
-                           [style.padding-left.px]="getSpaceIndent(space)">
-                        <div class="permission-space">
-                          <span class="material-icons space-icon">
-                            {{ space.type === 'GROUP' ? 'folder' : 'description' }}
-                          </span>
-                          <span class="space-name">{{ space.name }}</span>
-                          <span class="space-path">{{ space.fullPath }}</span>
-                        </div>
-                        <div class="permission-control">
-                          @if (space.type === 'GROUP') {
-                            <div class="group-access-control">
-                              <span class="group-access-badge badge-{{ getGroupAccessStatus(space) }}">
-                                {{ getGroupAccessStatus(space) === 'all' ? 'All' : getGroupAccessStatus(space) === 'partial' ? 'Partial' : '—' }}
-                              </span>
-                              <button type="button" class="btn-bulk btn-bulk-edit" (click)="setAllChildren(space, 'EDIT')">Edit all</button>
-                              <button type="button" class="btn-bulk btn-bulk-clear" (click)="setAllChildren(space, '')">Clear</button>
-                            </div>
-                          } @else {
-                            <app-searchable-select
-                              class="permission-select"
-                              [options]="permissionLevelOptions"
-                              [ngModel]="getSpacePermission(space.id)"
-                              (ngModelChange)="setSpacePermission(space.id, $event)"
-                              [searchable]="false"
-                            />
-                          }
-                        </div>
-                      </div>
-                    } @empty {
-                      <div class="no-spaces">No spaces available</div>
-                    }
-                  </div>
-                }
+                <app-space-permission-picker
+                  [spaces]="allSpaces()"
+                  [permissions]="editPermissions"
+                  [inherited]="inheritedPermissions()"
+                  [loading]="loadingPermissions()"
+                />
               </div>
 
               <div class="modal-footer">
@@ -873,153 +907,103 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       margin-bottom: var(--spacing-md);
     }
 
-    .loading-permissions {
+    .table-filters {
       display: flex;
       align-items: center;
-      gap: var(--spacing-sm);
-      padding: var(--spacing-lg);
-      justify-content: center;
-      color: var(--text-muted);
-      font-size: 14px;
+      gap: var(--spacing-md);
     }
 
-    .permissions-list {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      max-height: 340px;
-      overflow-y: auto;
+    app-searchable-select.team-filter {
+      width: 180px;
     }
 
-    .permission-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--border-light);
-      transition: background var(--transition);
-
-      &:last-child {
-        border-bottom: none;
-      }
-
-      &:hover {
-        background: var(--background);
-      }
-
-      &.has-permission {
-        background: rgba(111, 179, 184, 0.06);
-      }
-    }
-
-    .permission-space {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .teams-col {
+      flex: 1.5;
       min-width: 0;
-      flex: 1;
     }
 
-    .space-icon {
-      font-size: 18px;
-      color: var(--text-muted);
-      flex-shrink: 0;
+    .team-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
     }
 
-    .space-name {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-primary);
-      white-space: nowrap;
-    }
-
-    .space-path {
+    .team-badge {
+      border: none;
+      cursor: pointer;
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
       font-size: 12px;
-      color: var(--text-muted);
+      font-weight: 500;
+      font-family: inherit;
+      max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      transition: filter var(--transition);
+
+      &:hover {
+        filter: brightness(0.94);
+      }
     }
 
-    .permission-control {
-      flex-shrink: 0;
-      margin-left: var(--spacing-md);
+    .no-team {
+      font-size: 13px;
+      color: var(--text-muted);
     }
 
-    app-searchable-select.permission-select {
-      width: 140px;
-    }
-
-    .is-group {
-      background: var(--surface-raised, rgba(0, 0, 0, 0.02));
-    }
-
-    .group-access-control {
+    .team-chips {
       display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+      margin-top: var(--spacing-md);
+    }
+
+    .team-chip {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
-    }
-
-    .group-access-badge {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 7px;
-      border-radius: 10px;
-      min-width: 54px;
-      text-align: center;
-
-      &.badge-none {
-        background: var(--surface-raised, #f0f0f0);
-        color: var(--text-muted);
-      }
-
-      &.badge-partial {
-        background: #fff3cd;
-        color: #7a5c00;
-      }
-
-      &.badge-all {
-        background: #d4edda;
-        color: #155724;
-      }
-    }
-
-    .btn-bulk {
-      font-size: 12px;
-      padding: 3px 8px;
-      border-radius: var(--radius-sm);
+      padding: 4px 8px;
+      border-radius: var(--radius-full);
       border: 1px solid var(--border);
+    }
+
+    .chip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .chip-name {
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .chip-remove {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: transparent;
       cursor: pointer;
-      background: var(--surface);
-      color: var(--text-secondary);
-
-      &:hover {
-        background: var(--surface-raised);
-      }
-    }
-
-    .btn-bulk-edit {
-      color: var(--primary);
-      border-color: var(--primary);
-
-      &:hover {
-        background: rgba(var(--primary-rgb, 0, 120, 212), 0.06);
-      }
-    }
-
-    .btn-bulk-clear {
       color: var(--text-muted);
+      padding: 0 2px;
+
+      .material-icons {
+        font-size: 16px;
+      }
 
       &:hover {
         color: var(--danger, #dc3545);
-        border-color: var(--danger, #dc3545);
       }
     }
 
-    .no-spaces {
-      padding: var(--spacing-lg);
-      text-align: center;
+    .empty-hint {
+      margin-top: var(--spacing-md);
+      font-size: 13px;
       color: var(--text-muted);
-      font-size: 14px;
+      font-style: italic;
     }
   `]
 })
@@ -1035,7 +1019,14 @@ export class UsersComponent implements OnInit {
   createdInvitation = signal<Invitation | null>(null);
   loadingPermissions = signal(false);
   allSpaces = signal<Space[]>([]);
+  teams = signal<Team[]>([]);
   searchTerm = '';
+  teamFilter = '';
+
+  /** Teams the edited user belongs to, live while the modal is open. */
+  editTeamIds = signal<string[]>([]);
+  /** teamId -> the spaces that team grants, cached as teams get selected. */
+  private teamGrants: Record<string, Record<string, string>> = {};
 
   inviteEmail = '';
   inviteRole = 'VIEWER';
@@ -1053,13 +1044,6 @@ export class UsersComponent implements OnInit {
     { value: 'SUPER_ADMIN', label: 'Super Admin' }
   ];
 
-  readonly permissionLevelOptions: SelectOption[] = [
-    { value: '', label: 'No access' },
-    { value: 'VIEW', label: 'View' },
-    { value: 'EDIT', label: 'Edit' },
-    { value: 'ADMIN', label: 'Admin' }
-  ];
-
   editForm = {
     name: '',
     role: ''
@@ -1070,6 +1054,7 @@ export class UsersComponent implements OnInit {
 
   constructor(
     private usersService: UsersService,
+    private teamsService: TeamsService,
     private spacesService: SpacesService,
     public authService: AuthService,
     private router: Router
@@ -1078,6 +1063,13 @@ export class UsersComponent implements OnInit {
   ngOnInit(): void {
     this.loadUsers();
     this.loadInvitations();
+    this.loadTeams();
+  }
+
+  loadTeams(): void {
+    this.teamsService.getTeams().subscribe({
+      next: (teams) => this.teams.set(teams)
+    });
   }
 
   loadUsers(): void {
@@ -1093,12 +1085,80 @@ export class UsersComponent implements OnInit {
   }
 
   filteredUsers(): User[] {
-    if (!this.searchTerm) return this.users();
     const term = this.searchTerm.toLowerCase();
-    return this.users().filter(u =>
-      u.name.toLowerCase().includes(term) ||
-      u.email.toLowerCase().includes(term)
-    );
+    return this.users().filter(u => {
+      if (term && !u.name.toLowerCase().includes(term) && !u.email.toLowerCase().includes(term)) {
+        return false;
+      }
+      if (this.teamFilter === 'NONE') return !u.teams?.length;
+      if (this.teamFilter) return !!u.teams?.some(t => t.id === this.teamFilter);
+      return true;
+    });
+  }
+
+  teamFilterOptions(): SelectOption[] {
+    return [
+      { value: '', label: 'All teams' },
+      { value: 'NONE', label: 'No team' },
+      ...this.teams().map(t => ({ value: t.id, label: t.name, sublabel: `${t.memberCount} member(s)` }))
+    ];
+  }
+
+  /** Soft tint of the team color for badge backgrounds. */
+  teamTint(color?: string): string {
+    if (!color) return 'rgba(111, 179, 184, 0.12)';
+    return `color-mix(in srgb, ${color} 14%, transparent)`;
+  }
+
+  availableTeamOptions(): SelectOption[] {
+    const taken = new Set(this.editTeamIds());
+    return this.teams()
+      .filter(t => !taken.has(t.id))
+      .map(t => ({ value: t.id, label: t.name, sublabel: `${t.spaceCount} space grant(s)` }));
+  }
+
+  selectedTeams(): TeamBadge[] {
+    const byId = new Map(this.teams().map(t => [t.id, t]));
+    return this.editTeamIds()
+      .map(id => byId.get(id))
+      .filter((t): t is Team => !!t)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  addTeam(teamId: string): void {
+    if (!teamId || this.editTeamIds().includes(teamId)) return;
+    this.editTeamIds.update(ids => [...ids, teamId]);
+
+    // Grants of a freshly picked team aren't known yet — fetch once, then cache.
+    if (!this.teamGrants[teamId]) {
+      this.teamsService.getTeam(teamId).subscribe({
+        next: (detail) => {
+          const grants: Record<string, string> = {};
+          detail.permissions.forEach(p => { grants[p.spaceId] = p.permissionLevel; });
+          this.teamGrants = { ...this.teamGrants, [teamId]: grants };
+        }
+      });
+    }
+  }
+
+  removeTeam(teamId: string): void {
+    this.editTeamIds.update(ids => ids.filter(id => id !== teamId));
+  }
+
+  /** spaceId -> the grants the selected teams already provide. */
+  inheritedPermissions(): Record<string, InheritedGrant[]> {
+    const byName = new Map(this.teams().map(t => [t.id, t.name]));
+    const result: Record<string, InheritedGrant[]> = {};
+
+    for (const teamId of this.editTeamIds()) {
+      const grants = this.teamGrants[teamId];
+      if (!grants) continue;
+      const source = byName.get(teamId) || 'Team';
+      for (const [spaceId, level] of Object.entries(grants)) {
+        (result[spaceId] ||= []).push({ level, source });
+      }
+    }
+    return result;
   }
 
   getAdminCount(): number {
@@ -1192,19 +1252,29 @@ export class UsersComponent implements OnInit {
       role: user.role
     };
     this.editPermissions = {};
+    this.editTeamIds.set([]);
     this.loadingPermissions.set(true);
 
-    // Load spaces and user permissions in parallel
+    // Load spaces, direct permissions and team memberships in parallel
     forkJoin({
       spaces: this.spacesService.getSpaces(),
-      permissions: this.usersService.getUserPermissions(user.id)
+      permissions: this.usersService.getUserPermissions(user.id),
+      userTeams: this.teamsService.getUserTeams(user.id)
     }).subscribe({
-      next: ({ spaces, permissions }) => {
-        this.allSpaces.set(spaces.sort((a, b) => a.fullPath.localeCompare(b.fullPath)));
+      next: ({ spaces, permissions, userTeams }) => {
+        this.allSpaces.set([...spaces].sort((a, b) => a.fullPath.localeCompare(b.fullPath)));
         this.editPermissions = {};
         permissions.forEach(p => {
           this.editPermissions[p.spaceId] = p.permissionLevel;
         });
+
+        this.editTeamIds.set(userTeams.map(t => t.id));
+        userTeams.forEach((team: UserTeam) => {
+          const grants: Record<string, string> = {};
+          team.permissions.forEach(p => { grants[p.spaceId] = p.permissionLevel; });
+          this.teamGrants[team.id] = grants;
+        });
+
         this.loadingPermissions.set(false);
       },
       error: () => {
@@ -1216,56 +1286,7 @@ export class UsersComponent implements OnInit {
   closeEditModal(): void {
     this.editingUser.set(null);
     this.editPermissions = {};
-  }
-
-  getSpacePermission(spaceId: string): string {
-    return this.editPermissions[spaceId] || '';
-  }
-
-  setSpacePermission(spaceId: string, level: string): void {
-    if (level) {
-      this.editPermissions[spaceId] = level;
-    } else {
-      delete this.editPermissions[spaceId];
-    }
-  }
-
-  getSpaceIndent(space: Space): number {
-    const depth = (space.fullPath.match(/\//g) || []).length;
-    return 12 + depth * 20;
-  }
-
-  getGroupAccessStatus(group: Space): 'all' | 'partial' | 'none' {
-    const repos = this.getDescendantRepos(group);
-    if (repos.length === 0) return 'none';
-    const withAccess = repos.filter(r => !!this.editPermissions[r.id]);
-    if (withAccess.length === 0) return 'none';
-    if (withAccess.length === repos.length) return 'all';
-    return 'partial';
-  }
-
-  private getDescendantRepos(group: Space): Space[] {
-    const result: Space[] = [];
-    const children = this.allSpaces().filter(s => s.parentId === group.id);
-    for (const child of children) {
-      if (child.type === 'GROUP') {
-        result.push(...this.getDescendantRepos(child));
-      } else {
-        result.push(child);
-      }
-    }
-    return result;
-  }
-
-  setAllChildren(group: Space, level: string): void {
-    const repos = this.getDescendantRepos(group);
-    for (const repo of repos) {
-      if (level) {
-        this.editPermissions[repo.id] = level;
-      } else {
-        delete this.editPermissions[repo.id];
-      }
-    }
+    this.editTeamIds.set([]);
   }
 
   saveUser(): void {
@@ -1280,16 +1301,19 @@ export class UsersComponent implements OnInit {
       permissionLevel
     }));
 
-    // Save user info and permissions in parallel
+    // Save user info, direct permissions and team membership in parallel
     forkJoin({
       userUpdate: this.usersService.updateUser(user.id, this.editForm),
-      permUpdate: this.usersService.setUserPermissions(user.id, permissions)
+      permUpdate: this.usersService.setUserPermissions(user.id, permissions),
+      teamUpdate: this.teamsService.setUserTeams(user.id, this.editTeamIds())
     }).subscribe({
       next: () => {
         this.savingUser.set(false);
         this.editingUser.set(null);
         this.editPermissions = {};
+        this.editTeamIds.set([]);
         this.loadUsers();
+        this.loadTeams();
       },
       error: () => {
         this.savingUser.set(false);

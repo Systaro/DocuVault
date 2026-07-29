@@ -36,6 +36,14 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   User Management
                 </a>
                 <a
+                  routerLink="teams"
+                  routerLinkActive="active"
+                  class="sidebar-link"
+                >
+                  <span class="material-icons">groups</span>
+                  Teams
+                </a>
+                <a
                   routerLink="settings"
                   routerLinkActive="active"
                   class="sidebar-link"

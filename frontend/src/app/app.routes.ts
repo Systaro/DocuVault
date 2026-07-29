@@ -165,6 +165,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/admin/users.component').then(m => m.UsersComponent)
       },
       {
+        path: 'teams',
+        loadComponent: () => import('./features/admin/teams.component').then(m => m.TeamsComponent)
+      },
+      {
         path: 'settings',
         loadComponent: () => import('./features/admin/settings.component').then(m => m.SettingsComponent)
       }

@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { SpacesService, Space, SpacePermission } from '../../core/api/spaces.service';
 import { UsersService } from '../../core/api/users.service';
+import { TeamsService, Team, TeamSpacePermission } from '../../core/api/teams.service';
 import { User } from '../../core/auth/auth.service';
 import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
 import { ToastService } from '../../shared/services/toast.service';
@@ -260,6 +261,73 @@ interface SpaceTokenDto {
                 <button
                   (click)="addPermission()"
                   [disabled]="!newPermission.userId"
+                  class="btn btn-primary"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Team access -->
+          <div class="card p-6 mb-6">
+            <h2 class="font-semibold text-gray-900 mb-1">Team Access</h2>
+            <p class="text-sm text-gray-500 mb-4">
+              Every member of a listed team gets this access, without needing an individual entry above.
+            </p>
+
+            @if (teamPermissions().length === 0) {
+              <p class="text-gray-600 text-sm">No teams have access to this space.</p>
+            } @else {
+              <div class="divide-y divide-gray-200">
+                @for (perm of teamPermissions(); track perm.spaceId + perm.teamId) {
+                  <div class="flex items-center justify-between py-3">
+                    <div class="flex items-center gap-2">
+                      <span class="material-icons text-gray-400">groups</span>
+                      <span class="font-medium text-gray-900">{{ perm.teamName }}</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                      <app-searchable-select
+                        class="w-32 text-sm"
+                        [options]="permissionOptions"
+                        [ngModel]="perm.permissionLevel"
+                        (ngModelChange)="updateTeamPermission(perm.teamId, $event)"
+                        [searchable]="false"
+                      />
+                      <button
+                        (click)="removeTeamPermission(perm.teamId)"
+                        class="text-red-600 hover:text-red-700"
+                        [attr.aria-label]="'Remove ' + perm.teamName"
+                      >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+
+            <!-- Add Team -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
+              <div class="flex gap-2">
+                <app-searchable-select
+                  class="flex-1"
+                  [options]="teamOptions()"
+                  [(ngModel)]="newTeamPermission.teamId"
+                  placeholder="Select a team..."
+                  searchPlaceholder="Search teams..."
+                />
+                <app-searchable-select
+                  class="w-32"
+                  [options]="permissionOptions"
+                  [(ngModel)]="newTeamPermission.level"
+                  [searchable]="false"
+                />
+                <button
+                  (click)="addTeamPermission()"
+                  [disabled]="!newTeamPermission.teamId"
                   class="btn btn-primary"
                 >
                   Add
@@ -761,6 +829,8 @@ await state.save();</pre>
 export class SpaceSettingsComponent implements OnInit {
   space = signal<Space | null>(null);
   permissions = signal<SpacePermission[]>([]);
+  teamPermissions = signal<TeamSpacePermission[]>([]);
+  availableTeams = signal<Team[]>([]);
   availableUsers = signal<User[]>([]);
   availableGroups = signal<Space[]>([]);
   rules = signal<RoutingRule[]>([]);
@@ -809,6 +879,18 @@ export class SpaceSettingsComponent implements OnInit {
     this.availableUsers().map(user => ({ value: user.id, label: user.name, sublabel: user.email }))
   );
 
+  teamOptions = computed<SelectOption[]>(() => {
+    const taken = new Set(this.teamPermissions().map(p => p.teamId));
+    return this.availableTeams()
+      .filter(team => !taken.has(team.id))
+      .map(team => ({ value: team.id, label: team.name, sublabel: `${team.memberCount} member(s)` }));
+  });
+
+  newTeamPermission = {
+    teamId: '',
+    level: 'VIEW'
+  };
+
   newRule = {
     type: 'CATEGORY' as RuleType,
     condition: '',
@@ -839,6 +921,7 @@ export class SpaceSettingsComponent implements OnInit {
     private http: HttpClient,
     private spacesService: SpacesService,
     private usersService: UsersService,
+    private teamsService: TeamsService,
     private toastService: ToastService,
     private inboxService: InboxService,
     private annotationsService: AnnotationsService
@@ -857,6 +940,7 @@ export class SpaceSettingsComponent implements OnInit {
       }
     });
     this.loadUsers();
+    this.loadTeams();
     this.loadGroups();
   }
 
@@ -895,6 +979,7 @@ export class SpaceSettingsComponent implements OnInit {
       syncIntervalMinutes: space.syncIntervalMinutes
     };
     this.loadPermissions(space.id);
+    this.loadTeamPermissions(space.id);
     if (space.type === 'REPOSITORY') {
       this.loadRules(space.id);
       this.loadSpaceTokens(space.id);
@@ -1078,6 +1163,55 @@ export class SpaceSettingsComponent implements OnInit {
         next: () => this.loadPermissions(space.id)
       });
     }
+  }
+
+  loadTeamPermissions(spaceId: string): void {
+    this.teamsService.getSpaceTeamPermissions(spaceId).subscribe({
+      next: (perms) => this.teamPermissions.set(perms),
+      error: () => this.teamPermissions.set([])
+    });
+  }
+
+  loadTeams(): void {
+    this.teamsService.getTeams().subscribe({
+      next: (teams) => this.availableTeams.set(teams)
+    });
+  }
+
+  addTeamPermission(): void {
+    const space = this.space();
+    if (!space || !this.newTeamPermission.teamId) return;
+
+    this.teamsService.addSpaceTeamPermission(
+      space.id,
+      this.newTeamPermission.teamId,
+      this.newTeamPermission.level
+    ).subscribe({
+      next: () => {
+        this.loadTeamPermissions(space.id);
+        this.newTeamPermission = { teamId: '', level: 'VIEW' };
+      },
+      error: () => this.toastService.error('Grant Failed', 'The team could not be given access.')
+    });
+  }
+
+  updateTeamPermission(teamId: string, level: string): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.teamsService.addSpaceTeamPermission(space.id, teamId, level).subscribe({
+      next: () => this.loadTeamPermissions(space.id)
+    });
+  }
+
+  removeTeamPermission(teamId: string): void {
+    const space = this.space();
+    if (!space) return;
+
+    this.teamsService.removeSpaceTeamPermission(space.id, teamId).subscribe({
+      next: () => this.loadTeamPermissions(space.id),
+      error: () => this.toastService.error('Remove Failed', 'The team grant could not be removed.')
+    });
   }
 
   loadSpaceTokens(spaceId: string): void {

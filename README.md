@@ -17,6 +17,7 @@ For developers and AI tools, the same files are available locally — clone the 
 - **Full-CRUD MCP server.** Ships as `@systaro/docuvault-mcp` on npm. Drop it into any MCP-compatible client (Claude Desktop, Claude Code, Cursor) and your AI agent can list spaces, read documents, create them, edit them, and share them — directly.
 - **WYSIWYG editor.** TipTap-based rich editor that emits clean Markdown.
 - **Role-based permissions.** Super Admin, Org Admin, Editor, Viewer, plus fine-grained per-space permissions.
+- **Teams.** Group users into teams (a user can be in several) and grant space access once per team instead of once per person. Members inherit every grant of every team they're in; the strongest grant — personal or inherited — wins.
 - **Public share links.** Optional password protection, view-only or comment access. Renders rich markdown including embedded HTML and JavaScript (deliberate — see [SECURITY.md](SECURITY.md)).
 - **Optional AI.** Semantic search (pgvector + OpenAI embeddings), per-space chat, writing assistance. UI hides AI features when no API key is configured.
 - **Inbox / quick capture.** Drop notes into an inbox and file them into spaces later. AI-assisted routing is optional.

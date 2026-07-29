@@ -6,10 +6,15 @@ import com.docuvault.domain.space.SpacePermission
 import com.docuvault.domain.space.SpaceType
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.DocumentRepository
+import com.docuvault.api.teams.TeamSpacePermissionDto
+import com.docuvault.api.teams.toDto as teamPermissionToDto
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.TeamRepository
+import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.TeamService
 import com.docuvault.service.git.GitLabService
 import com.docuvault.service.git.GitOperationException
 import com.docuvault.service.git.GitService
@@ -37,6 +42,9 @@ import java.util.*
 class SpaceController(
     private val spaceRepository: SpaceRepository,
     private val spacePermissionRepository: SpacePermissionRepository,
+    private val teamRepository: TeamRepository,
+    private val teamPermissionRepository: TeamSpacePermissionRepository,
+    private val teamService: TeamService,
     private val userRepository: UserRepository,
     private val documentRepository: DocumentRepository,
     private val gitLabService: GitLabService,
@@ -480,6 +488,80 @@ class SpaceController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/{id}/team-permissions")
+    @Transactional(readOnly = true)
+    fun getSpaceTeamPermissions(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<TeamSpacePermissionDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!spaceRepository.existsById(id)) {
+            return ResponseEntity.notFound().build()
+        }
+
+        if (!permissionService.hasAdminAccess(user.id!!, id, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        return ResponseEntity.ok(teamPermissionRepository.findAllBySpaceId(id).map { it.teamPermissionToDto() })
+    }
+
+    @PostMapping("/{id}/team-permissions")
+    @Transactional
+    fun addSpaceTeamPermission(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: AddTeamPermissionRequest
+    ): ResponseEntity<TeamSpacePermissionDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAdminAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val team = teamRepository.findById(request.teamId).orElse(null)
+            ?: return ResponseEntity.badRequest().build()
+
+        val level = try {
+            PermissionLevel.valueOf(request.permissionLevel)
+        } catch (_: IllegalArgumentException) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        val saved = teamService.grantSpace(team, space.id, level)
+            ?: return ResponseEntity.badRequest().build()
+
+        return ResponseEntity.ok(saved.teamPermissionToDto())
+    }
+
+    @DeleteMapping("/{id}/team-permissions/{teamId}")
+    @Transactional
+    fun removeSpaceTeamPermission(
+        @PathVariable id: UUID,
+        @PathVariable teamId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Unit> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!spaceRepository.existsById(id)) {
+            return ResponseEntity.notFound().build()
+        }
+
+        if (!permissionService.hasAdminAccess(user.id!!, id, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        teamPermissionRepository.deleteByTeamIdAndSpaceId(teamId, id)
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/{id}/logo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadLogo(
         @PathVariable id: UUID,
@@ -645,6 +727,11 @@ data class UpdateSpaceRequest(
 
 data class AddPermissionRequest(
     val userId: UUID,
+    val permissionLevel: String
+)
+
+data class AddTeamPermissionRequest(
+    val teamId: UUID,
     val permissionLevel: String
 )
 

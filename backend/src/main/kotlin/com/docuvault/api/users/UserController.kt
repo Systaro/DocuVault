@@ -2,12 +2,18 @@ package com.docuvault.api.users
 
 import com.docuvault.api.auth.UserDto
 import com.docuvault.api.auth.toDto
+import com.docuvault.api.teams.TeamBadgeDto
+import com.docuvault.api.teams.TeamSpacePermissionDto
+import com.docuvault.api.teams.toBadgeDto
+import com.docuvault.api.teams.toDto as teamPermissionToDto
 import com.docuvault.domain.user.Invitation
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.InvitationRepository
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.TeamMembershipRepository
+import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.security.core.userdetails.UserDetailsService
@@ -38,6 +44,10 @@ class UserController(
     private val invitationRepository: InvitationRepository,
     private val spaceRepository: SpaceRepository,
     private val spacePermissionRepository: SpacePermissionRepository,
+    private val teamMembershipRepository: TeamMembershipRepository,
+    private val teamPermissionRepository: TeamSpacePermissionRepository,
+    private val teamService: com.docuvault.service.TeamService,
+    private val permissionService: com.docuvault.service.PermissionService,
     private val passwordEncoder: PasswordEncoder,
     private val emailService: EmailService,
     private val authenticationManager: AuthenticationManager,
@@ -59,11 +69,17 @@ class UserController(
     }
 
     @GetMapping("/me")
+    @Transactional(readOnly = true)
     fun getCurrentUser(@AuthenticationPrincipal userDetails: UserDetails): ResponseEntity<UserDto> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(user.toDto())
+        return ResponseEntity.ok(user.toDto().copy(teams = teamsOf(user.id!!)))
     }
+
+    private fun teamsOf(userId: UUID): List<TeamBadgeDto> =
+        teamMembershipRepository.findAllByUserId(userId)
+            .map { it.team.toBadgeDto() }
+            .sortedBy { it.name.lowercase() }
 
     @PutMapping("/me")
     fun updateCurrentUser(
@@ -106,7 +122,7 @@ class UserController(
             ?: return ResponseEntity.notFound().build()
 
         val overrides = subscriptionService.overridesForUser(user.id!!)
-        val spaces = spaceRepository.findAllByUserId(user.id!!)
+        val spaces = permissionService.getGrantedSpaces(user.id!!)
             .sortedBy { it.getFullPath() }
             .map {
                 SpaceNotificationDto(
@@ -176,22 +192,32 @@ class UserController(
 
     private fun canManageSpaceNotification(user: User, spaceId: UUID): Boolean {
         if (user.role == UserRole.SUPER_ADMIN || user.role == UserRole.ORG_ADMIN) return true
-        return spacePermissionRepository.findByUserIdAndSpaceId(user.id!!, spaceId) != null
+        return permissionService.getEffectivePermission(user.id!!, spaceId) != null
     }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional(readOnly = true)
     fun listUsers(): ResponseEntity<List<UserDto>> {
-        val users = userRepository.findAll().map { it.toDto() }
+        // One pass over all memberships instead of a query per user.
+        val teamsByUser = teamMembershipRepository.findAll()
+            .groupBy({ it.user.id!! }, { it.team.toBadgeDto() })
+
+        val users = userRepository.findAll().map { user ->
+            user.toDto().copy(
+                teams = teamsByUser[user.id]?.sortedBy { it.name.lowercase() } ?: emptyList()
+            )
+        }
         return ResponseEntity.ok(users)
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional(readOnly = true)
     fun getUser(@PathVariable id: UUID): ResponseEntity<UserDto> {
         val user = userRepository.findById(id).orElse(null)
             ?: return ResponseEntity.notFound().build()
-        return ResponseEntity.ok(user.toDto())
+        return ResponseEntity.ok(user.toDto().copy(teams = teamsOf(user.id!!)))
     }
 
     @PutMapping("/{id}")
@@ -295,6 +321,48 @@ class UserController(
                 permissionLevel = it.permissionLevel.name
             )
         })
+    }
+
+    /**
+     * The user's teams together with the grants each team confers, so the admin
+     * UI can show inherited access next to the user's own permissions.
+     */
+    @GetMapping("/{id}/teams")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional(readOnly = true)
+    fun getUserTeams(@PathVariable id: UUID): ResponseEntity<List<UserTeamDto>> {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build()
+        }
+
+        val teams = teamMembershipRepository.findAllByUserId(id)
+            .map { it.team }
+            .sortedBy { it.name.lowercase() }
+            .map { team ->
+                UserTeamDto(
+                    id = team.id!!,
+                    name = team.name,
+                    color = team.color,
+                    permissions = teamPermissionRepository.findAllByTeamId(team.id!!)
+                        .map { it.teamPermissionToDto() }
+                        .sortedBy { it.spaceFullPath }
+                )
+            }
+        return ResponseEntity.ok(teams)
+    }
+
+    @PutMapping("/{id}/teams")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ORG_ADMIN')")
+    @Transactional
+    fun setUserTeams(
+        @PathVariable id: UUID,
+        @RequestBody request: SetUserTeamsRequest
+    ): ResponseEntity<List<UserTeamDto>> {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build()
+        }
+        teamService.setTeamsForUser(id, request.teamIds)
+        return getUserTeams(id)
     }
 
     @PostMapping("/{id}/impersonate")
@@ -710,6 +778,17 @@ data class UserPermissionDto(
 
 data class SetUserPermissionsRequest(
     val permissions: List<PermissionEntry>
+)
+
+data class UserTeamDto(
+    val id: UUID,
+    val name: String,
+    val color: String?,
+    val permissions: List<TeamSpacePermissionDto>
+)
+
+data class SetUserTeamsRequest(
+    val teamIds: List<UUID> = emptyList()
 )
 
 data class PermissionEntry(

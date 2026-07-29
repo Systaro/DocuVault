@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { Observable, tap, catchError, of, map, from, switchMap } from 'rxjs';
 import { PlatformService } from '../platform/platform.service';
 import { NativeTokenStore } from './native-token.store';
+import { TeamBadge } from '../api/teams.service';
 
 export interface User {
   id: string;
@@ -13,6 +14,8 @@ export interface User {
   enabled?: boolean;
   impersonating?: boolean;
   originalAdminName?: string;
+  /** Only sent where team context matters (admin listings, /users/me). */
+  teams?: TeamBadge[];
 }
 
 export interface AuthResponse {
