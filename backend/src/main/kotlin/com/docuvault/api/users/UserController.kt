@@ -76,6 +76,24 @@ class UserController(
         return ResponseEntity.ok(user.toDto().copy(teams = teamsOf(user.id!!)))
     }
 
+    /**
+     * Acknowledges the release notes up to the given version. The entries
+     * themselves ship with the frontend, so only the marker lives server-side.
+     */
+    @PostMapping("/me/changelog-seen")
+    fun markChangelogSeen(
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: ChangelogSeenRequest
+    ): ResponseEntity<Map<String, String>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.notFound().build()
+
+        user.changelogSeenVersion = request.version
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+        return ResponseEntity.ok(mapOf("changelogSeenVersion" to request.version))
+    }
+
     private fun teamsOf(userId: UUID): List<TeamBadgeDto> =
         teamMembershipRepository.findAllByUserId(userId)
             .map { it.team.toBadgeDto() }
@@ -674,6 +692,14 @@ class UserController(
 data class UpdateUserRequest(
     val name: String? = null,
     val password: String? = null
+)
+
+data class ChangelogSeenRequest(
+    @field:jakarta.validation.constraints.Pattern(
+        regexp = "^v\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}$",
+        message = "Version must look like v1.2.3"
+    )
+    val version: String
 )
 
 data class NotificationPreferencesDto(

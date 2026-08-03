@@ -33,21 +33,28 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     req = req.clone({ withCredentials: true });
   }
 
+  // Only backend traffic says anything about backend health. Requests for bundled
+  // assets are answered by the frontend's own nginx and would otherwise clear the
+  // maintenance banner while the backend is actually down.
+  const touchesBackend = req.url.includes('/api/');
+
   return next(req).pipe(
     tap(event => {
       // Any genuine response means the backend answered, so it is reachable.
-      if (event instanceof HttpResponse) {
+      if (touchesBackend && event instanceof HttpResponse) {
         health.reportReachable();
       }
     }),
     catchError((error: HttpErrorResponse) => {
-      // status 0 = no response (host/network down); 502/503/504 = nginx-proxy
-      // could not reach the backend container. Treat both as "server is down".
-      if (error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504) {
-        health.reportUnreachable();
-      } else {
-        // A real HTTP error still proves the backend is up.
-        health.reportReachable();
+      if (touchesBackend) {
+        // status 0 = no response (host/network down); 502/503/504 = nginx-proxy
+        // could not reach the backend container. Treat both as "server is down".
+        if (error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504) {
+          health.reportUnreachable();
+        } else {
+          // A real HTTP error still proves the backend is up.
+          health.reportReachable();
+        }
       }
 
       if (req.url.includes('/auth/')) {

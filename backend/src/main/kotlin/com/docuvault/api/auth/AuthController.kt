@@ -367,7 +367,9 @@ data class UserDto(
     val role: String,
     val enabled: Boolean = true,
     /** Populated only where team context matters (admin listings, /users/me). */
-    val teams: List<com.docuvault.api.teams.TeamBadgeDto> = emptyList()
+    val teams: List<com.docuvault.api.teams.TeamBadgeDto> = emptyList(),
+    /** Drives the what's-new dialog; null until the user acknowledges one. */
+    val changelogSeenVersion: String? = null
 )
 
 data class ForgotPasswordRequest(
@@ -415,5 +417,6 @@ fun User.toDto() = UserDto(
     email = this.email,
     name = this.name,
     role = this.role.name,
-    enabled = this.enabled
+    enabled = this.enabled,
+    changelogSeenVersion = this.changelogSeenVersion
 )

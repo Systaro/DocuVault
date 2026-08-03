@@ -1,0 +1,32 @@
+[
+  {
+    "version": "v0.2.5",
+    "date": "2026-07-07",
+    "title": "Sharper search, in-app notifications, editing back in git spaces"
+  },
+  {
+    "version": "v0.2.4",
+    "date": "2026-07-02",
+    "title": "AI document translation and the new logo"
+  },
+  {
+    "version": "v0.2.3",
+    "date": "2026-06-26",
+    "title": "Multi-word search and the read/edit split"
+  },
+  {
+    "version": "v0.2.2",
+    "date": "2026-06-17",
+    "title": "Table editor and images in the editor"
+  },
+  {
+    "version": "v0.2.1",
+    "date": "2026-06-14",
+    "title": "Deep-link login and the Teams meeting bot"
+  },
+  {
+    "version": "v0.2.0",
+    "date": "2026-05-24",
+    "title": "Folder browser, PDF viewer and markdown polish"
+  }
+]

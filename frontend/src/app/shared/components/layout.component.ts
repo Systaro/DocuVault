@@ -1,26 +1,30 @@
-import { Component, signal, HostListener } from '@angular/core';
+import { Component, signal, HostListener, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { ChangelogService, ChangelogRelease, compareVersions } from '../../core/api/changelog.service';
 import { GlobalSearchComponent } from './global-search.component';
 import { HeaderSearchComponent } from './header-search.component';
 import { HeaderNotificationsComponent } from './header-notifications.component';
+import { ChangelogModalComponent } from './changelog-modal.component';
 import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-modal.component';
 import { APP_VERSION } from '../version';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, QuickCaptureModalComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, ChangelogModalComponent, QuickCaptureModalComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
       <header class="app-header">
-        <a routerLink="/dashboard" class="app-logo">
-          <img [src]="themeService.darkMode() ? 'assets/logo_horiz_dark.png' : 'assets/logo_horiz.png'" alt="DocuVault" class="logo-img" />
-          <span class="app-version" [title]="'DocuVault ' + appVersion">{{ appVersion }}</span>
-        </a>
+        <div class="app-logo">
+          <a routerLink="/dashboard" class="logo-link">
+            <img [src]="themeService.darkMode() ? 'assets/logo_horiz_dark.png' : 'assets/logo_horiz.png'" alt="DocuVault" class="logo-img" />
+          </a>
+          <button class="app-version" (click)="openChangelog()" [title]="'Release notes for DocuVault ' + appVersion">{{ appVersion }}</button>
+        </div>
 
         <nav class="header-nav">
           <a
@@ -97,6 +101,10 @@ import { APP_VERSION } from '../version';
       @if (showCapture()) {
         <app-quick-capture-modal (close)="showCapture.set(false)" />
       }
+
+      @if (showChangelog()) {
+        <app-changelog-modal [releases]="changelogReleases()" (dismiss)="dismissChangelog()" />
+      }
     </div>
   `,
   styles: [`
@@ -127,6 +135,12 @@ import { APP_VERSION } from '../version';
       text-decoration: none;
       flex-shrink: 0;
 
+      .logo-link {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+      }
+
       .logo-img {
         height: 40px;
         width: auto;
@@ -145,6 +159,17 @@ import { APP_VERSION } from '../version';
         opacity: 0.7;
         letter-spacing: 0.02em;
         white-space: nowrap;
+        background: none;
+        border: 0;
+        padding: 0;
+        font-family: inherit;
+        cursor: pointer;
+        transition: opacity var(--transition-fast);
+
+        &:hover {
+          opacity: 1;
+          text-decoration: underline;
+        }
       }
     }
 
@@ -289,12 +314,50 @@ import { APP_VERSION } from '../version';
     }
   `]
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
+  private changelogService = inject(ChangelogService);
+
   showSearch = signal(false);
   showCapture = signal(false);
+  showChangelog = signal(false);
+  changelogReleases = signal<ChangelogRelease[]>([]);
   appVersion = APP_VERSION;
 
   constructor(public authService: AuthService, public themeService: ThemeService) {}
+
+  ngOnInit(): void {
+    const user = this.authService.user();
+    if (!user) return;
+    this.changelogService.unseenReleases(user.changelogSeenVersion).subscribe(releases => {
+      if (!releases.length) return;
+      this.changelogReleases.set(releases);
+      this.showChangelog.set(true);
+    });
+  }
+
+  /** Opening the log on purpose shows every shipped release, not just new ones. */
+  openChangelog(): void {
+    this.changelogService.allReleases().subscribe(releases => {
+      this.changelogReleases.set(releases);
+      this.showChangelog.set(true);
+    });
+  }
+
+  dismissChangelog(): void {
+    this.showChangelog.set(false);
+
+    const newest = this.changelogReleases()[0]?.version;
+    if (!newest) return;
+
+    // Reopening an already-acknowledged log should not cost a round trip.
+    const seen = this.authService.user()?.changelogSeenVersion;
+    if (seen && compareVersions(newest, seen) <= 0) return;
+
+    this.changelogService.markSeen(newest).subscribe({
+      next: () => this.authService.patchUser({ changelogSeenVersion: newest }),
+      error: () => {}
+    });
+  }
 
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {

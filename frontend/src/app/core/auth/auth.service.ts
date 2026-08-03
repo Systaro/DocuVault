@@ -16,6 +16,8 @@ export interface User {
   originalAdminName?: string;
   /** Only sent where team context matters (admin listings, /users/me). */
   teams?: TeamBadge[];
+  /** Newest release whose notes this user acknowledged; absent = never shown. */
+  changelogSeenVersion?: string | null;
 }
 
 export interface AuthResponse {
@@ -178,6 +180,18 @@ export class AuthService {
         });
       }
     });
+  }
+
+  /**
+   * Merges server-side user state into the cached session, so a change made
+   * through a dedicated endpoint does not need a full re-login to take effect.
+   */
+  patchUser(patch: Partial<User>): void {
+    const current = this.userSignal();
+    if (!current) return;
+    const merged = { ...current, ...patch };
+    localStorage.setItem(this.USER_KEY, JSON.stringify(merged));
+    this.userSignal.set(merged);
   }
 
   private handleAuthResponse(response: AuthResponse): void {

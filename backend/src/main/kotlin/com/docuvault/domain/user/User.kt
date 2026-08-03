@@ -38,6 +38,10 @@ data class User(
     @Column(name = "notifications_seen_at")
     var notificationsSeenAt: Instant? = null,
 
+    /** Newest release whose notes this user acknowledged; null = never shown. */
+    @Column(name = "changelog_seen_version", length = 32)
+    var changelogSeenVersion: String? = null,
+
     @Column(nullable = false)
     var enabled: Boolean = true,
 
