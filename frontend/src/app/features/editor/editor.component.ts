@@ -234,8 +234,8 @@ interface DiffLine {
             } @else if (lastSaved()) {
               <span class="text-xs text-muted">Saved</span>
             }
-            <button class="btn-save" (click)="doneEditing()" [disabled]="saving()" [title]="hasChanges() ? 'Save and view' : 'Done editing'">
-              @if (hasChanges()) {
+            <button class="btn-save" (click)="doneEditing()" [disabled]="saving()" [title]="needsSave() ? 'Save and view' : 'Done editing'">
+              @if (needsSave()) {
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
                 Save
               } @else {
@@ -1810,6 +1810,17 @@ export class EditorComponent implements OnInit, OnDestroy {
   saving = signal(false);
   lastSaved = signal(false);
   hasChanges = signal(false);
+  /**
+   * Git-backed spaces only: the content is autosaved on the server but has not
+   * been committed yet. Cleared by any save that commits.
+   */
+  pendingCommit = signal(false);
+  /** Last content the server acknowledged — what a deferred commit has to send. */
+  private lastPersistedContent: string | null = null;
+  /** Guards against a save-failure toast per keystroke while the backend is down. */
+  private saveErrorNotified = false;
+  /** The Save button still has work to do: unsaved edits, or an uncommitted autosave. */
+  needsSave = computed(() => this.hasChanges() || this.pendingCommit());
   showAiMenu = signal(false);
   showChat = signal(false);
   showShareDialog = signal(false);
@@ -2031,12 +2042,14 @@ export class EditorComponent implements OnInit, OnDestroy {
     protected prefs: DisplayPrefsService,
     protected caps: CapabilitiesService
   ) {
+    // Every space autosaves, so what the editor shows is what the API — and any
+    // MCP client reading the space — gets back. Git-backed spaces autosave
+    // *without* committing; the commit is the explicit Save/Done action, because
+    // committing here would push one commit per typing pause.
     this.autoSave$.pipe(
       debounceTime(2000),
       takeUntil(this.destroy$)
-    ).subscribe(() => {
-      if (!this.isGitSpace()) this.saveDocument();
-    });
+    ).subscribe(() => this.saveDocument(false, true));
 
     // Render Mermaid + draw.io diagrams after the read-only HTML is flushed to the DOM.
     effect(() => {
@@ -2552,6 +2565,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.flushPendingCommit();
     this.destroy$.next();
     this.destroy$.complete();
     this.editor?.destroy();
@@ -2886,12 +2900,12 @@ export class EditorComponent implements OnInit, OnDestroy {
   /**
    * Finish editing: persist any unsaved changes (returning to read mode on
    * success) or, when nothing is dirty, drop straight back to read mode.
-   * Needed because non-git spaces autosave, which leaves the Save button with
-   * nothing to do — this button is the reliable way back to the read view.
+   * Also the point where a git-backed space turns its autosaved content into a
+   * commit — autosave deliberately leaves that to this button.
    */
   doneEditing(): void {
     if (this.saving()) return;
-    if (this.hasChanges()) {
+    if (this.hasChanges() || this.pendingCommit()) {
       this.saveDocument(true);
     } else {
       // Nothing changed — drop back to the loaded content, not the serializer
@@ -2943,41 +2957,58 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.editSessionBaseline = raw;
   }
 
-  saveDocument(returnToRead = false): void {
+  saveDocument(returnToRead = false, autosave = false): void {
     const space = this.space();
-    if (!space || !this.editor || this.saving()) return;
+    if (!space || !this.editor) return;
+    if (this.saving()) {
+      // A save is already in flight. Re-arm instead of dropping this round —
+      // otherwise edits typed during the request are never sent.
+      if (autosave) this.autoSave$.next();
+      return;
+    }
 
     const { body, content, raw } = this.serializeForSave();
 
     this.saving.set(true);
 
-    // Git-backed spaces only persist on commit — without this the file is
-    // written to the working tree but lost on the next git sync.
     const isGit = this.isGitSpace();
+    // An autosave into a git-backed space writes the working tree only. Anything
+    // else commits — for spaces without a remote the backend commits regardless.
+    const commit = isGit && !autosave;
+
+    const onSaved = () => {
+      this.saving.set(false);
+      this.saveErrorNotified = false;
+      this.lastPersistedContent = content;
+      this.pendingCommit.set(isGit && autosave);
+      this.rebaseEditSession(body, raw);
+      // Keep the read-view base in sync — without this, leaving the editor
+      // after an autosave (Done with no pending changes) shows stale content.
+      this.markdownContent.set(body);
+      // This request only covers what was serialized before it went out. Anything
+      // typed since stays dirty and re-arms, instead of reading as saved.
+      const dirty = this.editorMarkdown() !== raw;
+      this.hasChanges.set(dirty);
+      this.lastSaved.set(!dirty);
+      if (dirty) this.autoSave$.next();
+      // An autosave produces no commit, so there is no new history entry to load.
+      if (!autosave && this.showHistoryPanel()) this.loadHistory();
+      if (returnToRead) this.exitToReadView(body);
+    };
 
     if (this.documentPath) {
       // Update existing document
       this.documentsService.updateDocument(space.id, this.documentPath, {
         title: this.documentTitle,
         content,
-        autoCommit: isGit,
-        commitMessage: isGit ? `Update ${this.documentTitle || this.documentPath}` : undefined
+        autoCommit: commit,
+        commitMessage: commit ? `Update ${this.documentTitle || this.documentPath}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
-          this.saving.set(false);
-          this.lastSaved.set(true);
-          this.hasChanges.set(false);
-          this.rebaseEditSession(body, raw);
-          // Keep the read-view base in sync — without this, leaving the editor
-          // after an autosave (Done with no pending changes) shows stale content.
-          this.markdownContent.set(body);
-          if (this.showHistoryPanel()) this.loadHistory();
-          if (returnToRead) this.exitToReadView(body);
+          onSaved();
         },
-        error: () => {
-          this.saving.set(false);
-        }
+        error: () => this.handleSaveError()
       });
     } else {
       // Create new document
@@ -2986,25 +3017,52 @@ export class EditorComponent implements OnInit, OnDestroy {
         path,
         title: this.documentTitle,
         content,
-        autoCommit: isGit,
-        commitMessage: isGit ? `Add ${this.documentTitle || path}` : undefined
+        autoCommit: commit,
+        commitMessage: commit ? `Add ${this.documentTitle || path}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
           this.documentPath = path; this.documentPathSignal.set(path);
-          this.saving.set(false);
-          this.lastSaved.set(true);
-          this.hasChanges.set(false);
-          this.rebaseEditSession(body, raw);
-          this.markdownContent.set(body);
-          if (this.showHistoryPanel()) this.loadHistory();
-          if (returnToRead) this.exitToReadView(body);
+          onSaved();
         },
-        error: () => {
-          this.saving.set(false);
-        }
+        error: () => this.handleSaveError()
       });
     }
+  }
+
+  /**
+   * A failed save must not read as a successful one — at that point the browser
+   * holds the only copy of the change. Keeps the document dirty so the next edit
+   * retries, and reports once per failure streak instead of once per keystroke.
+   */
+  private handleSaveError(): void {
+    this.saving.set(false);
+    this.hasChanges.set(true);
+    this.lastSaved.set(false);
+    if (this.saveErrorNotified) return;
+    this.saveErrorNotified = true;
+    this.toastService.error(
+      'Could not save',
+      'Your changes are still in the editor but could not be stored. Please try again.'
+    );
+  }
+
+  /**
+   * Commits content that was autosaved but never confirmed with Save/Done, so a
+   * git-backed space does not leave the edit sitting uncommitted in its working
+   * tree. Fire-and-forget: the content itself is already persisted.
+   */
+  private flushPendingCommit(): void {
+    const space = this.space();
+    const content = this.lastPersistedContent;
+    if (!this.pendingCommit() || !space || !this.documentPath || content === null) return;
+    this.pendingCommit.set(false);
+    this.documentsService.updateDocument(space.id, this.documentPath, {
+      title: this.documentTitle,
+      content,
+      autoCommit: true,
+      commitMessage: `Update ${this.documentTitle || this.documentPath}`
+    }).subscribe({ error: () => {} });
   }
 
   /** Tear down the editor and drop back to the rendered read view after a save. */
@@ -3037,13 +3095,14 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.saving.set(false);
         this.lastSaved.set(true);
         this.hasChanges.set(false);
+        this.saveErrorNotified = false;
+        this.lastPersistedContent = content;
+        this.pendingCommit.set(false);
         this.rebaseEditSession(body, raw);
         this.markdownContent.set(body);
         if (this.showHistoryPanel()) this.loadHistory();
       },
-      error: () => {
-        this.saving.set(false);
-      }
+      error: () => this.handleSaveError()
     });
   }
 

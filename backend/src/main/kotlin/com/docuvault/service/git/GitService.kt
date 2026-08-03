@@ -118,6 +118,11 @@ class GitService(
 
         try {
             Git.open(repoDir).use { git ->
+                // Commit whatever is sitting in the working tree before merging. Editor
+                // autosaves land there uncommitted, and both a checkout conflict and the
+                // merge-abort reset below would otherwise discard them without a trace.
+                snapshotDirtyWorkingTree(git, space, "DocuVault: autosaved changes in '${space.name}'")
+
                 var baseRef = git.repository.resolve("HEAD")?.name
                     ?: throw GitOperationException(GitErrorCode.PULL_FAILED, "Repository HEAD is unresolved")
 
@@ -132,7 +137,7 @@ class GitService(
                     // so we have a single ref to branch off, then retry the pull. If the retry
                     // itself hits a merge conflict, the normal flow below handles it.
                     logger.warn("Checkout conflict for space '${space.name}' — snapshotting dirty working tree as docuvault-bot and retrying pull")
-                    if (!snapshotDirtyWorkingTree(git, space)) {
+                    if (!snapshotDirtyWorkingTree(git, space, "DocuVault: snapshot local changes before conflict resolution in '${space.name}'")) {
                         // Nothing to commit but JGit still failed — treat as a hard error.
                         throw e
                     }
@@ -171,7 +176,7 @@ class GitService(
      * a subsequent pull has a clean slate to merge into. Returns `false` if the
      * working tree was already clean (nothing to commit).
      */
-    private fun snapshotDirtyWorkingTree(git: Git, space: Space): Boolean {
+    private fun snapshotDirtyWorkingTree(git: Git, space: Space, message: String): Boolean {
         val status = git.status().call()
         if (status.isClean) return false
 
@@ -180,7 +185,7 @@ class GitService(
         git.add().addFilepattern(".").setUpdate(true).call()
 
         git.commit()
-            .setMessage("DocuVault: snapshot local changes before conflict resolution in '${space.name}'")
+            .setMessage(message)
             .setAuthor("docuvault-bot", "bot@docuvault.systaro.de")
             .call()
         return true
