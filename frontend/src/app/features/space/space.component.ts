@@ -215,8 +215,16 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 <p class="modal-hint">This action cannot be undone.</p>
               </div>
               <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
-                <button type="button" class="btn btn-danger" (click)="confirmDeleteFile()" [disabled]="deleteBusy()">Delete</button>
+                <button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()" [disabled]="deleteBusy()">Cancel</button>
+                <button type="button" class="btn btn-danger" (click)="confirmDeleteFile()" [disabled]="deleteBusy()">
+                  @if (deleteBusy()) {
+                    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                  }
+                  Delete
+                </button>
               </div>
             </div>
           </div>
@@ -2050,6 +2058,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   cancelDeleteFile(): void {
+    // The request is in flight — closing now would only hide the outcome.
+    if (this.deleteBusy()) return;
     this.deletingNode.set(null);
   }
 
