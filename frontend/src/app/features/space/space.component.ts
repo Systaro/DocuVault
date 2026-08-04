@@ -215,8 +215,8 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 <p class="modal-hint">This action cannot be undone.</p>
               </div>
               <div class="modal-footer">
-                <button type="button" class="btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
-                <button type="button" class="btn-danger" (click)="confirmDeleteFile()" [disabled]="deleteBusy()">Delete</button>
+                <button type="button" class="btn btn-secondary" (click)="cancelDeleteFile()">Cancel</button>
+                <button type="button" class="btn btn-danger" (click)="confirmDeleteFile()" [disabled]="deleteBusy()">Delete</button>
               </div>
             </div>
           </div>
@@ -261,8 +261,8 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                 </ul>
               </div>
               <div class="modal-footer">
-                <button type="button" class="btn-secondary" (click)="cancelMoveFile()">Cancel</button>
-                <button type="button" class="btn-primary" (click)="confirmMoveFile()" [disabled]="moveBusy()">Move</button>
+                <button type="button" class="btn btn-secondary" (click)="cancelMoveFile()">Cancel</button>
+                <button type="button" class="btn btn-primary" (click)="confirmMoveFile()" [disabled]="moveBusy()">Move</button>
               </div>
             </div>
           </div>
@@ -2043,6 +2043,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       },
       error: (err) => {
         this.deleteBusy.set(false);
+        this.deletingNode.set(null);
         this.toastService.error('Delete failed', err?.error?.message ?? 'Could not delete the file.');
       }
     });

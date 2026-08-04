@@ -940,6 +940,11 @@ body {
     margin-top: 16px;
   }
 
+  // Breathing room when the outline rail / anchor links scroll a heading to the top.
+  :is(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-top: 16px;
+  }
+
   h1 {
     font-size: 28px;
     font-weight: 700;

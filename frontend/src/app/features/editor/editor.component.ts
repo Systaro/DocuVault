@@ -23,7 +23,7 @@ import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
-import { DocumentHistoryService, DocumentVersion } from '../../core/api/document-history.service';
+import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
@@ -79,6 +79,13 @@ interface DiffLine {
   text: string;
 }
 
+/** One H1/H2 entry of the read-view outline rail. */
+interface OutlineItem {
+  text: string;
+  level: 1 | 2;
+  el: HTMLElement;
+}
+
 @Component({
   selector: 'app-editor',
   standalone: true,
@@ -101,6 +108,29 @@ interface DiffLine {
             <span class="editor-crumb-sep">/</span>
             <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           }
+        }
+        @if (historyMeta(); as meta) {
+          <div class="editor-doc-meta">
+            @if (meta.created; as created) {
+              <span class="editor-doc-meta-item" [title]="created.authorEmail || ''">
+                Created by {{ created.authorName || 'unknown' }} · {{ created.committedAt | date:'MMM d, y, HH:mm' }}
+              </span>
+            }
+            @if (meta.lastEdited && meta.lastEdited.sha !== meta.created?.sha) {
+              <span class="editor-doc-meta-divider"></span>
+              <span class="editor-doc-meta-item" [title]="meta.lastEdited!.authorEmail || ''">
+                Last edited by {{ meta.lastEdited!.authorName || 'unknown' }} · {{ meta.lastEdited!.committedAt | date:'MMM d, y, HH:mm' }}
+              </span>
+            }
+            @if (!showEditor()) {
+              <button class="editor-doc-meta-history" (click)="openHistory()" title="Open version history">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                History
+              </button>
+            }
+          </div>
         }
       </div>
       <div class="editor-toolbar">
@@ -549,7 +579,24 @@ interface DiffLine {
         </div>
       } @else {
         <!-- Editor Area -->
-        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" (scroll)="onContentScroll()">
+          @if (outlineVisible()) {
+            <!-- Zero-height sticky rail so the centered paper's layout is untouched -->
+            <div class="doc-outline-rail">
+              <nav class="doc-outline" aria-label="Document outline">
+                @for (item of docOutline(); track $index) {
+                  <button
+                    type="button"
+                    class="doc-outline-item"
+                    [class.doc-outline-h2]="item.level === 2"
+                    [class.active]="activeOutlineIndex() === $index"
+                    [title]="item.text"
+                    (click)="scrollToHeading(item, $index)"
+                  >{{ item.text }}</button>
+                }
+              </nav>
+            </div>
+          }
           <div class="mx-auto px-8 py-6 paper" [class.paper-full]="isDataView()" [style.maxWidth.px]="isDataView() ? null : contentWidthPx()">
             @if (loading()) {
               <div class="flex items-center justify-center py-12">
@@ -1042,7 +1089,93 @@ interface DiffLine {
       user-select: none;
     }
 
+    // Creator / last-editor meta on the right edge of the breadcrumb row.
+    .editor-doc-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      color: var(--text-muted);
+    }
+
+    .editor-doc-meta-item {
+      white-space: nowrap;
+    }
+
+    .editor-doc-meta-divider {
+      width: 1px;
+      height: 12px;
+      background: var(--border);
+    }
+
+    .editor-doc-meta-history {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+
+      &:hover {
+        background: var(--background);
+        color: var(--text-primary);
+      }
+    }
+
     .annotation-host { position: relative; }
+
+    // "On this page" outline rail. The zero-height sticky wrapper keeps the
+    // centered paper's layout untouched; the nav floats in the left gap.
+    .doc-outline-rail {
+      position: sticky;
+      top: 0;
+      height: 0;
+      overflow: visible;
+      z-index: 5;
+    }
+
+    .doc-outline {
+      position: absolute;
+      top: 24px;
+      left: 16px;
+      width: 220px;
+      max-height: calc(100vh - 260px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px;
+    }
+
+    .doc-outline-item {
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      &:hover {
+        color: var(--text-primary);
+        background: var(--surface);
+      }
+
+      &.active {
+        color: var(--primary-dark);
+        background: var(--surface);
+        font-weight: 600;
+      }
+    }
+
+    .doc-outline-h2 {
+      padding-left: 22px;
+    }
 
     .html-preview-container,
     .pdf-preview-container {
@@ -1879,6 +2012,8 @@ export class EditorComponent implements OnInit, OnDestroy {
   // document; selecting one renders it read-only, restore writes it as a new version.
   showHistoryPanel = signal(false);
   historyVersions = signal<DocumentVersion[]>([]);
+  // Creator + last editor for the breadcrumb topbar, from the document's git track.
+  historyMeta = signal<DocumentHistoryMeta | null>(null);
   historyLoading = signal(false);
   versionLoadingSha = signal<string | null>(null);
   viewingVersion = signal<DocumentVersion | null>(null);
@@ -1888,6 +2023,18 @@ export class EditorComponent implements OnInit, OnDestroy {
   restoring = signal(false);
   isCurrentVersion = (version: DocumentVersion) => version.sha === this.historyVersions()[0]?.sha;
   gitLinkCopied = signal(false);
+  // "On this page" outline: H1/H2 of the rendered read view, shown as a
+  // sticky rail in the gap left of the paper when the viewport has room.
+  docOutline = signal<OutlineItem[]>([]);
+  activeOutlineIndex = signal(0);
+  outlineFits = signal(true);
+  outlineVisible = computed(() =>
+    this.docOutline().length > 0 &&
+    this.outlineFits() &&
+    !this.loading() &&
+    !this.showEditor() &&
+    !(this.viewingVersion() && this.historyViewMode() === 'diff')
+  );
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
   previewUrl = signal('');
@@ -2058,7 +2205,15 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.markdownService.runMermaid(this.readonlyElement?.nativeElement);
         this.markdownService.runDrawio(this.readonlyElement?.nativeElement);
         this.markdownService.runImageLightbox(this.readonlyElement?.nativeElement);
+        this.extractOutline();
       }, 0);
+    });
+
+    // The outline rail lives in the gap next to the paper — re-check the fit
+    // whenever the paper width setting changes.
+    effect(() => {
+      this.contentWidthPx();
+      setTimeout(() => this.updateOutlineFit());
     });
 
     // A .drawio file opened directly: render it via the viewer. Re-runs when
@@ -2075,6 +2230,53 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.markdownService.runDrawio(el.parentElement);
       }, 0);
     });
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.updateOutlineFit();
+  }
+
+  /** Collect H1/H2 of the rendered read view for the outline rail. */
+  private extractOutline(): void {
+    const host = this.readonlyElement?.nativeElement;
+    if (!host) {
+      this.docOutline.set([]);
+      return;
+    }
+    const items = Array.from(host.querySelectorAll<HTMLElement>('h1, h2'))
+      .map(el => ({ text: el.textContent?.trim() ?? '', level: (el.tagName === 'H1' ? 1 : 2) as 1 | 2, el }))
+      .filter(item => item.text);
+    // A single heading is not worth a navigation.
+    this.docOutline.set(items.length >= 2 ? items : []);
+    this.activeOutlineIndex.set(0);
+    this.updateOutlineFit();
+  }
+
+  /** The rail needs ~250px in the gap left of the centered paper. */
+  private updateOutlineFit(): void {
+    const container = this.scrollContainer?.nativeElement;
+    if (!container) return;
+    this.outlineFits.set((container.clientWidth - this.contentWidthPx()) / 2 >= 252);
+  }
+
+  scrollToHeading(item: OutlineItem, index: number): void {
+    this.activeOutlineIndex.set(index);
+    item.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Scroll-spy: highlight the outline entry whose section is at the top. */
+  onContentScroll(): void {
+    const items = this.docOutline();
+    const container = this.scrollContainer?.nativeElement;
+    if (!items.length || !container) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let active = 0;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].el.getBoundingClientRect().top - containerTop <= 90) active = i;
+      else break;
+    }
+    if (this.activeOutlineIndex() !== active) this.activeOutlineIndex.set(active);
   }
 
   @HostListener('document:click')
@@ -2172,6 +2374,18 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.historyLoading.set(false);
           this.toastService.error('History unavailable', 'Could not load the version history for this document.');
         }
+      });
+  }
+
+  /** Creator + last editor for the topbar; null when the document has no git track yet. */
+  private loadHistoryMeta(): void {
+    const space = this.space();
+    if (!space || !this.documentPath) return;
+    this.documentHistoryService.getMeta(space.id, this.documentPath)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (meta) => this.historyMeta.set(meta.created ? meta : null),
+        error: () => this.historyMeta.set(null)
       });
   }
 
@@ -2326,6 +2540,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         this.deleting.set(false);
+        this.showDeleteConfirm.set(false);
         this.toastService.error('Delete Failed', error.error?.message || 'Failed to delete document');
       }
     });
@@ -2609,6 +2824,8 @@ export class EditorComponent implements OnInit, OnDestroy {
     this.translationLang.set(null);
     this.availableLangs.set([]);
     this.viewingVersion.set(null);
+    this.historyMeta.set(null);
+    this.loadHistoryMeta();
     if (this.showHistoryPanel()) this.loadHistory();
     this.loadDocumentSettings(space.id, this.documentPath);
     this.loadAvailableTranslations(space.id, this.documentPath);
@@ -2992,7 +3209,10 @@ export class EditorComponent implements OnInit, OnDestroy {
       this.lastSaved.set(!dirty);
       if (dirty) this.autoSave$.next();
       // An autosave produces no commit, so there is no new history entry to load.
-      if (!autosave && this.showHistoryPanel()) this.loadHistory();
+      if (!autosave) {
+        if (this.showHistoryPanel()) this.loadHistory();
+        this.loadHistoryMeta();
+      }
       if (returnToRead) this.exitToReadView(body);
     };
 
@@ -3101,6 +3321,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.rebaseEditSession(body, raw);
         this.markdownContent.set(body);
         if (this.showHistoryPanel()) this.loadHistory();
+        this.loadHistoryMeta();
       },
       error: () => this.handleSaveError()
     });

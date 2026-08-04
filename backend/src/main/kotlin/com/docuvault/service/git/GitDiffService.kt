@@ -31,6 +31,13 @@ data class FileVersion(
     val committedAt: java.time.Instant
 )
 
+data class FileHistoryMeta(
+    /** Oldest commit that touched the file — who created it and when. */
+    val created: FileVersion?,
+    /** Newest commit that touched the file — who last edited it and when. */
+    val lastEdited: FileVersion?
+)
+
 @Service
 class GitDiffService(
     private val gitService: GitService
@@ -89,22 +96,49 @@ class GitDiffService(
                     .addPath(path)
                     .setMaxCount(limit)
                     .call()
-                    .map { commit ->
-                        FileVersion(
-                            sha = commit.name,
-                            shortSha = commit.name.take(8),
-                            message = commit.shortMessage,
-                            authorName = commit.authorIdent?.name,
-                            authorEmail = commit.authorIdent?.emailAddress,
-                            committedAt = java.time.Instant.ofEpochSecond(commit.commitTime.toLong())
-                        )
-                    }
+                    .map { it.toFileVersion() }
             }
         } catch (e: Exception) {
             logger.warn("Failed to read file history for '${path}' in space '${space.name}': ${e.message}")
             emptyList()
         }
     }
+
+    /**
+     * First and last commit that touched the given file. Unlike [fileHistory] this
+     * walks the full log, so `created` stays correct past the history cap.
+     */
+    fun fileMeta(space: Space, path: String): FileHistoryMeta {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists()) return FileHistoryMeta(null, null)
+
+        return try {
+            Git.open(repoDir).use { git ->
+                var newest: RevCommit? = null
+                var oldest: RevCommit? = null
+                for (commit in git.log().addPath(path).call()) {
+                    if (newest == null) newest = commit
+                    oldest = commit
+                }
+                FileHistoryMeta(
+                    created = oldest?.toFileVersion(),
+                    lastEdited = newest?.toFileVersion()
+                )
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to read file meta for '${path}' in space '${space.name}': ${e.message}")
+            FileHistoryMeta(null, null)
+        }
+    }
+
+    private fun RevCommit.toFileVersion() = FileVersion(
+        sha = name,
+        shortSha = name.take(8),
+        message = shortMessage,
+        authorName = authorIdent?.name,
+        authorEmail = authorIdent?.emailAddress,
+        committedAt = java.time.Instant.ofEpochSecond(commitTime.toLong())
+    )
 
     /**
      * Unified diff of what the given commit changed in the given file (vs the

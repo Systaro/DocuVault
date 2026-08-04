@@ -12,6 +12,13 @@ export interface DocumentVersion {
   committedAt: string;
 }
 
+export interface DocumentHistoryMeta {
+  /** Oldest commit that touched the file — who created it and when. */
+  created?: DocumentVersion;
+  /** Newest commit that touched the file — who last edited it and when. */
+  lastEdited?: DocumentVersion;
+}
+
 export interface VersionContent {
   path: string;
   sha: string;
@@ -32,6 +39,13 @@ export class DocumentHistoryService {
   /** All versions (commits) of a document, newest first. */
   getHistory(spaceId: string, path: string): Observable<DocumentVersion[]> {
     return this.http.get<DocumentVersion[]>(`/api/spaces/${spaceId}/document-history`, {
+      params: { path }
+    });
+  }
+
+  /** Creator (first commit) and last editor (newest commit) of a document. */
+  getMeta(spaceId: string, path: string): Observable<DocumentHistoryMeta> {
+    return this.http.get<DocumentHistoryMeta>(`/api/spaces/${spaceId}/document-history/meta`, {
       params: { path }
     });
   }

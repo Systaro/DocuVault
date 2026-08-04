@@ -4,6 +4,7 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.PermissionService
+import com.docuvault.service.git.FileHistoryMeta
 import com.docuvault.service.git.FileVersion
 import com.docuvault.service.git.GitDiffService
 import com.docuvault.service.git.GitService
@@ -56,6 +57,30 @@ class DocumentHistoryController(
         }
 
         return ResponseEntity.ok(gitDiffService.fileHistory(space, path))
+    }
+
+    /** Creator (first commit) and last editor (newest commit) of a document, for the topbar. */
+    @GetMapping("/meta")
+    fun getMeta(
+        @PathVariable spaceId: UUID,
+        @RequestParam path: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<FileHistoryMeta> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (space.gitlabUrl.isNullOrBlank()) {
+            gitService.ensureLocalRepo(space)
+        }
+
+        return ResponseEntity.ok(gitDiffService.fileMeta(space, path))
     }
 
     @GetMapping("/content")

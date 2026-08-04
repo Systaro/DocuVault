@@ -15,6 +15,13 @@ document's **⋮ action menu → Version history**.
 
 Uploads, renames, deletions and folder operations are versioned as well.
 
+## Topbar: creator & last editor
+
+The document topbar (breadcrumb row) shows who created the document and who
+last edited it, each with date and time, taken from the document's version
+track. The **History** button next to it opens the version history panel
+directly. Documents without any versions yet (e.g. never saved) show nothing.
+
 ## The panel
 
 The **Version history** panel lists every version of the current document,
@@ -42,6 +49,7 @@ in time. The view is read-only and marked with a banner.
 ## API
 
 - `GET /api/spaces/{spaceId}/document-history?path=…` — version list
+- `GET /api/spaces/{spaceId}/document-history/meta?path=…` — creator (first commit) and last editor (newest commit)
 - `GET /api/spaces/{spaceId}/document-history/content?path=…&sha=…` — content at a version
 - `GET /api/spaces/{spaceId}/document-history/diff?path=…&sha=…` — unified diff of what that version changed
 - `POST /api/spaces/{spaceId}/document-history/restore` (`{path, sha}`) — restore
