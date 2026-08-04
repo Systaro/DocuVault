@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.3.0",
+    "date": "2026-08-04",
+    "title": "Teams, autosave, and document navigation"
+  },
+  {
     "version": "v0.2.5",
     "date": "2026-07-07",
     "title": "Sharper search, in-app notifications, editing back in git spaces"
