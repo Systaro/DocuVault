@@ -43,6 +43,13 @@ An MCP (Model Context Protocol) server that gives Claude Code full access to you
 | `get_space_state` | Read a state bucket persisted by an HTML file via the State Library |
 | `set_space_state` | Write a state bucket (full JSON replace, requires edit access) |
 
+### Supported file types
+
+Text documents (Markdown, HTML, CSS, JS, JSON, XML, YAML, SVG, TXT, CSV) can be
+created and edited inline or via `filePath`. Binary files — images (PNG, JPG,
+GIF, WebP, …) and documents (PDF, Word, Excel, PowerPoint, OpenDocument, RTF) —
+are uploaded and downloaded byte-for-byte and always require `filePath`.
+
 ## Configuration
 
 | Environment Variable | Required | Description |

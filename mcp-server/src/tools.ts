@@ -16,12 +16,28 @@ const ALLOWED_EXTENSIONS = new Set([
   '.yaml', '.yml',
   '.svg',
   '.txt',
+  '.csv',
   // Images
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
+  // Documents
+  '.pdf',
+  '.doc', '.docx',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
+  '.odt', '.ods', '.odp',
+  '.rtf',
 ]);
 
+// Uploaded/downloaded byte-for-byte via the multipart/raw-file endpoints instead
+// of the text document APIs (which would mangle them as UTF-8).
 const BINARY_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
+  '.pdf',
+  '.doc', '.docx',
+  '.xls', '.xlsx',
+  '.ppt', '.pptx',
+  '.odt', '.ods', '.odp',
+  '.rtf',
 ]);
 
 function validateExtension(filePath: string): string | null {
@@ -145,6 +161,9 @@ export function registerTools(server: McpServer, client: DocuVaultClient, spaces
         const resolvedId = resolveSpaceId(spaces, spaceId);
         if (!resolvedId) {
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
+        }
+        if (BINARY_EXTENSIONS.has(extname(path).toLowerCase())) {
+          return { content: [{ type: 'text', text: `"${path}" is a binary file and cannot be read as text. Use download_document to save it locally, or share_document to create a link.` }], isError: true };
         }
         const doc = await client.readDocument(resolvedId, path);
         const spaceFullPath = spaces.find(s => s.id === resolvedId)?.fullPath;
@@ -283,6 +302,8 @@ Use this to explore what's inside a space or a specific subfolder before reading
     'download_document',
     `Download a document from DocuVault and save it to a local file for editing. Returns the content hash needed to reupload after editing.
 
+Binary files (images, PDFs, Office documents) are saved byte-for-byte; text documents come with a contentHash for conflict-safe reupload.
+
 WORKFLOW: Use this to get a local copy of a document, edit it with any tool, then call update_document with the same filePath to reupload.`,
     {
       spaceId: z.string().describe('The space ID containing the document'),
@@ -297,6 +318,17 @@ WORKFLOW: Use this to get a local copy of a document, edit it with any tool, the
         }
         const extError = validateExtension(saveTo);
         if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
+
+        if (BINARY_EXTENSIONS.has(extname(path).toLowerCase())) {
+          await mkdir(dirname(saveTo), { recursive: true });
+          const size = await client.downloadFile(resolvedId, path, saveTo);
+          return {
+            content: [{
+              type: 'text',
+              text: `Downloaded successfully (binary, ${size} bytes).\nSpace path: ${path}\nSaved to: ${saveTo}\n\nTo replace it, call update_document with filePath="${saveTo}" — binary files are uploaded as-is, no content hash needed.`,
+            }],
+          };
+        }
 
         const doc = await client.readDocument(resolvedId, path);
         await mkdir(dirname(saveTo), { recursive: true });
@@ -319,6 +351,8 @@ WORKFLOW: Use this to get a local copy of a document, edit it with any tool, the
 
 For surgical edits (change a paragraph, fix a line), use edit_document or insert_in_document instead — they are safer and preserve untouched content byte-for-byte.
 
+Binary files (images, PDFs, Word/Excel/PowerPoint, OpenDocument) are supported via filePath and uploaded as-is.
+
 Provide EITHER filePath (reads local file — ideal after download_document) OR content (inline). If both are given, filePath wins.`,
     {
       spaceId: z.string().describe('The space ID containing the document'),
@@ -337,11 +371,11 @@ Provide EITHER filePath (reads local file — ideal after download_document) OR 
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
 
-        // Binary files (images) use the multipart upload endpoint
+        // Binary files (images, PDFs, Office documents) use the multipart upload endpoint
         const ext = extname(filePath || path).toLowerCase();
         if (BINARY_EXTENSIONS.has(ext)) {
           if (!filePath) {
-            return { content: [{ type: 'text', text: 'Binary files (images) require filePath — inline content is not supported.' }], isError: true };
+            return { content: [{ type: 'text', text: 'Binary files (images, PDFs, Office documents) require filePath — inline content is not supported.' }], isError: true };
           }
           const extError = validateExtension(filePath);
           if (extError) return { content: [{ type: 'text', text: extError }], isError: true };
@@ -476,6 +510,8 @@ OPTIONS:
     'create_document',
     `Create a new document in a DocuVault space. Use this for entirely new pages. The file will be created in the space's Git repository.
 
+Binary files (images, PDFs, Word/Excel/PowerPoint, OpenDocument) are supported via filePath and uploaded as-is.
+
 Provide EITHER filePath (to upload a local file — fast, no token overhead) OR content (inline). If both are given, filePath wins.`,
     {
       spaceId: z.string().describe('The space ID to create the document in'),
@@ -491,11 +527,11 @@ Provide EITHER filePath (to upload a local file — fast, no token overhead) OR 
           return { content: [{ type: 'text', text: `Unknown space: "${spaceId}". Use list_spaces to see available spaces.` }], isError: true };
         }
 
-        // Binary files (images) use the multipart upload endpoint
+        // Binary files (images, PDFs, Office documents) use the multipart upload endpoint
         const ext = extname(filePath || path).toLowerCase();
         if (BINARY_EXTENSIONS.has(ext)) {
           if (!filePath) {
-            return { content: [{ type: 'text', text: 'Binary files (images) require filePath — inline content is not supported.' }], isError: true };
+            return { content: [{ type: 'text', text: 'Binary files (images, PDFs, Office documents) require filePath — inline content is not supported.' }], isError: true };
           }
           const extError = validateExtension(filePath);
           if (extError) return { content: [{ type: 'text', text: extError }], isError: true };

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { Space, SearchResult, SemanticSearchResult, FileTreeEntry, UserInfo, DocumentContent, PatchOperation, PatchResult, ShareLink, SpaceStateEntry, SpaceStateKey } from './types.js';
 
@@ -136,6 +136,23 @@ export class DocuVaultClient {
       method: 'PUT',
       body: JSON.stringify({ value }),
     });
+  }
+
+  async downloadFile(spaceId: string, path: string, saveTo: string): Promise<number> {
+    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+    const url = `${this.baseUrl}/api/spaces/${spaceId}/files/${encodedPath}`;
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${this.token}` },
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`DocuVault API error ${response.status}: ${response.statusText}${body ? ` - ${body}` : ''}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await writeFile(saveTo, buffer);
+    return buffer.length;
   }
 
   async uploadFile(spaceId: string, localPath: string, folder?: string): Promise<{ path: string; name: string }[]> {
