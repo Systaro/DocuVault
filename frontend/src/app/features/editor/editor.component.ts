@@ -609,6 +609,7 @@ interface OutlineItem {
               <input
                 type="text"
                 [(ngModel)]="documentTitle"
+                (ngModelChange)="onTitleChanged()"
                 placeholder="Untitled"
                 [readonly]="!showEditor()"
                 class="editor-title"
@@ -3100,11 +3101,7 @@ export class EditorComponent implements OnInit, OnDestroy {
       },
       content: htmlContent,
       onUpdate: () => {
-        if (!this.isReadOnly()) {
-          this.hasChanges.set(true);
-          this.lastSaved.set(false);
-          this.autoSave$.next();
-        }
+        if (!this.isReadOnly()) this.markDirty();
       }
     });
 
@@ -3112,6 +3109,24 @@ export class EditorComponent implements OnInit, OnDestroy {
     // serializer emits for this document before any user edit.
     this.editSessionOriginal = content;
     this.editSessionBaseline = this.editorMarkdown();
+  }
+
+  /** Mark the document as having unpersisted edits and arm the autosave. */
+  private markDirty(): void {
+    this.hasChanges.set(true);
+    this.lastSaved.set(false);
+    this.autoSave$.next();
+  }
+
+  /**
+   * The title lives outside the TipTap editor, so its edits don't reach
+   * onUpdate. Without this a title-only rename never marks the document dirty:
+   * Done takes the nothing-changed path, no request goes out, and the new title
+   * survives only until the next reload.
+   */
+  onTitleChanged(): void {
+    if (!this.showEditor()) return;
+    this.markDirty();
   }
 
   /**
