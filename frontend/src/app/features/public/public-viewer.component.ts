@@ -1285,11 +1285,14 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   private loadMarkdownContent(): void {
     this.sharedLinksService.getSharedFileContent(this.token).subscribe({
       next: (content) => {
-        const filePath = this.metadata()?.filePath || '';
-        const docDir = filePath.substring(0, filePath.lastIndexOf('/') + 1);
+        // Companion assets of a shared file are already resolved against that
+        // file's own directory by the backend, so paths stay document-relative
+        // here. Prefixing the space-absolute directory made the backend resolve
+        // it a second time (…/releases/subprojects/mag/releases/images/x.png),
+        // which is why every embedded image in a shared document 404'd.
         const linkPrefix = this.shareType() === 'FOLDER' ? `/share/${this.token}` : null;
         this.renderedHtml.set(this.markdownService.render(
-          content, docDir, `/api/shared/${this.token}/files`, linkPrefix
+          content, '', `/api/shared/${this.token}/files`, linkPrefix
         ));
         this.loading.set(false);
       },
