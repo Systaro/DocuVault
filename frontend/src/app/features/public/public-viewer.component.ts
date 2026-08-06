@@ -846,9 +846,11 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       }
     }
 
+    /* Keeps the reading column of a shared document, so text does not run the
+       full width of a wide monitor. Inherits the 960px cap from
+       .markdown-container rather than restating it. */
     .folder-content .markdown-container {
-      margin: 24px;
-      max-width: none;
+      margin: 24px auto;
     }
 
     .html-container, .pdf-container {
