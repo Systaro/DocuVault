@@ -147,28 +147,33 @@ import { APP_VERSION } from '../version';
         object-fit: contain;
       }
 
+      /* Reads as a chip rather than a passive label — it opens the full release
+         log, which nobody discovers if it looks like static version text. */
       .app-version {
         position: absolute;
-        top: -2px;
-        right: -8px;
+        top: -5px;
+        right: -11px;
         transform: translateX(100%);
         font-size: 10px;
         font-weight: 500;
         line-height: 1;
         color: var(--text-secondary);
-        opacity: 0.7;
+        opacity: 0.85;
         letter-spacing: 0.02em;
         white-space: nowrap;
-        background: none;
-        border: 0;
-        padding: 0;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 3px 8px;
         font-family: inherit;
         cursor: pointer;
-        transition: opacity var(--transition-fast);
+        transition: color var(--transition-fast), border-color var(--transition-fast),
+                    opacity var(--transition-fast);
 
         &:hover {
           opacity: 1;
-          text-decoration: underline;
+          color: var(--primary);
+          border-color: var(--primary);
         }
       }
     }
