@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Title } from '@angular/platform-browser';
 import { LayoutComponent } from '../../shared/components/layout.component';
-import { SpacesService, Space } from '../../core/api/spaces.service';
+import { SpacesService, Space, SpaceMember } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode, Document } from '../../core/api/documents.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
@@ -17,7 +17,8 @@ import { StateExportService } from '../../shared/services/state-export.service';
 import { ExportStateDialogComponent } from '../../shared/components/export-state-dialog.component';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
-import { getFileIcon } from '../../shared/utils/file-utils';
+import { getFileIcon, withoutHiddenNodes } from '../../shared/utils/file-utils';
+import { getInitials, avatarHue } from '../../shared/utils/user-utils';
 
 @Component({
   selector: 'app-space',
@@ -137,6 +138,49 @@ import { getFileIcon } from '../../shared/utils/file-utils';
                   </a>
                 }
               </nav>
+
+              <!-- Members -->
+              @if (members().length > 0) {
+                <div class="sidebar-members">
+                  <button
+                    type="button"
+                    class="members-strip"
+                    [attr.aria-expanded]="membersExpanded()"
+                    [title]="membersExpanded() ? 'Hide members' : 'Show members'"
+                    (click)="membersExpanded.set(!membersExpanded())"
+                  >
+                    <span class="members-label">Members</span>
+                    <span class="members-avatars">
+                      @for (m of previewMembers(); track m.userId) {
+                        <span
+                          class="member-avatar"
+                          [style.background]="avatarBackground(m.userId)"
+                          [title]="memberTooltip(m)"
+                        >{{ initials(m.userName) }}</span>
+                      }
+                      @if (hiddenMemberCount() > 0) {
+                        <span class="member-avatar member-avatar-more">+{{ hiddenMemberCount() }}</span>
+                      }
+                    </span>
+                  </button>
+                  @if (membersExpanded()) {
+                    <ul class="members-list">
+                      @for (m of members(); track m.userId) {
+                        <li class="members-list-item" [title]="m.userEmail">
+                          <span
+                            class="member-avatar"
+                            [style.background]="avatarBackground(m.userId)"
+                          >{{ initials(m.userName) }}</span>
+                          <span class="member-text">
+                            <span class="member-name">{{ m.userName }}</span>
+                            <span class="member-meta">{{ memberMeta(m) }}</span>
+                          </span>
+                        </li>
+                      }
+                    </ul>
+                  }
+                </div>
+              }
 
               <!-- File Tree -->
               <div class="folder-tree"
@@ -830,6 +874,99 @@ import { getFileIcon } from '../../shared/utils/file-utils';
       line-height: 1.6;
     }
 
+    .sidebar-members {
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .members-strip {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      width: 100%;
+      padding: var(--spacing-sm) 0;
+      background: none;
+      border: 0;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .members-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .members-avatars {
+      display: flex;
+      align-items: center;
+      margin-left: auto;
+      /* Overlap the chips so a long roster stays inside the sidebar width. */
+      padding-left: 6px;
+
+      .member-avatar + .member-avatar { margin-left: -6px; }
+    }
+
+    .member-avatar {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      border: 2px solid var(--surface);
+      box-sizing: border-box;
+    }
+
+    .member-avatar-more {
+      background: var(--text-muted);
+      font-size: 9px;
+    }
+
+    .members-list {
+      list-style: none;
+      margin: 0;
+      padding: 0 0 var(--spacing-sm);
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .members-list-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: 4px 0;
+      min-width: 0;
+    }
+
+    .member-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .member-name {
+      font-size: 13px;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     // The tree node currently being dragged to reorganise it.
     .tree-item.dragging {
       opacity: 0.45;
@@ -1419,6 +1556,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   private static readonly DEFAULT_WIDTH = 280;
   private static readonly MIN_WIDTH = 200;
   private static readonly MAX_WIDTH = 500;
+  /** Avatar chips in the collapsed member strip before it spills into "+N". */
+  private static readonly MEMBER_CHIP_LIMIT = 5;
   @Input() space!: Space;
   @Input() fullPath!: string;
 
@@ -1455,9 +1594,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   fileTreeFilter = '';
   fileTreeFilterQuery = signal('');
 
+  /**
+   * The tree as browsed. Dot-entries are repository plumbing, so "Pretty names"
+   * hides them the same way it hides extensions; turning the toggle off shows
+   * the repository exactly as Git has it.
+   */
+  browsableFileTree = computed<FileNode[]>(() =>
+    this.prefs.prettyNames() ? withoutHiddenNodes(this.fileTree()) : this.fileTree()
+  );
+
   visibleFileTree = computed<FileNode[]>(() => {
     const query = this.fileTreeFilterQuery().toLowerCase().trim();
-    if (!query) return this.fileTree();
+    if (!query) return this.browsableFileTree();
 
     const titles = this.documentTitles();
     const matches = (node: FileNode): boolean =>
@@ -1477,7 +1625,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
         return matches(node) ? [node] : [];
       });
 
-    return filterNodes(this.fileTree());
+    return filterNodes(this.browsableFileTree());
   });
 
   /** Folders render expanded while a filter query is active. */
@@ -1556,6 +1704,16 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     return all.filter(f => (f || 'space root').toLowerCase().includes(q));
   });
 
+  /** Everyone with effective access to this space, strongest level first. */
+  members = signal<SpaceMember[]>([]);
+  membersExpanded = signal(false);
+  /** Chips shown in the collapsed strip; the rest collapse into a "+N" chip. */
+  previewMembers = computed(() => this.members().slice(0, SpaceComponent.MEMBER_CHIP_LIMIT));
+  hiddenMemberCount = computed(() =>
+    Math.max(0, this.members().length - SpaceComponent.MEMBER_CHIP_LIMIT)
+  );
+  readonly initials = getInitials;
+
   sidebarWidth = signal(
     parseInt(localStorage.getItem(SpaceComponent.SIDEBAR_WIDTH_KEY) || '', 10) || SpaceComponent.DEFAULT_WIDTH
   );
@@ -1601,9 +1759,42 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.buildPathBreadcrumbs();
       this.loadInboxCount(this.space.id);
       this.loadMyPermission(this.space.id);
+      this.loadMembers(this.space.id);
       this.loadContextLogo(this.space);
       this.updateTitle();
     }
+  }
+
+  private loadMembers(spaceId: string): void {
+    this.members.set([]);
+    this.membersExpanded.set(false);
+    this.spacesService.getMembers(spaceId).subscribe({
+      next: (members) => this.members.set(members),
+      error: () => this.members.set([])
+    });
+  }
+
+  /** Human label for a permission level, matching the wording in space settings. */
+  permissionLabel(level: SpaceMember['permissionLevel']): string {
+    return level === 'ADMIN' ? 'Admin' : level === 'EDIT' ? 'Editor' : 'Viewer';
+  }
+
+  /** Where a member's access comes from, e.g. "Editor · via Engineering" or "Admin · Platform Devs". */
+  memberMeta(m: SpaceMember): string {
+    if (m.superAdmin) return 'Super Admin';
+    const parts = [this.permissionLabel(m.permissionLevel)];
+    if (m.viaTeam) parts.push(m.viaTeam);
+    if (m.inheritedFrom) parts.push(`via ${m.inheritedFrom}`);
+    return parts.join(' · ');
+  }
+
+  memberTooltip(m: SpaceMember): string {
+    return `${m.userName} · ${this.memberMeta(m)}`;
+  }
+
+  avatarBackground(userId: string): string {
+    const hue = avatarHue(userId);
+    return `linear-gradient(135deg, hsl(${hue} 52% 52%), hsl(${(hue + 28) % 360} 52% 42%))`;
   }
 
   private loadMyPermission(spaceId: string): void {

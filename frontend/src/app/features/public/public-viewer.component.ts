@@ -10,12 +10,13 @@ import { AnnotationOverlayComponent } from '../../shared/components/annotation-o
 import { AnnotationPermission } from '../../core/api/annotations.service';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
-import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shared/utils/file-utils';
+import { RenderMode, getRenderMode, getFileIcon, getExtension, sharedFileUrl } from '../../shared/utils/file-utils';
+import { FileThumbComponent } from '../../shared/components/file-thumb.component';
 
 @Component({
   selector: 'app-public-viewer',
   standalone: true,
-  imports: [CommonModule, FormsModule, AnnotationOverlayComponent],
+  imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent],
   template: `
     <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error() && !maintenanceMode()">
       <!-- Header -->
@@ -150,7 +151,7 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
                     </a>
                   } @else {
                     <a class="folder-browser-row folder-browser-row--file" (click)="navigateToFile(item)">
-                      <img class="folder-browser-row-icon" [src]="getFileIcon(item.name)" [alt]="item.name" />
+                      <app-file-thumb [url]="sharedFileUrl(token, item.path)" [name]="item.name" />
                       <span class="folder-browser-name">{{ item.name }}</span>
                     </a>
                   }
@@ -779,13 +780,6 @@ import { RenderMode, getRenderMode, getFileIcon, getExtension } from '../../shar
       .material-icons { color: #9ca3af; font-size: 18px; }
     }
 
-    .folder-browser-row-icon {
-      width: 18px;
-      height: 18px;
-      object-fit: contain;
-      flex-shrink: 0;
-    }
-
     .folder-browser-name {
       flex: 1;
       overflow: hidden;
@@ -902,6 +896,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
 
   readonly imgZoom = new ImageZoomHandler();
   readonly getFileIcon = getFileIcon;
+  readonly sharedFileUrl = sharedFileUrl;
 
   // Password protection
   requiresPassword = signal(false);

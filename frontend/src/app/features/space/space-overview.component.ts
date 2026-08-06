@@ -13,6 +13,8 @@ import { AuthService } from '../../core/auth/auth.service';
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
+import { FileThumbComponent } from '../../shared/components/file-thumb.component';
+import { spaceFileUrl, isHiddenName } from '../../shared/utils/file-utils';
 
 /** A file shown in the folder listing — any type, optionally enriched with the
  *  markdown title + last-sync date when a Document row exists for it. */
@@ -26,7 +28,7 @@ interface FileEntry {
 @Component({
   selector: 'app-space-overview',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, FileThumbComponent],
   template: `
     @if (isDragOver()) {
       <div class="drop-overlay">
@@ -322,7 +324,7 @@ interface FileEntry {
                   class="overview-doc-item flex items-center justify-between gap-4 p-4"
                 >
                   <div class="flex items-center gap-3 min-w-0">
-                    <span class="material-icons overview-text-muted">{{ fileIcon(file.name) }}</span>
+                    <app-file-thumb [url]="spaceFileUrl(space()!.id, file.path)" [name]="file.name" />
                     <div class="min-w-0">
                       <div class="font-medium overview-text-primary truncate">{{ file.title || prefs.prettify(file.name, false) }}</div>
                     </div>
@@ -764,6 +766,12 @@ export class SpaceOverviewComponent implements OnInit {
    *  Driven by the `path` query param, so any folder URL is shareable. */
   currentFolder = signal<string>('');
 
+  /**
+   * Dot-entries are repository plumbing, so "Pretty names" hides them the same
+   * way it hides extensions. Turning the toggle off shows the raw repository.
+   */
+  hideHidden = computed(() => this.prefs.prettyNames());
+
   /** Direct subfolders at the current level (one segment deeper). */
   subfolders = computed<string[]>(() => {
     const cur = this.currentFolder();
@@ -785,7 +793,9 @@ export class SpaceOverviewComponent implements OnInit {
       const slash = rest.indexOf('/');
       set.add(slash > 0 ? rest.slice(0, slash) : rest);
     }
-    return [...set].sort((a, b) => a.localeCompare(b));
+    return [...set]
+      .filter(name => !this.hideHidden() || !isHiddenName(name))
+      .sort((a, b) => a.localeCompare(b));
   });
 
   /** All files directly at this folder level (no further nesting) — markdown
@@ -820,9 +830,9 @@ export class SpaceOverviewComponent implements OnInit {
         });
       }
     }
-    return [...byPath.values()].sort((a, b) =>
-      (a.title || a.name).localeCompare(b.title || b.name)
-    );
+    return [...byPath.values()]
+      .filter(f => !this.hideHidden() || !isHiddenName(f.name))
+      .sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
   });
 
   /** Parent group crumbs (everything in the space path above the space itself). */
@@ -1059,28 +1069,15 @@ export class SpaceOverviewComponent implements OnInit {
       for (const node of list) {
         if (node.isDirectory) {
           if (node.children?.length) walk(node.children);
-        } else if (!node.name.startsWith('.')) {
-          // Skip hidden files (.gitkeep, .gitignore, …) — they're plumbing.
+        } else {
+          // Hidden files are kept here and filtered in filesHere(), so the
+          // "Pretty names" toggle takes effect without reloading the tree.
           files.push({ path: node.path, name: node.name });
         }
       }
     };
     walk(nodes);
     return files;
-  }
-
-  /** Material icon name for a file, chosen by extension. */
-  fileIcon(name: string): string {
-    const ext = name.split('.').pop()?.toLowerCase() ?? '';
-    if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'].includes(ext)) return 'image';
-    if (ext === 'pdf') return 'picture_as_pdf';
-    if (ext === 'json') return 'data_object';
-    if (['csv', 'tsv', 'tab', 'xlsx', 'xls'].includes(ext)) return 'grid_on';
-    if (ext === 'sql') return 'storage';
-    if (['html', 'htm'].includes(ext)) return 'code';
-    if (ext === 'drawio') return 'schema';
-    if (['md', 'markdown'].includes(ext)) return 'description';
-    return 'insert_drive_file';
   }
 
   // --- "+ New" menu actions ---
@@ -1307,4 +1304,6 @@ export class SpaceOverviewComponent implements OnInit {
   formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString();
   }
+
+  readonly spaceFileUrl = spaceFileUrl;
 }

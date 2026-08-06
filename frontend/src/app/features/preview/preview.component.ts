@@ -11,7 +11,7 @@ import { AnnotationOverlayComponent } from '../../shared/components/annotation-o
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
-import { RenderMode, getRenderMode, getFileIcon, getExtension, isAiEditable } from '../../shared/utils/file-utils';
+import { RenderMode, getRenderMode, getFileIcon, getExtension, isAiEditable, withoutHiddenNodes } from '../../shared/utils/file-utils';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AiEditResult } from '../../core/api/ai.service';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
@@ -675,7 +675,9 @@ export class PreviewComponent implements OnInit, OnDestroy {
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: ({ space, tree }) => {
         this.space.set(space);
-        this.fileTree.set(tree);
+        // No "Pretty names" toggle in this view, so dot-entries are always
+        // hidden here — same as the public viewer, which filters them server-side.
+        this.fileTree.set(withoutHiddenNodes(tree));
         this.treeLoading.set(false);
 
         // Fetch annotation permission

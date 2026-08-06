@@ -52,6 +52,20 @@ export interface SpacePermission {
   permissionLevel: string;
 }
 
+/** Someone who can reach a space, and where their access comes from. */
+export interface SpaceMember {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  permissionLevel: 'VIEW' | 'EDIT' | 'ADMIN';
+  /** Ancestor space the grant is inherited from; absent when set on this space. */
+  inheritedFrom?: string;
+  /** Team the grant came through, when it wasn't granted directly. */
+  viaTeam?: string;
+  /** Reaches the space by role rather than by any grant. */
+  superAdmin: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
   constructor(private http: HttpClient) {}
@@ -92,6 +106,11 @@ export class SpacesService {
 
   deleteSpace(id: string): Observable<void> {
     return this.http.delete<void>(`/api/spaces/${id}`);
+  }
+
+  /** Everyone with effective access, including grants inherited from an ancestor. */
+  getMembers(spaceId: string): Observable<SpaceMember[]> {
+    return this.http.get<SpaceMember[]>(`/api/spaces/${spaceId}/members`);
   }
 
   getPermissions(spaceId: string): Observable<SpacePermission[]> {

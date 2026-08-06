@@ -82,3 +82,34 @@ export function resolveRelativePath(path: string): string {
 export function getExtension(path: string): string {
   return path.split('.').pop()?.toLowerCase() || '';
 }
+
+/**
+ * True for dot-files and dot-folders (`.gitkeep`, `.github`, `.gitignore`, …).
+ * These are repository plumbing rather than content, so the browsing views hide
+ * them while "Pretty names" is on — the same toggle that hides extensions.
+ */
+export function isHiddenName(name: string): boolean {
+  return name.startsWith('.');
+}
+
+/** Drops dot-entries from a file tree; a hidden folder takes its subtree with it. */
+export function withoutHiddenNodes<T extends { name: string; children?: T[] | null }>(nodes: T[]): T[] {
+  return nodes
+    .filter(node => !isHiddenName(node.name))
+    .map(node => (node.children ? { ...node, children: withoutHiddenNodes(node.children) } : node));
+}
+
+/** Percent-encodes each segment of a file path, leaving the separators intact. */
+export function encodeFilePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+/** URL a space's file is served from, for signed-in views. */
+export function spaceFileUrl(spaceId: string, path: string): string {
+  return `/api/spaces/${spaceId}/files/${encodeFilePath(path)}`;
+}
+
+/** URL a file inside a shared folder is served from, for the public viewer. */
+export function sharedFileUrl(token: string, path: string): string {
+  return `/api/shared/${token}/raw/${encodeFilePath(path)}`;
+}

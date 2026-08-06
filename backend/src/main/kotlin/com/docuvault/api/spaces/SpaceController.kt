@@ -14,6 +14,7 @@ import com.docuvault.infrastructure.repository.TeamRepository
 import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.SpaceMember
 import com.docuvault.service.TeamService
 import com.docuvault.service.git.GitLabService
 import com.docuvault.service.git.GitOperationException
@@ -680,6 +681,31 @@ class SpaceController(
         ))
     }
 
+    /**
+     * Everyone who can reach this space, including access inherited from an
+     * ancestor. Readable by anyone with access, not just admins — who you are
+     * collaborating with is not privileged information, and the payload carries
+     * no more about a user than the member picker already exposes.
+     */
+    @GetMapping("/{id}/members")
+    @Transactional(readOnly = true)
+    fun getSpaceMembers(
+        @PathVariable id: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<SpaceMemberDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(id).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, id, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        return ResponseEntity.ok(permissionService.effectiveMembersOf(space).map { it.toDto(id) })
+    }
+
     @GetMapping("/{spaceId}/my-permission")
     fun getMyPermission(
         @PathVariable spaceId: UUID,
@@ -805,4 +831,27 @@ fun SpacePermission.toDto() = SpacePermissionDto(
     userName = this.user.name,
     userEmail = this.user.email,
     permissionLevel = this.permissionLevel.name
+)
+
+data class SpaceMemberDto(
+    val userId: UUID,
+    val userName: String,
+    val userEmail: String,
+    val permissionLevel: String,
+    /** Name of the ancestor the grant is inherited from; null when it is set on this space. */
+    val inheritedFrom: String?,
+    /** Name of the team the grant came through, when it wasn't granted directly. */
+    val viaTeam: String?,
+    /** Reaches the space by role rather than by any grant. */
+    val superAdmin: Boolean
+)
+
+fun SpaceMember.toDto(spaceId: UUID) = SpaceMemberDto(
+    userId = this.user.id!!,
+    userName = this.user.name,
+    userEmail = this.user.email,
+    permissionLevel = this.level.name,
+    inheritedFrom = this.viaSpace?.takeIf { it.id != spaceId }?.name,
+    viaTeam = this.viaTeam?.name,
+    superAdmin = this.superAdmin
 )

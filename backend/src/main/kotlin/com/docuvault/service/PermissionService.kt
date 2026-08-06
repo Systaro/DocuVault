@@ -2,22 +2,39 @@ package com.docuvault.service
 
 import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
+import com.docuvault.domain.team.Team
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.TeamMembershipRepository
 import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
+import com.docuvault.infrastructure.repository.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.*
+
+/**
+ * A person who can reach a space, and where their access comes from.
+ * [viaSpace] is the space the grant is defined on — the space itself or an
+ * ancestor it was inherited from; null for super admins, who hold no grant.
+ * [viaTeam] is set when the grant reached them through a team rather than directly.
+ */
+data class SpaceMember(
+    val user: User,
+    val level: PermissionLevel,
+    val viaSpace: Space?,
+    val viaTeam: Team?,
+    val superAdmin: Boolean = false
+)
 
 @Service
 class PermissionService(
     private val spacePermissionRepository: SpacePermissionRepository,
     private val spaceRepository: SpaceRepository,
     private val teamMembershipRepository: TeamMembershipRepository,
-    private val teamSpacePermissionRepository: TeamSpacePermissionRepository
+    private val teamSpacePermissionRepository: TeamSpacePermissionRepository,
+    private val userRepository: UserRepository
 ) {
     /**
      * Gets the effective permission for a user on a space.
@@ -141,6 +158,57 @@ class PermissionService(
         members += spacePermissionRepository.findAllBySpaceId(spaceId).map { it.user }
         members += teamSpacePermissionRepository.findUsersBySpaceId(spaceId)
         return members
+    }
+
+    /**
+     * Everyone who can actually reach this space, with the grant that gets them
+     * there. Unlike [membersOf] this walks the hierarchy the same way [resolve]
+     * does, so a space that carries no grants of its own still lists the people
+     * who reach it through an ancestor — without this a child space reads as
+     * having no members at all.
+     *
+     * Per user the nearest level in the chain wins, mirroring [resolve]: a grant
+     * on the space itself hides an inherited one, and at any single level the
+     * strongest of their direct and team grants applies. Super admins are folded
+     * in at the end; they hold no rows but reach everything.
+     */
+    @Transactional(readOnly = true)
+    fun effectiveMembersOf(space: Space): List<SpaceMember> {
+        val found = LinkedHashMap<UUID, SpaceMember>()
+
+        var current: Space? = space
+        while (current != null) {
+            val level = current
+            val atThisLevel = mutableListOf<SpaceMember>()
+
+            spacePermissionRepository.findAllBySpaceId(level.id!!).forEach {
+                atThisLevel += SpaceMember(it.user, it.permissionLevel, level, null)
+            }
+            teamSpacePermissionRepository.findAllBySpaceId(level.id!!).forEach { grant ->
+                teamMembershipRepository.findAllByTeamId(grant.team.id!!).forEach {
+                    atThisLevel += SpaceMember(it.user, grant.permissionLevel, level, grant.team)
+                }
+            }
+
+            // Only users with no nearer grant are settled here; among the grants
+            // at this level the strongest wins.
+            atThisLevel
+                .filter { it.user.enabled && !found.containsKey(it.user.id!!) }
+                .groupBy { it.user.id!! }
+                .forEach { (userId, grants) ->
+                    found[userId] = grants.maxBy { it.level.ordinal }
+                }
+
+            current = level.parent
+        }
+
+        userRepository.findAllByRoleAndEnabledTrue(UserRole.SUPER_ADMIN).forEach {
+            found.putIfAbsent(it.id!!, SpaceMember(it, PermissionLevel.ADMIN, null, null, superAdmin = true))
+        }
+
+        return found.values.sortedWith(
+            compareByDescending<SpaceMember> { it.level.ordinal }.thenBy { it.user.name.lowercase() }
+        )
     }
 
     private fun addChildrenRecursively(space: Space, collection: MutableSet<Space>) {
