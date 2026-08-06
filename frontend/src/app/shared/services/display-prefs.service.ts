@@ -41,7 +41,20 @@ export class DisplayPrefsService {
     if (!this.prettyNames()) return name;
     let out = isFolder ? name : name.replace(/\.[^.]+$/, '');
     out = out.replace(/[_-]+/g, ' ').trim();
+    if (isFolder) out = this.capitalizeWords(out);
     return out || name;
+  }
+
+  /**
+   * Title-cases folder labels — `developer docs` reads as `Developer Docs`.
+   * Only words that start lowercase are touched, so deliberate casing survives:
+   * `iOS App` and `REST API` keep their shape instead of being flattened
+   * to `Ios App` / `Rest Api`. A letter followed straight by a digit is
+   * left alone too, so a `v1.3.0` folder does not become `V1.3.0`.
+   */
+  private capitalizeWords(value: string): string {
+    return value.replace(/(^|\s)([a-z](?![0-9])[a-z0-9]*)/g,
+      (_m, lead: string, word: string) => lead + word.charAt(0).toUpperCase() + word.slice(1));
   }
 
   private load(): boolean {

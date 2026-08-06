@@ -1,4 +1,5 @@
-import { Component, OnInit, signal, computed, effect, ElementRef, HostListener } from '@angular/core';
+import { Component, OnInit, signal, computed, effect, ElementRef, HostListener, inject, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SafeHtml } from '@angular/platform-browser';
@@ -15,6 +16,7 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
 import { spaceFileUrl, isHiddenName } from '../../shared/utils/file-utils';
+import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 
 /** A file shown in the folder listing — any type, optionally enriched with the
  *  markdown title + last-sync date when a Document row exists for it. */
@@ -276,16 +278,27 @@ interface FileEntry {
             <div class="overview-doc-list">
               @if (creatingFolderInline()) {
                 <div class="inline-new-folder flex items-center gap-3 p-4">
-                  <span class="material-icons folder-icon">folder</span>
+                  @if (creatingFolderBusy()) {
+                    <svg class="animate-spin h-5 w-5 folder-spinner" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                  } @else {
+                    <span class="material-icons folder-icon">folder</span>
+                  }
                   <input
                     type="text"
                     [(ngModel)]="newFolderName"
                     placeholder="Folder name"
                     class="inline-folder-input"
+                    [readonly]="creatingFolderBusy()"
                     (keydown.enter)="submitNewFolder()"
                     (keydown.escape)="cancelNewFolder()"
                     (blur)="submitNewFolder()"
                   />
+                  @if (creatingFolderBusy()) {
+                    <span class="inline-folder-status">Creating…</span>
+                  }
                 </div>
               }
               @if (currentFolder()) {
@@ -551,6 +564,14 @@ interface FileEntry {
       font-family: var(--font-body, inherit);
     }
 
+    .folder-spinner { color: var(--primary); flex-shrink: 0; }
+
+    .inline-folder-status {
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
     .hero-breadcrumb {
       display: flex;
       align-items: center;
@@ -755,7 +776,12 @@ export class SpaceOverviewComponent implements OnInit {
   showNewMenu = signal(false);
   /** Inline "new folder" input visible when the user picks New folder from the menu. */
   creatingFolderInline = signal(false);
+  /** Folder-create request in flight — the row shows a spinner instead of
+   *  looking idle while the server works. */
+  creatingFolderBusy = signal(false);
   newFolderName = '';
+  private readonly treeSync = inject(FileTreeSyncService);
+  private readonly destroyRef = inject(DestroyRef);
 
   @HostListener('document:click')
   onDocClick(): void {
@@ -990,6 +1016,11 @@ export class SpaceOverviewComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // Keeps this pane current when the change came from the sidebar or editor.
+    this.treeSync.changesFor(() => this.space()?.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(spaceId => this.loadDocuments(spaceId));
+
     this.route.parent?.params.subscribe(params => {
       const parts: string[] = [];
       if (params['path1']) parts.push(params['path1']);
@@ -1098,6 +1129,9 @@ export class SpaceOverviewComponent implements OnInit {
   }
 
   submitNewFolder(): void {
+    // Enter also blurs the input, and both are wired to submit — without this
+    // guard the folder gets created twice.
+    if (this.creatingFolderBusy()) return;
     const space = this.space();
     const name = this.newFolderName.trim();
     if (!space || !name) {
@@ -1106,16 +1140,19 @@ export class SpaceOverviewComponent implements OnInit {
     }
     const cur = this.currentFolder();
     const fullPath = cur ? `${cur}/${name}` : name;
+    this.creatingFolderBusy.set(true);
     this.documentsService.createFolder(space.id, fullPath).subscribe({
       next: () => {
+        this.creatingFolderBusy.set(false);
         this.toastService.success('Folder created', fullPath);
         this.creatingFolderInline.set(false);
         this.newFolderName = '';
         // Navigate into the new folder so the user sees it.
         this.router.navigate(spaceRoute(space.fullPath), { queryParams: { path: fullPath } });
-        this.loadDocuments(space.id);
+        this.treeSync.notify(space.id);
       },
       error: (err) => {
+        this.creatingFolderBusy.set(false);
         this.toastService.error('Failed', err?.error?.message ?? 'Could not create folder.');
       }
     });
@@ -1292,7 +1329,7 @@ export class SpaceOverviewComponent implements OnInit {
           `${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`,
           names
         );
-        this.loadDocuments(space.id);
+        this.treeSync.notify(space.id);
       },
       error: (error) => {
         this.uploading.set(false);

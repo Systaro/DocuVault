@@ -168,6 +168,15 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                     </div>
                   </div>
                   <div class="link-actions">
+                    <a
+                      class="icon-btn"
+                      [href]="getShareUrl(link.token)"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open link"
+                    >
+                      <span class="material-icons">open_in_new</span>
+                    </a>
                     <button class="icon-btn" title="Copy link" (click)="copyLink(link.token)">
                       <span class="material-icons">content_copy</span>
                     </button>
@@ -417,6 +426,9 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
       color: var(--text-muted);
       display: flex;
       align-items: center;
+      /* The "open link" action is an anchor so it gets real link behaviour
+         (middle-click, open in new tab); strip the default link styling. */
+      text-decoration: none;
 
       .material-icons {
         font-size: 18px;

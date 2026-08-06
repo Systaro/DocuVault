@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -42,6 +42,7 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
+import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
@@ -1925,6 +1926,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
   @ViewChild(AutosizeTextareaDirective) private titleAutosize?: AutosizeTextareaDirective;
+  private readonly treeSync = inject(FileTreeSyncService);
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
 
   private static readonly IMAGE_EXTENSIONS = new Set([
@@ -2552,6 +2554,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.deleting.set(false);
         this.showDeleteConfirm.set(false);
         this.toastService.success('Document Deleted', `"${this.documentPath.split('/').pop()}" has been deleted.`);
+        this.treeSync.notify(space.id);
         this.router.navigate(['..'], { relativeTo: this.route });
       },
       error: (error) => {
@@ -3287,6 +3290,7 @@ export class EditorComponent implements OnInit, OnDestroy {
         next: (doc) => {
           this.document.set(doc);
           this.documentPath = path; this.documentPathSignal.set(path);
+          this.treeSync.notify(space.id);
           onSaved();
         },
         error: () => this.handleSaveError()

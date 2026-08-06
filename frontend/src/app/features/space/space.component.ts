@@ -1,4 +1,5 @@
-import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, computed, HostListener } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, computed, HostListener, inject, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
@@ -19,6 +20,7 @@ import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { getFileIcon, withoutHiddenNodes } from '../../shared/utils/file-utils';
 import { getInitials, avatarHue } from '../../shared/utils/user-utils';
+import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 
 @Component({
   selector: 'app-space',
@@ -1722,6 +1724,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   private resizing = false;
   private boundOnMouseMove = this.onResizeMove.bind(this);
   private boundOnMouseUp = this.onResizeEnd.bind(this);
+  private readonly treeSync = inject(FileTreeSyncService);
+  private readonly destroyRef = inject(DestroyRef);
 
   constructor(
     private route: ActivatedRoute,
@@ -1748,6 +1752,12 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     });
     // Initial check
     this.updateBreadcrumb();
+
+    // Any file change in this space reloads the tree, whoever made it — the
+    // overview pane and the editor both mutate files this sidebar shows.
+    this.treeSync.changesFor(() => this.spaceSignal()?.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(spaceId => this.loadFileTree(spaceId));
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -2169,7 +2179,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     const newPath = parentPrefix + newName;
 
     this.documentsService.rename(space.id, node.path, newPath).subscribe({
-      next: () => { this.cancelRename(); this.loadFileTree(space.id); },
+      next: () => { this.cancelRename(); this.treeSync.notify(space.id); },
       error: () => this.cancelRename()
     });
   }
@@ -2205,7 +2215,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
     const fullPath = parent ? `${parent}/${name}` : name;
     this.documentsService.createFolder(space.id, fullPath).subscribe({
-      next: () => { this.cancelCreateFolder(); this.loadFileTree(space.id); },
+      next: () => { this.cancelCreateFolder(); this.treeSync.notify(space.id); },
       error: () => this.cancelCreateFolder()
     });
   }
@@ -2235,7 +2245,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
         this.deleteBusy.set(false);
         this.deletingNode.set(null);
         this.toastService.success('Deleted', `"${node.name}" has been deleted.`);
-        this.loadFileTree(space.id);
+        this.treeSync.notify(space.id);
         if (wasActive) {
           this.router.navigate(spaceRoute(space.fullPath));
         }
@@ -2379,7 +2389,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
         );
         // Reveal the destination and refresh so the new files appear.
         if (folder) this.expandedFolders.update(set => new Set(set).add(folder));
-        this.loadFileTree(space.id);
+        this.treeSync.notify(space.id);
       },
       error: (err) => {
         this.toastService.error('Upload failed', err?.error?.message ?? 'Could not upload files.');
@@ -2404,7 +2414,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       next: () => {
         this.toastService.success('Moved', `"${node.name}" → ${targetFolder || 'space root'}`);
         if (targetFolder) this.expandedFolders.update(set => new Set(set).add(targetFolder));
-        this.loadFileTree(space.id);
+        this.treeSync.notify(space.id);
         if (wasActive) {
           this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
         }
@@ -2436,7 +2446,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
         this.moveBusy.set(false);
         this.movingNode.set(null);
         this.toastService.success('Moved', `"${node.name}" → ${target || 'space root'}`);
-        this.loadFileTree(space.id);
+        this.treeSync.notify(space.id);
         if (wasActive) {
           this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
         }
