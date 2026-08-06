@@ -41,6 +41,7 @@ import { DisplayPrefsService } from '../../shared/services/display-prefs.service
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
+import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { Subject, debounceTime, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
@@ -89,7 +90,7 @@ interface OutlineItem {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -606,14 +607,19 @@ interface OutlineItem {
                 </svg>
               </div>
             } @else {
-              <input
-                type="text"
+              <!-- textarea, not input: a long title has to wrap, and an input
+                   would clip it with nothing to show the value continues. -->
+              <textarea
+                #titleField
+                appAutosize
+                rows="1"
                 [(ngModel)]="documentTitle"
                 (ngModelChange)="onTitleChanged()"
+                (keydown.enter)="$event.preventDefault()"
                 placeholder="Untitled"
                 [readonly]="!showEditor()"
                 class="editor-title"
-              />
+              ></textarea>
 
               <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
 
@@ -991,6 +997,7 @@ interface OutlineItem {
     .text-muted { color: var(--text-muted); }
 
     .editor-title {
+      display: block;
       width: 100%;
       font-size: 1.875rem;
       font-weight: 700;
@@ -999,6 +1006,13 @@ interface OutlineItem {
       outline: none;
       margin-bottom: 24px;
       background: transparent;
+      /* A textarea inherits none of these from the page the way an input did. */
+      font-family: inherit;
+      line-height: 1.25;
+      padding: 0;
+      resize: none;
+      /* The autosize directive owns the height; a scrollbar would mean it failed. */
+      overflow: hidden;
 
       &[readonly] { cursor: default; }
     }
@@ -1910,6 +1924,7 @@ export class EditorComponent implements OnInit, OnDestroy {
     });
   private autoSave$ = new Subject<void>();
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
+  @ViewChild(AutosizeTextareaDirective) private titleAutosize?: AutosizeTextareaDirective;
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
 
   private static readonly IMAGE_EXTENSIONS = new Set([
@@ -2851,6 +2866,9 @@ export class EditorComponent implements OnInit, OnDestroy {
         this.editMode.set(false);
         setTimeout(() => {
           this.applyView();
+          // The title was set in code, which fires no input event — measure it
+          // here or a wrapping title opens clipped to one line.
+          this.titleAutosize?.resize();
           // Apply a translation requested via ?lang= now that the original is rendered.
           const lang = this.pendingLang;
           this.pendingLang = null;
@@ -3173,11 +3191,20 @@ export class EditorComponent implements OnInit, OnDestroy {
     return { body, content: this.withTitleHeading(body), raw };
   }
 
+  /**
+   * Title as it gets persisted: collapsed to a single line. The field wraps but
+   * still holds one logical line, and a pasted heading can carry newlines that
+   * would split the "# Title" line into stray markdown.
+   */
+  private cleanTitle(): string {
+    return (this.documentTitle || '').replace(/\s+/g, ' ').trim();
+  }
+
   /** Re-attach the load-time "# Title" line, following a title rename. */
   private withTitleHeading(body: string): string {
     if (!this.strippedH1) return body;
     const originalTitle = this.strippedH1.match(/^#\s+(.+)/)?.[1]?.trim();
-    const currentTitle = (this.documentTitle || '').trim();
+    const currentTitle = this.cleanTitle();
     if (!currentTitle || originalTitle === currentTitle) return this.strippedH1 + body;
     const newlines = this.strippedH1.substring(this.strippedH1.indexOf('\n'));
     return `# ${currentTitle}${newlines}${body}`;
@@ -3231,13 +3258,15 @@ export class EditorComponent implements OnInit, OnDestroy {
       if (returnToRead) this.exitToReadView(body);
     };
 
+    const title = this.cleanTitle();
+
     if (this.documentPath) {
       // Update existing document
       this.documentsService.updateDocument(space.id, this.documentPath, {
-        title: this.documentTitle,
+        title,
         content,
         autoCommit: commit,
-        commitMessage: commit ? `Update ${this.documentTitle || this.documentPath}` : undefined
+        commitMessage: commit ? `Update ${title || this.documentPath}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
@@ -3250,10 +3279,10 @@ export class EditorComponent implements OnInit, OnDestroy {
       const path = this.generatePath();
       this.documentsService.createDocument(space.id, {
         path,
-        title: this.documentTitle,
+        title,
         content,
         autoCommit: commit,
-        commitMessage: commit ? `Add ${this.documentTitle || path}` : undefined
+        commitMessage: commit ? `Add ${title || path}` : undefined
       }).subscribe({
         next: (doc) => {
           this.document.set(doc);
