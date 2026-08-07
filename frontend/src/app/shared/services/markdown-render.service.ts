@@ -92,6 +92,15 @@ export class MarkdownRenderService {
    * {@link runMermaid} can turn them into SVG.
    */
   renderInline(content: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(this.renderToHtml(content));
+  }
+
+  /**
+   * Same rendering as [renderInline] but returns the raw HTML string, for
+   * callers that need the markup itself rather than a binding — the file
+   * thumbnail puts it inside a sandboxed iframe's srcdoc.
+   */
+  renderToHtml(content: string): string {
     const renderer = new Renderer();
     renderer.code = (code: string, lang: string | undefined) => {
       if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
@@ -99,8 +108,7 @@ export class MarkdownRenderService {
       }
       return this.renderCodeBlock(code, lang);
     };
-    const html = marked.parse(content, { renderer }) as string;
-    return this.sanitizer.bypassSecurityTrustHtml(html);
+    return marked.parse(content, { renderer }) as string;
   }
 
   /**
