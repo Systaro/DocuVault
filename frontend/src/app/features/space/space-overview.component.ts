@@ -15,7 +15,7 @@ import { DisplayPrefsService } from '../../shared/services/display-prefs.service
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
-import { spaceFileUrl, isHiddenName } from '../../shared/utils/file-utils';
+import { spaceFileUrl, isHiddenName, getFileIcon } from '../../shared/utils/file-utils';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
 import { FileActionsService } from '../../shared/services/file-actions.service';
@@ -460,11 +460,9 @@ interface ListingEntry extends FileEntry {
                     @if (entry.isDirectory) {
                       <span class="material-icons folder-icon">folder</span>
                     } @else {
-                      <app-file-thumb
-                        [url]="spaceFileUrl(space()!.id, entry.path)"
-                        [name]="entry.name"
-                        [size]="28"
-                      />
+                      <!-- The list stays scannable with a plain type icon; the
+                           tile view is where content previews earn their space. -->
+                      <img class="listing-icon" [src]="getFileIcon(entry.name)" alt="" />
                     }
                     @if (renamingPath() === entry.path) {
                       <input
@@ -770,6 +768,13 @@ interface ListingEntry extends FileEntry {
       color: inherit;
 
       .folder-icon { font-size: 20px; }
+    }
+
+    .listing-icon {
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
+      flex-shrink: 0;
     }
 
     .listing-name {
@@ -2099,4 +2104,5 @@ export class SpaceOverviewComponent implements OnInit {
   }
 
   readonly spaceFileUrl = spaceFileUrl;
+  readonly getFileIcon = getFileIcon;
 }
