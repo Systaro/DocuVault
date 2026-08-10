@@ -554,21 +554,28 @@ interface ListingEntry extends FileEntry {
           <span class="material-icons">download</span>
           {{ menu.entry.isDirectory ? 'Download folder' : 'Download' }}
         </button>
-        @if (!menu.entry.isDirectory) {
-          <button class="row-menu-item danger" (click)="startDelete(menu.entry)">
-            <span class="material-icons">delete</span>
-            Delete
-          </button>
-        }
+        <button class="row-menu-item danger" (click)="startDelete(menu.entry)">
+          <span class="material-icons">delete</span>
+          {{ menu.entry.isDirectory ? 'Delete folder' : 'Delete' }}
+        </button>
       </div>
     }
 
     @if (deletingEntry(); as entry) {
       <div class="modal-overlay" (click)="cancelDelete()">
         <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header"><h2>Delete file</h2></div>
+          <div class="modal-header"><h2>{{ entry.isDirectory ? 'Delete folder' : 'Delete file' }}</h2></div>
           <div class="modal-body">
             <p>Delete <strong>{{ entry.name }}</strong>? This removes it from the space and its Git repository.</p>
+            @if (entry.isDirectory) {
+              <p class="modal-warning">
+                <span class="material-icons">warning_amber</span>
+                <span>
+                  Everything inside is deleted with it{{ deleteFileCount() > 0 ? ' — ' + deleteFileCount() + ' file' + (deleteFileCount() === 1 ? '' : 's') + ', including any subfolders' : '' }}.
+                </span>
+              </p>
+            }
+            <p class="modal-hint">This action cannot be undone.</p>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" (click)="cancelDelete()" [disabled]="deleteBusy()">
@@ -1474,6 +1481,14 @@ export class SpaceOverviewComponent implements OnInit {
   entryCountLabel = computed<string>(() => {
     const count = this.entries().length;
     return `${count} item${count === 1 ? '' : 's'}`;
+  });
+
+  /** Files that would go with the folder being deleted, counted across the whole subtree. */
+  deleteFileCount = computed<number>(() => {
+    const entry = this.deletingEntry();
+    if (!entry?.isDirectory) return 0;
+    const prefix = `${entry.path}/`;
+    return this.allFiles().filter(file => file.path.startsWith(prefix)).length;
   });
 
   readmeHere = computed<FileEntry | null>(() =>

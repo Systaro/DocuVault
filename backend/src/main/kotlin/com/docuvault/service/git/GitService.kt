@@ -321,6 +321,46 @@ class GitService(
         }
     }
 
+    /** How many regular files sit under a directory, at any depth. */
+    fun countFilesIn(space: Space, path: String): Int {
+        val repoDir = getRepoPath(space.id!!)
+        return try {
+            val dirPath = validatePath(repoDir, path)
+            if (!Files.isDirectory(dirPath)) return 0
+            Files.walk(dirPath).use { stream -> stream.filter { Files.isRegularFile(it) }.count().toInt() }
+        } catch (e: Exception) {
+            logger.warn("Failed to count files under '$path' for space '${space.name}': ${e.message}")
+            0
+        }
+    }
+
+    /**
+     * Deletes a directory and everything inside it. Children are removed before
+     * their parents, since a directory has to be empty before it can go.
+     */
+    fun deleteDirectory(space: Space, path: String): Boolean {
+        ensureVersionedBeforeMutation(space)
+        val repoDir = getRepoPath(space.id!!)
+        val dirPath = validatePath(repoDir, path)
+
+        // Refuse to wipe the repository itself — only paths below it.
+        if (dirPath == repoDir.normalize()) {
+            logger.warn("Refused to delete the repository root of space '${space.name}'")
+            return false
+        }
+
+        return try {
+            if (!Files.exists(dirPath)) return true
+            Files.walk(dirPath).use { stream ->
+                stream.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to delete directory '$path' for space '${space.name}': ${e.message}", e)
+            false
+        }
+    }
+
     fun listFiles(space: Space, directory: String = ""): List<FileNode> {
         val repoDir = getRepoPath(space.id!!)
         val targetDir = if (directory.isBlank()) repoDir else validatePath(repoDir, directory)

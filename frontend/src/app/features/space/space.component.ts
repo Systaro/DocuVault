@@ -277,9 +277,17 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
         @if (deletingNode(); as node) {
           <div class="modal-overlay" (click)="cancelDeleteFile()">
             <div class="modal" (click)="$event.stopPropagation()">
-              <div class="modal-header"><h2>Delete file</h2></div>
+              <div class="modal-header"><h2>{{ node.isDirectory ? 'Delete folder' : 'Delete file' }}</h2></div>
               <div class="modal-body">
                 <p>Are you sure you want to delete <strong>{{ node.name }}</strong>?</p>
+                @if (node.isDirectory) {
+                  <p class="modal-warning">
+                    <span class="material-icons">warning_amber</span>
+                    <span>
+                      Everything inside is deleted with it{{ deleteFileCount() > 0 ? ' — ' + deleteFileCount() + ' file' + (deleteFileCount() === 1 ? '' : 's') + ', including any subfolders' : '' }}.
+                    </span>
+                  </p>
+                }
                 <p class="modal-hint">This action cannot be undone.</p>
               </div>
               <div class="modal-footer">
@@ -419,6 +427,10 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
                       <button class="tree-dropdown-item" (click)="downloadFolder(node); openMenuPath.set(null)">
                         <span class="material-icons">download</span>
                         Download folder
+                      </button>
+                      <button class="tree-dropdown-item danger" (click)="startDeleteFile(node)">
+                        <span class="material-icons">delete</span>
+                        Delete folder
                       </button>
                     </div>
                   }
@@ -1220,11 +1232,6 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
       }
     }
 
-    .modal-hint {
-      margin-top: var(--spacing-xs);
-      font-size: 13px;
-      color: var(--text-muted);
-    }
 
     .move-search-wrap {
       position: relative;
@@ -2266,6 +2273,17 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.deletingNode.set(node);
     this.openMenuPath.set(null);
   }
+
+  /** Files that would go with the folder being deleted, counted through the whole subtree. */
+  deleteFileCount = computed<number>(() => {
+    const node = this.deletingNode();
+    if (!node?.isDirectory) return 0;
+    const count = (nodes: FileNode[]): number => nodes.reduce(
+      (sum, child) => sum + (child.isDirectory ? count(child.children ?? []) : 1),
+      0
+    );
+    return count(node.children ?? []);
+  });
 
   confirmDeleteFile(): void {
     const node = this.deletingNode();

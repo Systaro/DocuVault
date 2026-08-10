@@ -664,6 +664,27 @@ class DocumentController(
         val documentPath = extractDocumentPath(request.requestURI, spaceId)
             ?: return ResponseEntity.badRequest().build()
 
+        // Deleting a folder takes everything inside it, so the document rows for
+        // its contents have to go too — matching on the "path/" prefix, which a
+        // sibling like "docs-old.md" cannot accidentally satisfy.
+        if (gitService.isDirectory(space, documentPath)) {
+            val prefix = "$documentPath/"
+            // Counted from disk, not from document rows — only markdown files have
+            // rows, so counting those would under-report what is actually deleted.
+            val contained = gitService.countFilesIn(space, documentPath)
+
+            if (!gitService.deleteDirectory(space, documentPath)) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+            }
+            documentRepository.deleteBySpaceIdAndPathStartingWith(spaceId, prefix)
+
+            documentPersistService.commitIfRequested(
+                space, autoCommit = true,
+                message = "Delete folder $documentPath ($contained file(s))", user = user
+            )
+            return ResponseEntity.noContent().build()
+        }
+
         // Delete from git
         gitService.deleteFile(space, documentPath)
 

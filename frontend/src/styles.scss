@@ -934,6 +934,33 @@ body {
   background: var(--background);
 }
 
+.modal-hint {
+  margin-top: var(--spacing-xs);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+// Consequences the dialog's subject does not show on its own — deleting a
+// folder takes files the user cannot see from where they clicked.
+.modal-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: var(--spacing-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--danger, #dc2626);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
+  font-size: 13px;
+  color: var(--text-primary);
+
+  .material-icons {
+    font-size: 18px;
+    color: var(--danger, #dc2626);
+    flex-shrink: 0;
+  }
+}
+
 // ============================================
 // EDITOR STYLES
 // ============================================
