@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpEvent } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface FileNode {
@@ -50,6 +50,29 @@ export interface DocumentTranslations {
   languages: string[];
 }
 
+/** One file queued for upload, with its path relative to the destination folder.
+ *  Loose files carry just their name; files picked up from a dropped directory
+ *  carry the subpath that recreates the tree. */
+export interface UploadItem {
+  file: File;
+  relativePath: string;
+}
+
+export interface UploadedFile {
+  path: string;
+  name: string;
+}
+
+/** A commit as the history APIs report it. */
+export interface FileVersion {
+  sha: string;
+  shortSha: string;
+  message?: string;
+  authorName?: string;
+  authorEmail?: string;
+  committedAt: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentsService {
   constructor(private http: HttpClient) {}
@@ -60,6 +83,14 @@ export class DocumentsService {
 
   getDocuments(spaceId: string): Observable<Document[]> {
     return this.http.get<Document[]>(`/api/spaces/${spaceId}/documents`);
+  }
+
+  /** Last commit per direct child of a folder, keyed by entry name. */
+  getFolderHistory(spaceId: string, folder: string): Observable<Record<string, FileVersion>> {
+    return this.http.get<Record<string, FileVersion>>(
+      `/api/spaces/${spaceId}/documents/folder-history`,
+      { params: { path: folder } }
+    );
   }
 
   getDocument(spaceId: string, path: string): Observable<DocumentContent> {
@@ -105,14 +136,36 @@ export class DocumentsService {
     return this.http.post<void>(`/api/spaces/${spaceId}/documents/rename`, { oldPath, newPath });
   }
 
-  uploadFiles(spaceId: string, files: File[], folder?: string): Observable<{ path: string; name: string }[]> {
+  /**
+   * Uploads one chunk of a batch. `relativePath` travels in its own index-aligned
+   * field rather than as the part filename, because the backend deliberately
+   * strips separators from filenames (Windows browsers send full local paths).
+   *
+   * Set `commit: false` on every chunk but the last so a folder upload becomes a
+   * single commit. Emits raw HTTP events so callers can report upload progress.
+   */
+  uploadFiles(
+    spaceId: string,
+    items: UploadItem[],
+    options: { folder?: string; commit?: boolean; commitMessage?: string } = {}
+  ): Observable<HttpEvent<UploadedFile[]>> {
     const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file, file.name);
+    for (const item of items) {
+      formData.append('files', item.file, item.file.name);
+      formData.append('paths', item.relativePath);
     }
-    if (folder) {
-      formData.append('folder', folder);
+    if (options.folder) {
+      formData.append('folder', options.folder);
     }
-    return this.http.post<{ path: string; name: string }[]>(`/api/spaces/${spaceId}/documents/upload`, formData);
+    if (options.commit === false) {
+      formData.append('commit', 'false');
+    }
+    if (options.commitMessage) {
+      formData.append('commitMessage', options.commitMessage);
+    }
+    return this.http.post<UploadedFile[]>(`/api/spaces/${spaceId}/documents/upload`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    });
   }
 }

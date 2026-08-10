@@ -24,6 +24,10 @@ type ThumbKind = 'image' | 'html' | 'markdown' | 'icon';
 @Component({
   selector: 'app-file-thumb',
   standalone: true,
+  host: {
+    '[style.--thumb-size.px]': 'size()',
+    '[style.--thumb-scale]': 'size() / 1280'
+  },
   template: `
     <div class="file-thumb">
       @switch (kind()) {
@@ -87,8 +91,8 @@ type ThumbKind = 'image' | 'html' | 'markdown' | 'icon';
 
     .file-thumb {
       position: relative;
-      width: 64px;
-      height: 64px;
+      width: var(--thumb-size, 64px);
+      height: var(--thumb-size, 64px);
       border-radius: 6px;
       overflow: hidden;
       background: var(--surface);
@@ -110,7 +114,8 @@ type ThumbKind = 'image' | 'html' | 'markdown' | 'icon';
     .file-thumb-icon { padding: 6px; }
 
     /* Render the page at a real viewport size, then scale the whole frame down
-       to the thumbnail box — laying out at 64px wide would collapse every page. */
+       to the thumbnail box — laying out at 64px wide would collapse every page.
+       The scale follows the box size so a larger tile preview stays in frame. */
     .file-thumb-frame {
       position: absolute;
       top: 0;
@@ -118,7 +123,7 @@ type ThumbKind = 'image' | 'html' | 'markdown' | 'icon';
       width: 1280px;
       height: 1280px;
       border: 0;
-      transform: scale(0.05);
+      transform: scale(var(--thumb-scale, 0.05));
       transform-origin: top left;
       pointer-events: none;
     }
@@ -133,6 +138,8 @@ export class FileThumbComponent implements OnInit, OnDestroy {
   url = input.required<string>();
   /** File name, used to pick the preview kind and the fallback icon. */
   name = input.required<string>();
+  /** Edge length of the square preview box, in pixels. */
+  size = input(64);
 
   /** A preview that failed to load falls back to the extension icon. */
   protected previewFailed = signal(false);

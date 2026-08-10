@@ -10,6 +10,8 @@ import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.requireSpaceWritable
 import com.docuvault.service.git.FileNode
+import com.docuvault.service.git.FileVersion
+import com.docuvault.service.git.GitDiffService
 import com.docuvault.service.git.GitService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -33,6 +35,7 @@ class DocumentController(
     private val userRepository: UserRepository,
     private val permissionService: PermissionService,
     private val gitService: GitService,
+    private val gitDiffService: GitDiffService,
     private val embeddingService: EmbeddingService,
     private val writingAssistantService: WritingAssistantService,
     private val documentPersistService: DocumentPersistService
@@ -63,6 +66,31 @@ class DocumentController(
 
         val tree = gitService.getFileTree(space)
         return ResponseEntity.ok(tree)
+    }
+
+    /**
+     * Last commit behind every direct child of a folder, keyed by entry name —
+     * the "last change" and "commit" columns of the folder listing. Folders are
+     * dated by the newest commit touching anything inside them.
+     */
+    @GetMapping("/folder-history")
+    fun getFolderHistory(
+        @PathVariable spaceId: UUID,
+        @RequestParam(required = false, defaultValue = "") path: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Map<String, FileVersion>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val entries = gitService.listFiles(space, path).map { it.name }.toSet()
+        return ResponseEntity.ok(gitDiffService.folderEntryVersions(space, path, entries))
     }
 
     @GetMapping
@@ -118,12 +146,27 @@ class DocumentController(
         )
     }
 
+    /**
+     * Accepts one or many files into [folder].
+     *
+     * [paths] is index-aligned with [files] and carries each file's path relative
+     * to the drop target, so dropping a whole directory recreates its structure
+     * instead of flattening it. Absent (or blank) entries fall back to the plain
+     * filename. Large batches arrive as several chunked requests — those set
+     * [commit] to false until the last one, so the whole upload lands as a single
+     * Git commit rather than one per chunk. A call carrying no [files] at all is a
+     * finalize: it commits whatever earlier chunks left behind, which is how a
+     * partially failed batch still ends up in Git.
+     */
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadFiles(
         @PathVariable spaceId: UUID,
         @AuthenticationPrincipal userDetails: UserDetails,
-        @RequestParam("files") files: List<MultipartFile>,
-        @RequestParam("folder", required = false) folder: String?
+        @RequestParam("files", required = false) files: List<MultipartFile>?,
+        @RequestParam("folder", required = false) folder: String?,
+        @RequestParam("paths", required = false) paths: List<String>?,
+        @RequestParam("commit", required = false, defaultValue = "true") commit: Boolean,
+        @RequestParam("commitMessage", required = false) commitMessage: String?
     ): ResponseEntity<List<UploadedFileDto>> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -140,14 +183,15 @@ class DocumentController(
         val prefix = folder?.trim('/')?.let { "$it/" } ?: ""
         val uploaded = mutableListOf<UploadedFileDto>()
 
-        for (file in files) {
+        for ((index, file) in (files ?: emptyList()).withIndex()) {
             // Extract only the basename — browsers on some OS send full local path (e.g. C:\Users\...\file.md)
             val originalName = file.originalFilename
                 ?.substringAfterLast('/')
                 ?.substringAfterLast('\\')
                 ?.ifBlank { null }
                 ?: continue
-            val path = "$prefix$originalName"
+            val relativePath = sanitizeRelativePath(paths?.getOrNull(index)) ?: originalName
+            val path = "$prefix$relativePath"
             val bytes = file.bytes
 
             val success = gitService.writeBinaryFile(space, path, bytes)
@@ -180,15 +224,41 @@ class DocumentController(
             uploaded.add(UploadedFileDto(path = path, name = originalName))
         }
 
-        if (uploaded.isNotEmpty()) {
-            val fileNames = uploaded.joinToString(", ") { it.name }
+        // A finalize call (no files) commits regardless — that is its whole purpose.
+        if (commit && (uploaded.isNotEmpty() || files.isNullOrEmpty())) {
             documentPersistService.commitIfRequested(
                 space, autoCommit = true,
-                message = "Upload ${uploaded.size} file(s): $fileNames", user = user
+                message = commitMessage?.takeIf { it.isNotBlank() } ?: uploadCommitMessage(uploaded),
+                user = user
             )
         }
 
         return ResponseEntity.ok(uploaded)
+    }
+
+    /**
+     * Turns a browser-supplied relative path into a safe, repo-relative one:
+     * drive letters, traversal segments and blank parts are dropped, so an
+     * uploaded folder keeps its structure but can never escape its target.
+     */
+    private fun sanitizeRelativePath(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        return raw.replace('\\', '/')
+            .split('/')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != "." && it != ".." && !it.endsWith(":") }
+            .joinToString("/")
+            .ifBlank { null }
+    }
+
+    /** Names the first few uploads and counts the rest — a folder upload must not
+     *  produce a commit subject with hundreds of filenames in it. */
+    private fun uploadCommitMessage(uploaded: List<UploadedFileDto>): String {
+        if (uploaded.isEmpty()) return "Finish upload"
+        val shown = uploaded.take(5).joinToString(", ") { it.name }
+        val rest = uploaded.size - minOf(uploaded.size, 5)
+        val names = if (rest > 0) "$shown and $rest more" else shown
+        return "Upload ${uploaded.size} file(s): $names"
     }
 
     @PostMapping

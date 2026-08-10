@@ -22,7 +22,8 @@ import { DataFileRenderService } from '../../shared/services/data-file-render.se
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
-import { DocumentsService, DocumentContent } from '../../core/api/documents.service';
+import { DocumentsService, DocumentContent, UploadedFile } from '../../core/api/documents.service';
+import { HttpResponse } from '@angular/common/http';
 import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
@@ -43,7 +44,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
-import { Subject, debounceTime, takeUntil } from 'rxjs';
+import { Subject, debounceTime, filter, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
@@ -3443,19 +3444,21 @@ export class EditorComponent implements OnInit, OnDestroy {
     const folder = `${docDir}_assets`;
 
     this.toastService.success('Uploading image…', named.name);
-    this.documentsService.uploadFiles(space.id, [named], folder).subscribe({
-      next: (uploaded) => {
-        const path = uploaded[0]?.path;
-        if (!path) return;
-        // Insert with the API serving URL so it renders in the editor; saveDocument()
-        // converts it back to a document-relative markdown path.
-        const src = `/api/spaces/${space.id}/files/${path}`;
-        this.editor?.chain().focus().setImage({ src }).run();
-      },
-      error: (err) => {
-        this.toastService.error('Image upload failed', err?.error?.message ?? 'Could not upload the image.');
-      }
-    });
+    this.documentsService.uploadFiles(space.id, [{ file: named, relativePath: named.name }], { folder })
+      .pipe(filter((event): event is HttpResponse<UploadedFile[]> => event instanceof HttpResponse))
+      .subscribe({
+        next: (response) => {
+          const path = response.body?.[0]?.path;
+          if (!path) return;
+          // Insert with the API serving URL so it renders in the editor; saveDocument()
+          // converts it back to a document-relative markdown path.
+          const src = `/api/spaces/${space.id}/files/${path}`;
+          this.editor?.chain().focus().setImage({ src }).run();
+        },
+        error: (err) => {
+          this.toastService.error('Image upload failed', err?.error?.message ?? 'Could not upload the image.');
+        }
+      });
   }
 
   // Toolbar actions

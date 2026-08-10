@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, computed, HostListener, inject, DestroyRef } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, OnDestroy, SimpleChanges, signal, computed, HostListener, inject, DestroyRef, ViewChild, ElementRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -21,6 +21,8 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { getFileIcon, withoutHiddenNodes } from '../../shared/utils/file-utils';
 import { getInitials, avatarHue } from '../../shared/utils/user-utils';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
+import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
+import { FileActionsService } from '../../shared/services/file-actions.service';
 
 @Component({
   selector: 'app-space',
@@ -180,6 +182,26 @@ import { FileTreeSyncService } from '../../shared/services/file-tree-sync.servic
                         </li>
                       }
                     </ul>
+                  }
+                </div>
+              }
+
+              <!-- Hidden pickers behind every folder's upload menu entries.
+                   webkitdirectory makes the second one take a whole folder. -->
+              <input #treeFileInput type="file" multiple class="sr-only"
+                     (change)="onUploadInputChange($event)" />
+              <input #treeFolderInput type="file" multiple webkitdirectory class="sr-only"
+                     (change)="onUploadInputChange($event)" />
+
+              @if (uploading()) {
+                <div class="tree-upload">
+                  <div class="tree-upload-bar">
+                    <div class="tree-upload-fill" [style.width.%]="uploadProgress()?.percent ?? 0"></div>
+                  </div>
+                  @if (uploadProgress(); as progress) {
+                    <div class="tree-upload-label">
+                      Uploading {{ progress.uploadedFiles }}/{{ progress.totalFiles }}
+                    </div>
                   }
                 </div>
               }
@@ -377,6 +399,14 @@ import { FileTreeSyncService } from '../../shared/services/file-tree-sync.servic
                       <button class="tree-dropdown-item" (click)="startCreateFolder(node.path); openMenuPath.set(null)">
                         <span class="material-icons">create_new_folder</span>
                         New subfolder
+                      </button>
+                      <button class="tree-dropdown-item" (click)="requestUpload(node.path, 'files'); openMenuPath.set(null)">
+                        <span class="material-icons">upload_file</span>
+                        Upload files
+                      </button>
+                      <button class="tree-dropdown-item" (click)="requestUpload(node.path, 'folder'); openMenuPath.set(null)">
+                        <span class="material-icons">drive_folder_upload</span>
+                        Upload folder
                       </button>
                       <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
                         <span class="material-icons">drive_file_rename_outline</span>
@@ -986,6 +1016,29 @@ import { FileTreeSyncService } from '../../shared/services/file-tree-sync.servic
         border-radius: var(--radius-md);
         background: var(--background-darker);
       }
+    }
+
+    .tree-upload {
+      padding: var(--spacing-xs) var(--spacing-sm);
+    }
+
+    .tree-upload-bar {
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+
+    .tree-upload-fill {
+      height: 100%;
+      background: var(--primary);
+      transition: width 0.15s linear;
+    }
+
+    .tree-upload-label {
+      margin-top: 4px;
+      font-size: 0.6875rem;
+      color: var(--text-muted);
     }
 
     .tree-empty {
@@ -1725,6 +1778,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   private boundOnMouseMove = this.onResizeMove.bind(this);
   private boundOnMouseUp = this.onResizeEnd.bind(this);
   private readonly treeSync = inject(FileTreeSyncService);
+  private readonly bulkUpload = inject(BulkUploadService);
+  private readonly fileActions = inject(FileActionsService);
   private readonly destroyRef = inject(DestroyRef);
 
   constructor(
@@ -2049,11 +2104,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   downloadFolder(node: FileNode): void {
     const space = this.spaceSignal();
-    if (!space) return;
-    const a = document.createElement('a');
-    a.href = `/api/spaces/${space.id}/files/${node.path}?download=true`;
-    a.download = `${node.name}.zip`;
-    a.click();
+    if (space) this.fileActions.downloadFolder(space.id, node);
   }
 
   downloadFile(node: FileNode): void {
@@ -2160,28 +2211,10 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   submitRename(node: FileNode): void {
-    let newName = this.renamingValue.trim();
-    if (!newName || newName === node.name) { this.cancelRename(); return; }
     const space = this.spaceSignal();
-    if (!space) return;
-
-    if (!node.isDirectory) {
-      const dot = node.name.lastIndexOf('.');
-      const oldExt = dot > 0 ? node.name.substring(dot) : '';
-      if (oldExt && !newName.toLowerCase().endsWith(oldExt.toLowerCase())) {
-        newName += oldExt;
-      }
-    }
-
-    const parentPrefix = node.path.includes('/')
-      ? node.path.substring(0, node.path.lastIndexOf('/') + 1)
-      : '';
-    const newPath = parentPrefix + newName;
-
-    this.documentsService.rename(space.id, node.path, newPath).subscribe({
-      next: () => { this.cancelRename(); this.treeSync.notify(space.id); },
-      error: () => this.cancelRename()
-    });
+    const request = space ? this.fileActions.rename(space.id, node, this.renamingValue) : null;
+    this.cancelRename();
+    request?.subscribe();
   }
 
   cancelRename(): void {
@@ -2240,20 +2273,17 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     if (!node || !space) return;
     this.deleteBusy.set(true);
     const wasActive = this.currentDocPath() === node.path;
-    this.documentsService.deleteDocument(space.id, node.path).subscribe({
+    this.fileActions.delete(space.id, node).subscribe({
       next: () => {
         this.deleteBusy.set(false);
         this.deletingNode.set(null);
-        this.toastService.success('Deleted', `"${node.name}" has been deleted.`);
-        this.treeSync.notify(space.id);
         if (wasActive) {
           this.router.navigate(spaceRoute(space.fullPath));
         }
       },
-      error: (err) => {
+      error: () => {
         this.deleteBusy.set(false);
         this.deletingNode.set(null);
-        this.toastService.error('Delete failed', err?.error?.message ?? 'Could not delete the file.');
       }
     });
   }
@@ -2270,6 +2300,12 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   rootDropActive = signal(false);
   /** The tree node being dragged to reorganise it (internal move), or null. */
   draggingNode = signal<FileNode | null>(null);
+  uploading = signal(false);
+  uploadProgress = signal<BulkUploadProgress | null>(null);
+  /** Folder the hidden pickers upload into — set just before one is opened. */
+  private uploadTargetFolder = '';
+  @ViewChild('treeFileInput') private filePicker?: ElementRef<HTMLInputElement>;
+  @ViewChild('treeFolderInput') private folderPicker?: ElementRef<HTMLInputElement>;
 
   private hasFiles(event: DragEvent): boolean {
     return !!event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files');
@@ -2339,8 +2375,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     event.stopPropagation();
     this.dropTargetPath.set(null);
     if (this.hasFiles(event)) {
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length) this.uploadFilesToFolder(files, path);
+      this.uploadDrop(event, path);
       return;
     }
     const node = this.draggingNode();
@@ -2369,8 +2404,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     event.preventDefault();
     this.rootDropActive.set(false);
     if (this.hasFiles(event)) {
-      const files = Array.from(event.dataTransfer?.files ?? []);
-      if (files.length) this.uploadFilesToFolder(files, '');
+      this.uploadDrop(event, '');
       return;
     }
     const node = this.draggingNode();
@@ -2378,21 +2412,44 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     if (node) this.moveNodeToFolder(node, '');
   }
 
-  private uploadFilesToFolder(files: File[], folder: string): void {
+  /** Dropped files or folders land in `folder`, directory structure intact. */
+  private uploadDrop(event: DragEvent, folder: string): void {
+    // Collected synchronously — the dropped entries are gone once this returns.
+    this.bulkUpload.collectFromDrop(event.dataTransfer)
+      .then(selection => this.startUpload(selection, folder));
+  }
+
+  /** Opens the file or folder picker for a folder row's upload menu entry. */
+  requestUpload(folder: string, kind: 'files' | 'folder'): void {
+    this.uploadTargetFolder = folder;
+    const picker = kind === 'folder' ? this.folderPicker : this.filePicker;
+    picker?.nativeElement.click();
+  }
+
+  onUploadInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const selection = this.bulkUpload.collectFromInput(input.files);
+    input.value = '';
+    this.startUpload(selection, this.uploadTargetFolder);
+  }
+
+  private startUpload(selection: UploadSelection, folder: string): void {
     const space = this.spaceSignal();
-    if (!space) return;
-    this.documentsService.uploadFiles(space.id, files, folder).subscribe({
-      next: (uploaded) => {
-        this.toastService.success(
-          `${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`,
-          `${uploaded.map(f => f.name).join(', ')} → ${folder || 'space root'}`
-        );
-        // Reveal the destination and refresh so the new files appear.
-        if (folder) this.expandedFolders.update(set => new Set(set).add(folder));
-        this.treeSync.notify(space.id);
+    if (!space || !selection.items.length) return;
+
+    this.uploadProgress.set(null);
+    this.uploading.set(true);
+    // Reveal the destination so the arriving files are actually visible.
+    if (folder) this.expandedFolders.update(set => new Set(set).add(folder));
+
+    this.bulkUpload.uploadTo(space.id, selection, folder).subscribe({
+      next: (progress) => {
+        this.uploadProgress.set(progress);
+        if (progress.done) this.uploading.set(false);
       },
-      error: (err) => {
-        this.toastService.error('Upload failed', err?.error?.message ?? 'Could not upload files.');
+      error: () => {
+        this.uploading.set(false);
+        this.uploadProgress.set(null);
       }
     });
   }

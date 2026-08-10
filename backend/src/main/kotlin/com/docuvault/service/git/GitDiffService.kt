@@ -131,6 +131,72 @@ class GitDiffService(
         }
     }
 
+    /**
+     * Last commit that touched each direct child of [folder] — the "last change"
+     * column of a folder listing.
+     *
+     * Walks the history once for the whole folder rather than running a log per
+     * entry, and stops as soon as every entry is accounted for (or [maxCommits]
+     * commits in, so a huge history can't stall a page render). Entries with no
+     * commit found are simply absent from the result.
+     */
+    fun folderEntryVersions(
+        space: Space,
+        folder: String,
+        entries: Set<String>,
+        maxCommits: Int = 500
+    ): Map<String, FileVersion> {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists() || entries.isEmpty()) return emptyMap()
+
+        val prefix = folder.trim('/').let { if (it.isEmpty()) "" else "$it/" }
+        val pending = entries.toMutableSet()
+        val found = mutableMapOf<String, FileVersion>()
+
+        return try {
+            Git.open(repoDir).use { git ->
+                val repo = git.repository
+                var walked = 0
+                for (commit in git.log().call()) {
+                    if (pending.isEmpty() || walked++ >= maxCommits) break
+                    val version by lazy { commit.toFileVersion() }
+                    for (path in commitPaths(repo, commit)) {
+                        if (!path.startsWith(prefix)) continue
+                        val child = path.removePrefix(prefix).substringBefore('/')
+                        if (pending.remove(child)) found[child] = version
+                    }
+                }
+            }
+            found
+        } catch (e: Exception) {
+            logger.warn("Failed to read folder history for '$folder' in space '${space.name}': ${e.message}")
+            emptyMap()
+        }
+    }
+
+    /** Paths a commit touched. The root commit has no parent, so it counts as adding its whole tree. */
+    private fun commitPaths(repo: Repository, commit: RevCommit): List<String> {
+        val parent = commit.parents.firstOrNull()
+        val reader = repo.newObjectReader()
+
+        if (parent == null) {
+            val walk = org.eclipse.jgit.treewalk.TreeWalk(repo)
+            walk.addTree(commit.tree)
+            walk.isRecursive = true
+            val paths = mutableListOf<String>()
+            walk.use { while (it.next()) paths.add(it.pathString) }
+            return paths
+        }
+
+        val newTree = CanonicalTreeParser().also { it.reset(reader, commit.tree) }
+        val oldTree = CanonicalTreeParser().also { it.reset(reader, parent.tree) }
+        return Git.wrap(repo).use { git ->
+            git.diff().setNewTree(newTree).setOldTree(oldTree).call().map { entry ->
+                if (entry.newPath == DiffEntry.DEV_NULL) entry.oldPath else entry.newPath
+            }
+        }
+    }
+
     private fun RevCommit.toFileVersion() = FileVersion(
         sha = name,
         shortSha = name.take(8),

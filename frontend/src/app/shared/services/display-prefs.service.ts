@@ -1,25 +1,34 @@
 import { Injectable, effect, signal } from '@angular/core';
 
+/** How the folder listing renders its entries. */
+export type FolderViewMode = 'list' | 'tiles';
+
 /**
- * Per-user display preferences for the space browser. Currently exposes the
- * "pretty names" toggle that strips file extensions and replaces _/- with
- * spaces for display only — original casing and the raw paths in Git stay
- * untouched.
+ * Per-user display preferences for the space browser: the "pretty names" toggle
+ * that strips file extensions and replaces _/- with spaces for display only
+ * (original casing and the raw paths in Git stay untouched), and the folder
+ * listing's list/tile view mode.
  *
- * Persisted to localStorage so the choice survives reloads.
+ * Persisted to localStorage so the choices survive reloads.
  */
 @Injectable({ providedIn: 'root' })
 export class DisplayPrefsService {
   private readonly storageKey = 'docuvault.prettyNames';
+  private readonly viewModeKey = 'docuvault.folderViewMode';
 
   /** True = show prettified display names. False = show raw filenames. */
   prettyNames = signal<boolean>(true);
 
+  /** Folder listing layout — a dense table, or thumbnail tiles. */
+  viewMode = signal<FolderViewMode>('list');
+
   constructor() {
     this.prettyNames.set(this.load());
+    this.viewMode.set(this.loadViewMode());
     effect(() => {
       try {
         localStorage.setItem(this.storageKey, String(this.prettyNames()));
+        localStorage.setItem(this.viewModeKey, this.viewMode());
       } catch {
         // Storage may be disabled (private mode) — non-fatal.
       }
@@ -28,6 +37,18 @@ export class DisplayPrefsService {
 
   toggle(): void {
     this.prettyNames.update((v) => !v);
+  }
+
+  setViewMode(mode: FolderViewMode): void {
+    this.viewMode.set(mode);
+  }
+
+  private loadViewMode(): FolderViewMode {
+    try {
+      return localStorage.getItem(this.viewModeKey) === 'tiles' ? 'tiles' : 'list';
+    } catch {
+      return 'list';
+    }
   }
 
   /**

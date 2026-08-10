@@ -1,11 +1,11 @@
-import { Component, OnInit, signal, computed, effect, ElementRef, HostListener, inject, DestroyRef } from '@angular/core';
+import { Component, OnInit, signal, computed, effect, ElementRef, HostListener, inject, DestroyRef, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
-import { DocumentsService, Document, FileNode } from '../../core/api/documents.service';
+import { DocumentsService, Document, FileNode, FileVersion } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
@@ -17,6 +17,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
 import { spaceFileUrl, isHiddenName } from '../../shared/utils/file-utils';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
+import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
+import { FileActionsService } from '../../shared/services/file-actions.service';
+import { StateExportService } from '../../shared/services/state-export.service';
+import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
+import { ExportStateDialogComponent } from '../../shared/components/export-state-dialog.component';
 
 /** A file shown in the folder listing — any type, optionally enriched with the
  *  markdown title + last-sync date when a Document row exists for it. */
@@ -27,10 +32,19 @@ interface FileEntry {
   lastSyncedAt?: string;
 }
 
+/** One row of the folder listing — a subfolder or a file, with its last commit. */
+interface ListingEntry extends FileEntry {
+  isDirectory: boolean;
+  commit?: FileVersion;
+}
+
 @Component({
   selector: 'app-space-overview',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, FileThumbComponent],
+  imports: [
+    CommonModule, FormsModule, RouterLink, SpaceRoutePipe, FileThumbComponent,
+    ShareLinkDialogComponent, ExportStateDialogComponent
+  ],
   template: `
     @if (isDragOver()) {
       <div class="drop-overlay">
@@ -38,12 +52,12 @@ interface FileEntry {
           <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
           </svg>
-          <p class="text-lg font-semibold">Drop files to upload</p>
+          <p class="text-lg font-semibold">Drop files or folders to upload</p>
           <p class="text-sm opacity-75 mt-1">
             @if (currentFolder()) {
-              Files will be added to <strong>{{ prefs.prettify(currentFolder().split('/').pop() ?? '', true) }}</strong>
+              Added to <strong>{{ prefs.prettify(currentFolder().split('/').pop() ?? '', true) }}</strong>, subfolders and all
             } @else {
-              Files will be added to this space
+              Added to this space, subfolders and all
             }
           </p>
         </div>
@@ -92,9 +106,12 @@ interface FileEntry {
             <p class="overview-text-secondary mt-1 truncate">{{ heroSubtitle() }}</p>
           </div>
           <div class="flex gap-2 flex-shrink-0 items-center">
-            <!-- Hidden file input wired to "Upload file" menu item -->
+            <!-- Hidden inputs wired to the two upload menu items. webkitdirectory
+                 makes the second one pick a whole folder, subfolders included. -->
             <input #fileInput type="file" multiple class="sr-only"
-                   (change)="onFileInputChange($event); fileInput.value = ''" [disabled]="isInConflict()" />
+                   (change)="onFileInputChange($event)" [disabled]="isInConflict()" />
+            <input #folderInput type="file" multiple webkitdirectory class="sr-only"
+                   (change)="onFileInputChange($event)" [disabled]="isInConflict()" />
 
             <div class="new-menu-wrapper" (click)="$event.stopPropagation()">
               <button
@@ -115,7 +132,11 @@ interface FileEntry {
                   </button>
                   <button class="new-menu-item" (click)="fileInput.click(); showNewMenu.set(false)">
                     <span class="material-icons">upload_file</span>
-                    Upload file
+                    Upload files
+                  </button>
+                  <button class="new-menu-item" (click)="folderInput.click(); showNewMenu.set(false)">
+                    <span class="material-icons">drive_folder_upload</span>
+                    Upload folder
                   </button>
                   <button class="new-menu-item" (click)="startNewFolder(); showNewMenu.set(false)">
                     <span class="material-icons">create_new_folder</span>
@@ -249,13 +270,49 @@ interface FileEntry {
 
         <!-- Folder browser -->
         <div class="card">
+          <div class="listing-toolbar">
+            <div class="listing-toolbar-title">
+              <span class="material-icons">folder_open</span>
+              <span>{{ heroTitle() }}</span>
+              <span class="listing-count">{{ entryCountLabel() }}</span>
+            </div>
+            <div class="view-toggle" role="group" aria-label="Listing layout">
+              <button
+                type="button"
+                [class.active]="prefs.viewMode() === 'list'"
+                (click)="prefs.setViewMode('list')"
+                title="List view"
+              >
+                <span class="material-icons">view_list</span>
+              </button>
+              <button
+                type="button"
+                [class.active]="prefs.viewMode() === 'tiles'"
+                (click)="prefs.setViewMode('tiles')"
+                title="Tile view"
+              >
+                <span class="material-icons">grid_view</span>
+              </button>
+            </div>
+          </div>
+
           @if (uploading()) {
             <div class="upload-progress-bar">
-              <div class="upload-progress-fill"></div>
+              @if (uploadProgress(); as progress) {
+                <div class="upload-progress-fill" [style.width.%]="progress.percent"></div>
+              } @else {
+                <div class="upload-progress-fill upload-progress-indeterminate"></div>
+              }
             </div>
+            @if (uploadProgress(); as progress) {
+              <div class="upload-progress-label">
+                Uploading {{ progress.totalFiles }} file{{ progress.totalFiles === 1 ? '' : 's' }}
+                — {{ progress.uploadedFiles }} done, {{ progress.percent }}%
+              </div>
+            }
           }
 
-          @if (!creatingFolderInline() && subfolders().length === 0 && filesHere().length === 0) {
+          @if (!creatingFolderInline() && entries().length === 0) {
             @if (currentFolder()) {
               <div class="p-8 text-center">
                 <p class="overview-text-secondary">This folder is empty.</p>
@@ -274,8 +331,85 @@ interface FileEntry {
                 </a>
               </div>
             }
+          } @else if (prefs.viewMode() === 'tiles') {
+            <div class="tile-grid">
+              @if (creatingFolderInline()) {
+                <div class="tile tile-new-folder">
+                  <span class="material-icons folder-icon">folder</span>
+                  <input
+                    type="text"
+                    [(ngModel)]="newFolderName"
+                    placeholder="Folder name"
+                    class="inline-folder-input"
+                    [readonly]="creatingFolderBusy()"
+                    (keydown.enter)="submitNewFolder()"
+                    (keydown.escape)="cancelNewFolder()"
+                    (blur)="submitNewFolder()"
+                  />
+                </div>
+              }
+              @if (currentFolder()) {
+                <a
+                  [routerLink]="[]"
+                  [queryParams]="{ path: parentFolderPath() || null }"
+                  queryParamsHandling="merge"
+                  class="tile tile-up"
+                  title="Up one level"
+                >
+                  <span class="material-icons">arrow_upward</span>
+                  <span class="tile-name">{{ parentLabel() }}</span>
+                </a>
+              }
+              @for (entry of entries(); track entry.path) {
+                <div class="tile-wrap">
+                  <a
+                    class="tile"
+                    [routerLink]="entry.isDirectory ? [] : (space()?.fullPath | spaceRoute:'doc')"
+                    [queryParams]="{ path: entry.path }"
+                    [queryParamsHandling]="entry.isDirectory ? 'merge' : ''"
+                  >
+                    <div class="tile-preview">
+                      @if (entry.isDirectory) {
+                        <span class="material-icons folder-icon tile-folder-icon">folder</span>
+                      } @else {
+                        <app-file-thumb
+                          [url]="spaceFileUrl(space()!.id, entry.path)"
+                          [name]="entry.name"
+                          [size]="160"
+                        />
+                      }
+                    </div>
+                    <div class="tile-meta">
+                      @if (renamingPath() === entry.path) {
+                        <input
+                          class="inline-folder-input"
+                          [(ngModel)]="renamingValue"
+                          (click)="$event.stopPropagation(); $event.preventDefault()"
+                          (keydown.enter)="submitRename(entry)"
+                          (keydown.escape)="cancelRename()"
+                          (blur)="cancelRename()"
+                        />
+                      } @else {
+                        <div class="tile-name" [title]="entry.name">{{ displayName(entry) }}</div>
+                        <div class="tile-sub">{{ changedAt(entry) }}</div>
+                      }
+                    </div>
+                  </a>
+                  <button class="row-menu-btn tile-menu-btn" title="Actions"
+                          (click)="openRowMenu(entry, $event)">
+                    <span class="material-icons">more_vert</span>
+                  </button>
+                </div>
+              }
+            </div>
           } @else {
             <div class="overview-doc-list">
+              <div class="listing-head">
+                <span>Name</span>
+                <span>Last change</span>
+                <span>Commit</span>
+                <span></span>
+              </div>
               @if (creatingFolderInline()) {
                 <div class="inline-new-folder flex items-center gap-3 p-4">
                   @if (creatingFolderBusy()) {
@@ -306,48 +440,57 @@ interface FileEntry {
                   [routerLink]="[]"
                   [queryParams]="{ path: parentFolderPath() || null }"
                   queryParamsHandling="merge"
-                  class="overview-doc-item folder-up flex items-center gap-3 p-4"
+                  class="listing-row listing-up"
                   title="Up one level"
                 >
-                  <span class="material-icons overview-text-muted">arrow_upward</span>
-                  <span class="font-medium overview-text-secondary">{{ parentLabel() }}</span>
+                  <span class="listing-main">
+                    <span class="material-icons overview-text-muted">arrow_upward</span>
+                    <span class="font-medium overview-text-secondary">{{ parentLabel() }}</span>
+                  </span>
                 </a>
               }
-              @if (subfolders().length > 0) {
-                <div class="list-group-label">Folders</div>
-              }
-              @for (folder of subfolders(); track folder) {
-                <a
-                  [routerLink]="[]"
-                  [queryParams]="{ path: currentFolder() ? currentFolder() + '/' + folder : folder }"
-                  queryParamsHandling="merge"
-                  class="overview-doc-item flex items-center gap-3 p-4"
-                >
-                  <span class="material-icons folder-icon">folder</span>
-                  <span class="font-medium overview-text-primary">{{ prefs.prettify(folder, true) }}</span>
-                </a>
-              }
-              @if (filesHere().length > 0) {
-                <div class="list-group-label">Files</div>
-              }
-              @for (file of filesHere(); track file.path) {
-                <a
-                  [routerLink]="space()?.fullPath | spaceRoute:'doc'"
-                  [queryParams]="{ path: file.path }"
-                  class="overview-doc-item flex items-center justify-between gap-4 p-4"
-                >
-                  <div class="flex items-center gap-3 min-w-0">
-                    <app-file-thumb [url]="spaceFileUrl(space()!.id, file.path)" [name]="file.name" />
-                    <div class="min-w-0">
-                      <div class="font-medium overview-text-primary truncate">{{ file.title || prefs.prettify(file.name, false) }}</div>
-                    </div>
+              @for (entry of entries(); track entry.path) {
+                <div class="listing-row">
+                  <a
+                    class="listing-main"
+                    [routerLink]="entry.isDirectory ? [] : (space()?.fullPath | spaceRoute:'doc')"
+                    [queryParams]="{ path: entry.path }"
+                    [queryParamsHandling]="entry.isDirectory ? 'merge' : ''"
+                  >
+                    @if (entry.isDirectory) {
+                      <span class="material-icons folder-icon">folder</span>
+                    } @else {
+                      <app-file-thumb
+                        [url]="spaceFileUrl(space()!.id, entry.path)"
+                        [name]="entry.name"
+                        [size]="28"
+                      />
+                    }
+                    @if (renamingPath() === entry.path) {
+                      <input
+                        class="inline-folder-input"
+                        [(ngModel)]="renamingValue"
+                        (click)="$event.stopPropagation(); $event.preventDefault()"
+                        (keydown.enter)="submitRename(entry)"
+                        (keydown.escape)="cancelRename()"
+                        (blur)="cancelRename()"
+                      />
+                    } @else {
+                      <span class="listing-name">{{ displayName(entry) }}</span>
+                    }
+                  </a>
+                  <div class="listing-change">{{ changedAt(entry) }}</div>
+                  <div class="listing-commit">
+                    @if (entry.commit; as commit) {
+                      <span class="commit-sha">{{ commit.shortSha }}</span>
+                      <span class="commit-message" [title]="commit.message ?? ''">{{ commit.message }}</span>
+                      <span class="commit-author">{{ commit.authorName }}</span>
+                    }
                   </div>
-                  @if (file.lastSyncedAt) {
-                    <div class="text-sm overview-text-muted flex-shrink-0">
-                      {{ formatDate(file.lastSyncedAt) }}
-                    </div>
-                  }
-                </a>
+                  <button class="row-menu-btn" title="Actions" (click)="openRowMenu(entry, $event)">
+                    <span class="material-icons">more_vert</span>
+                  </button>
+                </div>
               }
             </div>
           }
@@ -380,6 +523,89 @@ interface FileEntry {
         }
       </div>
     </div>
+
+    <!-- Row actions. Rendered at the component root and positioned fixed, so the
+         menu is never clipped by the listing card's own overflow. -->
+    @if (rowMenu(); as menu) {
+      <div class="row-menu-backdrop" (click)="closeRowMenu()"></div>
+      <div class="row-menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
+        @if (menu.entry.isDirectory) {
+          <button class="row-menu-item" (click)="uploadInto(menu.entry, 'files')">
+            <span class="material-icons">upload_file</span>
+            Upload files
+          </button>
+          <button class="row-menu-item" (click)="uploadInto(menu.entry, 'folder')">
+            <span class="material-icons">drive_folder_upload</span>
+            Upload folder
+          </button>
+        } @else {
+          <button class="row-menu-item" (click)="openEntry(menu.entry)">
+            <span class="material-icons">open_in_new</span>
+            Open
+          </button>
+        }
+        <button class="row-menu-item" (click)="startRename(menu.entry)">
+          <span class="material-icons">drive_file_rename_outline</span>
+          Rename
+        </button>
+        <button class="row-menu-item" (click)="startShare(menu.entry)">
+          <span class="material-icons">share</span>
+          {{ menu.entry.isDirectory ? 'Share folder' : 'Share file' }}
+        </button>
+        <button class="row-menu-item" (click)="startDownload(menu.entry)">
+          <span class="material-icons">download</span>
+          {{ menu.entry.isDirectory ? 'Download folder' : 'Download' }}
+        </button>
+        @if (!menu.entry.isDirectory) {
+          <button class="row-menu-item danger" (click)="startDelete(menu.entry)">
+            <span class="material-icons">delete</span>
+            Delete
+          </button>
+        }
+      </div>
+    }
+
+    @if (deletingEntry(); as entry) {
+      <div class="modal-overlay" (click)="cancelDelete()">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-header"><h2>Delete file</h2></div>
+          <div class="modal-body">
+            <p>Delete <strong>{{ entry.name }}</strong>? This removes it from the space and its Git repository.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" (click)="cancelDelete()" [disabled]="deleteBusy()">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-danger" (click)="confirmDelete()" [disabled]="deleteBusy()">
+              @if (deleteBusy()) {
+                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+              }
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    @if (shareEntry(); as entry) {
+      <app-share-link-dialog
+        [spaceId]="space()!.id"
+        [filePath]="entry.path"
+        [isDirectory]="entry.isDirectory"
+        (close)="shareEntry.set(null)"
+      />
+    }
+
+    @if (exportStatePath(); as path) {
+      <app-export-state-dialog
+        [fileName]="path.split('/').pop() ?? path"
+        (chosen)="onExportStateChosen($event)"
+        (closed)="exportStatePath.set(null)"
+      />
+    }
   `,
   styles: [`
     .overview-text-primary {
@@ -392,10 +618,6 @@ interface FileEntry {
 
     .overview-text-muted {
       color: var(--text-muted);
-    }
-
-    .overview-section-header {
-      border-bottom: 1px solid var(--border);
     }
 
     .readme-card {
@@ -430,12 +652,338 @@ interface FileEntry {
       }
     }
 
-    .overview-doc-item {
-      text-decoration: none;
+    /* --- Listing toolbar: folder label + list/tile switch --- */
+    .listing-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .listing-toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-weight: 600;
+      color: var(--text-primary);
+
+      .material-icons {
+        font-size: 20px;
+        color: var(--primary);
+      }
+
+      span:nth-child(2) {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .listing-count {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .view-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 30px;
+        border: 0;
+        background: var(--surface);
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: background var(--transition-fast), color var(--transition-fast);
+
+        .material-icons { font-size: 18px; }
+
+        &:hover { background: var(--background); color: var(--text-primary); }
+
+        &.active {
+          background: var(--primary);
+          color: #fff;
+        }
+      }
+
+      button + button {
+        border-left: 1px solid var(--border);
+      }
+    }
+
+    /* --- List view: a dense table of Name / Last change / Commit --- */
+    .listing-head,
+    .listing-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1.3fr) 36px;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+    }
+
+    .listing-head {
+      padding-top: 10px;
+      padding-bottom: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: var(--background);
+    }
+
+    .listing-row {
+      min-height: 46px;
       transition: background var(--transition-fast);
 
       &:hover {
         background: var(--background);
+
+        .row-menu-btn { opacity: 1; }
+      }
+    }
+
+    .listing-up {
+      text-decoration: none;
+      background: rgba(0, 0, 0, 0.015);
+    }
+
+    .listing-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      padding: 8px 0;
+      text-decoration: none;
+      color: inherit;
+
+      .folder-icon { font-size: 20px; }
+    }
+
+    .listing-name {
+      font-weight: 500;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .listing-change {
+      font-size: 13px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .listing-commit {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .commit-sha {
+      font-family: var(--font-mono, ui-monospace, monospace);
+      font-size: 12px;
+      color: var(--primary);
+      flex-shrink: 0;
+    }
+
+    .commit-message {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .commit-author {
+      flex-shrink: 0;
+      opacity: 0.75;
+    }
+
+    /* Narrow viewports drop the columns that carry the least, rather than
+       letting the row overflow the card. */
+    @media (max-width: 900px) {
+      .listing-head,
+      .listing-row {
+        grid-template-columns: minmax(0, 1fr) 100px 36px;
+      }
+
+      .listing-head span:nth-child(3),
+      .listing-commit {
+        display: none;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .listing-head,
+      .listing-row {
+        grid-template-columns: minmax(0, 1fr) 36px;
+      }
+
+      .listing-head span:nth-child(2),
+      .listing-change {
+        display: none;
+      }
+    }
+
+    .row-menu-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity var(--transition-fast), background var(--transition-fast);
+
+      .material-icons { font-size: 18px; }
+
+      &:hover, &:focus-visible {
+        opacity: 1;
+        background: var(--border);
+        color: var(--text-primary);
+      }
+    }
+
+    /* --- Tile view --- */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 14px;
+      padding: 16px;
+    }
+
+    .tile-wrap {
+      position: relative;
+
+      &:hover .row-menu-btn { opacity: 1; }
+    }
+
+    .tile {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg, 10px);
+      background: var(--surface);
+      text-decoration: none;
+      color: inherit;
+      transition: border-color var(--transition-fast), background var(--transition-fast);
+
+      &:hover {
+        border-color: var(--primary);
+        background: var(--background);
+      }
+    }
+
+    .tile-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 160px;
+      overflow: hidden;
+      border-radius: 8px;
+      background: var(--background);
+    }
+
+    .tile-folder-icon {
+      font-size: 64px;
+    }
+
+    .tile-meta {
+      min-width: 0;
+    }
+
+    .tile-name {
+      font-weight: 500;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tile-sub {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .tile-up,
+    .tile-new-folder {
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+
+      .material-icons { font-size: 32px; color: var(--text-muted); }
+    }
+
+    .tile-menu-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--surface);
+    }
+
+    /* --- Row action menu (fixed, so the card's overflow can't clip it) --- */
+    .row-menu-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+    }
+
+    .row-menu {
+      position: fixed;
+      z-index: 61;
+      min-width: 190px;
+      padding: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg, 8px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .row-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-primary);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+
+      .material-icons { font-size: 18px; color: var(--text-muted); }
+
+      &:hover { background: var(--background); }
+
+      &.danger {
+        color: var(--danger, #dc2626);
+
+        .material-icons { color: inherit; }
       }
     }
 
@@ -478,24 +1026,6 @@ interface FileEntry {
 
     .folder-icon {
       color: var(--primary);
-    }
-
-    .list-group-label {
-      padding: 14px 16px 6px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      border-top: 1px solid var(--border);
-
-      &:first-child {
-        border-top: none;
-      }
-    }
-
-    .folder-up {
-      background: rgba(0, 0, 0, 0.015);
     }
 
     /* + New dropdown */
@@ -742,9 +1272,23 @@ interface FileEntry {
     .upload-progress-fill {
       height: 100%;
       background: var(--primary, #0d9488);
-      width: 100%;
-      animation: progress-slide 1.2s ease-in-out infinite;
+      width: 0;
+      transition: width 0.15s linear;
       transform-origin: left;
+    }
+
+    /* Until the first progress event arrives there is nothing to measure. */
+    .upload-progress-indeterminate {
+      width: 100%;
+      transition: none;
+      animation: progress-slide 1.2s ease-in-out infinite;
+    }
+
+    .upload-progress-label {
+      padding: 6px 16px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
     }
 
     @keyframes progress-slide {
@@ -767,6 +1311,17 @@ export class SpaceOverviewComponent implements OnInit {
   syncing = signal(false);
   isDragOver = signal(false);
   uploading = signal(false);
+  uploadProgress = signal<BulkUploadProgress | null>(null);
+  /** Last commit per entry name in the current folder, for the listing columns. */
+  folderHistory = signal<Record<string, FileVersion>>({});
+  /** Open row menu with its viewport position, or null. */
+  rowMenu = signal<{ entry: ListingEntry; x: number; y: number } | null>(null);
+  renamingPath = signal<string | null>(null);
+  renamingValue = '';
+  deletingEntry = signal<ListingEntry | null>(null);
+  deleteBusy = signal(false);
+  shareEntry = signal<ListingEntry | null>(null);
+  exportStatePath = signal<string | null>(null);
   uncommittedFiles = signal<string[]>([]);
   lastPushError = signal<string | null>(null);
   pushing = signal(false);
@@ -781,7 +1336,14 @@ export class SpaceOverviewComponent implements OnInit {
   creatingFolderBusy = signal(false);
   newFolderName = '';
   private readonly treeSync = inject(FileTreeSyncService);
+  private readonly bulkUpload = inject(BulkUploadService);
+  private readonly fileActions = inject(FileActionsService);
+  private readonly stateExportService = inject(StateExportService);
   private readonly destroyRef = inject(DestroyRef);
+  /** Folder the hidden pickers upload into — set just before one is opened. */
+  private uploadTargetFolder = '';
+  @ViewChild('fileInput') private filePicker?: ElementRef<HTMLInputElement>;
+  @ViewChild('folderInput') private folderPicker?: ElementRef<HTMLInputElement>;
 
   @HostListener('document:click')
   onDocClick(): void {
@@ -883,6 +1445,32 @@ export class SpaceOverviewComponent implements OnInit {
 
   /** README file at the current folder level, if any — rendered GitHub-style
    *  below the file listing. */
+  /** Folders first, then files — one row model for both the list and tile views. */
+  entries = computed<ListingEntry[]>(() => {
+    const cur = this.currentFolder();
+    const history = this.folderHistory();
+    const folders: ListingEntry[] = this.subfolders().map(name => ({
+      name,
+      path: cur ? `${cur}/${name}` : name,
+      isDirectory: true,
+      commit: history[name]
+    }));
+    const files: ListingEntry[] = this.filesHere().map(file => ({
+      name: file.name,
+      path: file.path,
+      isDirectory: false,
+      title: file.title,
+      lastSyncedAt: file.lastSyncedAt,
+      commit: history[file.name]
+    }));
+    return [...folders, ...files];
+  });
+
+  entryCountLabel = computed<string>(() => {
+    const count = this.entries().length;
+    return `${count} item${count === 1 ? '' : 's'}`;
+  });
+
   readmeHere = computed<FileEntry | null>(() =>
     this.filesHere().find(f => /^readme\.(md|markdown)$/i.test(f.name)) ?? null
   );
@@ -950,10 +1538,10 @@ export class SpaceOverviewComponent implements OnInit {
     event.preventDefault();
     this.isDragOver.set(false);
     this.dragCounter = 0;
-    const files = Array.from(event.dataTransfer?.files ?? []);
-    if (files.length > 0) {
-      this.uploadFiles(files);
-    }
+    // Collected synchronously — the dropped entries are gone once this returns.
+    const folder = this.currentFolder();
+    this.bulkUpload.collectFromDrop(event.dataTransfer)
+      .then(selection => this.startUpload(selection, folder));
   }
 
   constructor(
@@ -1033,7 +1621,13 @@ export class SpaceOverviewComponent implements OnInit {
     });
     // Track ?path=… so subfolder URLs are bookmarkable and route changes reflow.
     this.route.queryParamMap.subscribe((q) => {
-      this.currentFolder.set((q.get('path') ?? '').replace(/^\/+|\/+$/g, ''));
+      const folder = (q.get('path') ?? '').replace(/^\/+|\/+$/g, '');
+      this.currentFolder.set(folder);
+      this.closeRowMenu();
+      // Commit columns are per folder, so they follow the navigation.
+      this.folderHistory.set({});
+      const space = this.space();
+      if (space) this.loadFolderHistory(space.id, folder);
     });
   }
 
@@ -1063,6 +1657,7 @@ export class SpaceOverviewComponent implements OnInit {
   }
 
   loadDocuments(spaceId: string): void {
+    this.loadFolderHistory(spaceId, this.currentFolder());
     this.documentsService.getDocuments(spaceId).subscribe({
       next: (docs) => this.documents.set(docs)
     });
@@ -1309,37 +1904,198 @@ export class SpaceOverviewComponent implements OnInit {
 
   onFileInputChange(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
-    if (files.length > 0) {
-      this.uploadFiles(files);
-    }
+    const selection = this.bulkUpload.collectFromInput(input.files);
     input.value = '';
+    // A row menu targets its own folder; the header menu targets the open one.
+    const folder = this.uploadTargetFolder || this.currentFolder();
+    this.uploadTargetFolder = '';
+    this.startUpload(selection, folder);
   }
 
-  private uploadFiles(files: File[], folder = this.currentFolder()): void {
+  private startUpload(selection: UploadSelection, folder = this.currentFolder()): void {
     const space = this.space();
-    if (!space) return;
+    if (!space || !selection.items.length) return;
 
     this.uploading.set(true);
-    this.documentsService.uploadFiles(space.id, files, folder).subscribe({
-      next: (uploaded) => {
-        this.uploading.set(false);
-        const names = uploaded.map(f => f.name).join(', ');
-        this.toastService.success(
-          `${uploaded.length} file${uploaded.length > 1 ? 's' : ''} uploaded`,
-          names
-        );
-        this.treeSync.notify(space.id);
+    this.uploadProgress.set(null);
+    this.bulkUpload.uploadTo(space.id, selection, folder).subscribe({
+      next: (progress) => {
+        this.uploadProgress.set(progress);
+        if (progress.done) this.uploading.set(false);
       },
-      error: (error) => {
+      error: () => {
         this.uploading.set(false);
-        this.toastService.error('Upload failed', error.error?.message || 'Could not upload files');
+        this.uploadProgress.set(null);
       }
     });
   }
 
   formatDate(dateString: string): string {
     return new Date(dateString).toLocaleDateString();
+  }
+
+  /** Row label: the markdown title where there is one, else the prettified name. */
+  displayName(entry: ListingEntry): string {
+    if (entry.isDirectory) return this.prefs.prettify(entry.name, true);
+    return entry.title || this.prefs.prettify(entry.name, false);
+  }
+
+  /**
+   * "Last change" cell. Prefers the commit that touched the entry; falls back to
+   * the document's last sync for entries Git has no commit for yet.
+   */
+  changedAt(entry: ListingEntry): string {
+    const when = entry.commit?.committedAt ?? entry.lastSyncedAt;
+    return when ? this.relativeTime(when) : '';
+  }
+
+  /** Short relative age — recent changes read better as "3h ago" than a date. */
+  private relativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    const seconds = Math.floor((Date.now() - then) / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+
+  private loadFolderHistory(spaceId: string, folder: string): void {
+    this.documentsService.getFolderHistory(spaceId, folder).subscribe({
+      next: (history) => this.folderHistory.set(history),
+      error: () => this.folderHistory.set({})
+    });
+  }
+
+  // --- Row actions ---
+
+  openRowMenu(entry: ListingEntry, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    // Flip the menu above the trigger when it would run off the bottom.
+    const estimatedHeight = 240;
+    const openUpwards = rect.bottom + estimatedHeight > window.innerHeight;
+    this.rowMenu.set({
+      entry,
+      x: Math.max(8, Math.min(rect.right - 190, window.innerWidth - 200)),
+      y: openUpwards ? Math.max(8, rect.top - estimatedHeight) : rect.bottom + 4
+    });
+  }
+
+  closeRowMenu(): void {
+    this.rowMenu.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.closeRowMenu();
+  }
+
+  @HostListener('window:resize')
+  @HostListener('window:scroll')
+  onViewportChanged(): void {
+    // The menu is positioned against a row that just moved — close rather than drift.
+    if (this.rowMenu()) this.closeRowMenu();
+  }
+
+  openEntry(entry: ListingEntry): void {
+    const space = this.space();
+    this.closeRowMenu();
+    if (!space) return;
+    this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: entry.path } });
+  }
+
+  uploadInto(entry: ListingEntry, kind: 'files' | 'folder'): void {
+    this.closeRowMenu();
+    this.uploadTargetFolder = entry.path;
+    const picker = kind === 'folder' ? this.folderPicker : this.filePicker;
+    picker?.nativeElement.click();
+  }
+
+  startRename(entry: ListingEntry): void {
+    this.closeRowMenu();
+    this.renamingValue = entry.name;
+    this.renamingPath.set(entry.path);
+  }
+
+  submitRename(entry: ListingEntry): void {
+    const space = this.space();
+    const request = space ? this.fileActions.rename(space.id, entry, this.renamingValue) : null;
+    this.cancelRename();
+    request?.subscribe();
+  }
+
+  cancelRename(): void {
+    this.renamingPath.set(null);
+    this.renamingValue = '';
+  }
+
+  startShare(entry: ListingEntry): void {
+    this.closeRowMenu();
+    this.shareEntry.set(entry);
+  }
+
+  startDownload(entry: ListingEntry): void {
+    const space = this.space();
+    this.closeRowMenu();
+    if (!space) return;
+
+    if (entry.isDirectory) {
+      this.fileActions.downloadFolder(space.id, entry);
+      return;
+    }
+    // HTML files using the State Library get the "with or without state" chooser.
+    this.stateExportService.checkFileUsesState(space.id, entry.path).subscribe({
+      next: (usesState) => {
+        if (usesState) {
+          this.exportStatePath.set(entry.path);
+        } else {
+          this.stateExportService.download(space.id, entry.path, false);
+        }
+      },
+      error: () => this.stateExportService.download(space.id, entry.path, false)
+    });
+  }
+
+  onExportStateChosen(withState: boolean): void {
+    const space = this.space();
+    const path = this.exportStatePath();
+    this.exportStatePath.set(null);
+    if (!space || !path) return;
+    this.stateExportService.download(space.id, path, withState);
+  }
+
+  startDelete(entry: ListingEntry): void {
+    this.closeRowMenu();
+    this.deletingEntry.set(entry);
+  }
+
+  cancelDelete(): void {
+    // The request is in flight — closing now would only hide the outcome.
+    if (this.deleteBusy()) return;
+    this.deletingEntry.set(null);
+  }
+
+  confirmDelete(): void {
+    const entry = this.deletingEntry();
+    const space = this.space();
+    if (!entry || !space) return;
+    this.deleteBusy.set(true);
+    this.fileActions.delete(space.id, entry).subscribe({
+      next: () => {
+        this.deleteBusy.set(false);
+        this.deletingEntry.set(null);
+      },
+      error: () => {
+        this.deleteBusy.set(false);
+        this.deletingEntry.set(null);
+      }
+    });
   }
 
   readonly spaceFileUrl = spaceFileUrl;
