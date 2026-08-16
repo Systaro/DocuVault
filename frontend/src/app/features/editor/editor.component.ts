@@ -44,7 +44,10 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
-import { Subject, debounceTime, filter, takeUntil } from 'rxjs';
+import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
+import { HtmlEditorComponent } from './html-editor.component';
+import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
+import { Observable, Subject, debounceTime, filter, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
@@ -92,7 +95,7 @@ interface OutlineItem {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -435,6 +438,13 @@ interface OutlineItem {
             }
             <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           </div>
+          <div class="preview-topbar-actions">
+          @if (canEditHtmlFile()) {
+            <button class="btn-edit" (click)="startHtmlEdit()" title="Edit this page">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit
+            </button>
+          }
           <div class="relative">
             <button
               (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
@@ -499,7 +509,16 @@ interface OutlineItem {
               </div>
             }
           </div>
+          </div>
         </div>
+        @if (htmlEditMode() && space()) {
+          <app-html-editor
+            [spaceId]="space()!.id"
+            [path]="documentPath"
+            (saved)="onHtmlSaved()"
+            (closed)="htmlEditMode.set(false)"
+          />
+        } @else {
         <!-- Scrollable preview content -->
         <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
           <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
@@ -580,6 +599,7 @@ interface OutlineItem {
             </div>
           }
         </div>
+        }
       } @else {
         <!-- Editor Area -->
         <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" (scroll)="onContentScroll()">
@@ -833,75 +853,16 @@ interface OutlineItem {
       }
 
       @if (showHistoryPanel()) {
-        <aside class="history-panel" (click)="$event.stopPropagation()">
-          <div class="history-header">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <span>Version history</span>
-            <button class="editor-icon-btn ml-auto" title="Close" (click)="closeHistory()">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-          @if (historyLoading()) {
-            <div class="history-loading">
-              <svg class="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-            </div>
-          } @else if (historyVersions().length === 0) {
-            <p class="history-empty">
-              No versions recorded yet. Every save from now on becomes a version you can
-              come back to here.
-            </p>
-          } @else {
-            <div class="history-list">
-              @for (v of historyVersions(); track v.sha; let i = $index) {
-                <div class="history-item-wrap">
-                  <button
-                    type="button"
-                    class="history-item"
-                    [class.active]="viewingVersion()?.sha === v.sha || (i === 0 && !viewingVersion())"
-                    (click)="viewVersion(v)"
-                  >
-                    <div class="history-item-top">
-                      <span class="history-item-date">{{ v.committedAt | date:'MMM d, y, HH:mm' }}</span>
-                      @if (i === 0) {
-                        <span class="history-badge-current">Current</span>
-                      }
-                      @if (versionLoadingSha() === v.sha) {
-                        <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                        </svg>
-                      }
-                    </div>
-                    @if (v.message) {
-                      <div class="history-item-msg">{{ v.message }}</div>
-                    }
-                    @if (v.authorName) {
-                      <div class="history-item-author">{{ v.authorName }}</div>
-                    }
-                  </button>
-                  <button
-                    type="button"
-                    class="history-item-diff"
-                    title="Show changes in this version"
-                    [class.active]="viewingVersion()?.sha === v.sha && historyViewMode() === 'diff'"
-                    (click)="viewDiff(v); $event.stopPropagation()"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5v14m-3-3h6M15 8h6"/>
-                    </svg>
-                  </button>
-                </div>
-              }
-            </div>
-          }
-        </aside>
+        <app-version-history-panel
+          [versions]="historyVersions()"
+          [loading]="historyLoading()"
+          [activeSha]="viewingVersion()?.sha ?? null"
+          [loadingSha]="versionLoadingSha()"
+          [diffActive]="historyViewMode() === 'diff'"
+          (view)="viewVersion($event)"
+          (diff)="viewDiff($event)"
+          (closed)="closeHistory()"
+        />
       }
     </div>
   `,
@@ -1068,6 +1029,12 @@ interface OutlineItem {
       flex-shrink: 0;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
+    }
+
+    .preview-topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .preview-filename {
@@ -1664,112 +1631,6 @@ interface OutlineItem {
       }
     }
 
-    .history-panel {
-      /* Anchored to the editor host (position: relative), not the viewport —
-         a fixed top:0 panel would hide its header under the app header bar. */
-      position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      width: 320px;
-      display: flex;
-      flex-direction: column;
-      background: var(--surface);
-      border-left: 1px solid var(--border);
-      box-shadow: var(--shadow-lg);
-      z-index: 60;
-    }
-
-    .history-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 0.875rem;
-      color: var(--text-primary);
-    }
-
-    .history-loading {
-      display: flex;
-      justify-content: center;
-      padding: 32px 0;
-      color: var(--text-muted);
-    }
-
-    .history-empty {
-      padding: 20px 16px;
-      font-size: 0.8125rem;
-      color: var(--text-muted);
-    }
-
-    .history-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .history-item-wrap {
-      position: relative;
-
-      &:hover .history-item-diff,
-      .history-item-diff.active {
-        opacity: 1;
-      }
-    }
-
-    .history-item {
-      display: block;
-      width: 100%;
-      text-align: left;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      background: transparent;
-      cursor: pointer;
-
-      &:hover {
-        background: var(--surface-hover);
-      }
-
-      &.active {
-        border-color: var(--primary);
-        background: color-mix(in srgb, var(--primary) 8%, var(--surface));
-      }
-    }
-
-    .history-item-diff {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text-secondary);
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity var(--transition);
-
-      &:hover {
-        background: var(--surface-hover);
-        color: var(--text-primary);
-      }
-
-      &.active {
-        border-color: var(--primary);
-        color: var(--primary);
-      }
-    }
-
     .diff-view {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 0.8125rem;
@@ -1816,42 +1677,6 @@ interface OutlineItem {
       font-size: 0.8125rem;
     }
 
-    .history-item-top {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .history-item-date {
-      font-size: 0.8125rem;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .history-badge-current {
-      padding: 1px 8px;
-      border-radius: 999px;
-      background: var(--primary);
-      color: white;
-      font-size: 0.6875rem;
-      font-weight: 600;
-    }
-
-    .history-item-msg {
-      margin-top: 2px;
-      font-size: 0.75rem;
-      color: var(--text-secondary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .history-item-author {
-      margin-top: 2px;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-
     .ai-fab {
       position: fixed;
       bottom: var(--spacing-xl);
@@ -1881,7 +1706,7 @@ interface OutlineItem {
     }
   `]
 })
-export class EditorComponent implements OnInit, OnDestroy {
+export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private editor: Editor | null = null;
   private destroy$ = new Subject<void>();
   private turndownService = new TurndownService({
@@ -1929,6 +1754,7 @@ export class EditorComponent implements OnInit, OnDestroy {
   @ViewChild(AutosizeTextareaDirective) private titleAutosize?: AutosizeTextareaDirective;
   private readonly treeSync = inject(FileTreeSyncService);
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
+  @ViewChild(HtmlEditorComponent) private htmlEditor?: HtmlEditorComponent;
 
   private static readonly IMAGE_EXTENSIONS = new Set([
     'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
@@ -2077,6 +1903,18 @@ export class EditorComponent implements OnInit, OnDestroy {
   // spaces stay read-only — round-tripping them through TipTap would mangle them.
   isReadOnly = computed(() => this.isGitSpace() && !this.isNewDocument() && !this.isMarkdownDoc());
   annotationPermission = signal<AnnotationPermission>('VIEW');
+  /** My effective permission on the space allows writing files. */
+  private canWriteFiles = computed(() => this.annotationPermission() !== 'VIEW');
+  // HTML pages get their own contenteditable editor instead of the TipTap one:
+  // it edits the file itself (head, scripts and all) rather than a Markdown
+  // round-trip, so it stays available in git-backed spaces too.
+  htmlEditMode = signal(false);
+  canEditHtmlFile = computed(() =>
+    this.isPreviewFile() &&
+    this.previewType() === 'html' &&
+    !this.htmlEditMode() &&
+    this.canWriteFiles()
+  );
 
   // Read/edit split: documents open in rendered read mode; the user clicks Edit
   // to switch to the TipTap editor.
@@ -2369,6 +2207,34 @@ export class EditorComponent implements OnInit, OnDestroy {
   private closeActionMenus(): void {
     this.showTranslateMenu.set(false);
     this.showActionMenu.set(false);
+  }
+
+  /** Switch the HTML preview into the contenteditable editor. */
+  startHtmlEdit(): void {
+    this.closeActionMenus();
+    this.showHistoryPanel.set(false);
+    this.htmlEditMode.set(true);
+  }
+
+  /**
+   * A save in the HTML editor wrote a new version. The preview iframe would
+   * otherwise re-serve the response it already has, so it gets a fresh URL.
+   */
+  onHtmlSaved(): void {
+    const space = this.space();
+    if (!space) return;
+    const url = `/api/spaces/${space.id}/files/${this.documentPath}?v=${Date.now()}`;
+    this.previewUrl.set(url);
+    this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
+    this.loadHistoryMeta();
+  }
+
+  /**
+   * Route-guard hook (see unsavedChangesGuard): the HTML editor keeps unsaved
+   * edits in the browser only, so navigating away has to be confirmed.
+   */
+  confirmLeave(): boolean | Observable<boolean> {
+    return this.htmlEditor ? this.htmlEditor.confirmLeave() : true;
   }
 
   /** Open the version-history drawer and load the document's commit track. */
@@ -2725,6 +2591,8 @@ export class EditorComponent implements OnInit, OnDestroy {
           this.aiEditUndo.set(null);
           this.showAiEditDialog.set(false);
           this.viewingAiPrevious.set(false);
+          // Another file — the HTML editor belongs to the one we just left.
+          this.htmlEditMode.set(false);
         }
         const ext = path.split('.').pop()?.toLowerCase() || '';
         if (EditorComponent.IMAGE_EXTENSIONS.has(ext)) {

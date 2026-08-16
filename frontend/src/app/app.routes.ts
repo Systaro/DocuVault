@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
+import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 
 export const routes: Routes = [
   {
@@ -79,7 +80,12 @@ export const routes: Routes = [
           },
           {
             path: 'doc',
-            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent),
+            // Switching documents only changes ?path=, so without this the guard
+            // would never run and the HTML editor's unsaved work would vanish
+            // on the next click in the file tree.
+            runGuardsAndResolvers: 'paramsOrQueryParamsChange',
+            canDeactivate: [unsavedChangesGuard]
           },
           {
             path: 'chat',
@@ -105,7 +111,12 @@ export const routes: Routes = [
           },
           {
             path: 'doc',
-            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent),
+            // Switching documents only changes ?path=, so without this the guard
+            // would never run and the HTML editor's unsaved work would vanish
+            // on the next click in the file tree.
+            runGuardsAndResolvers: 'paramsOrQueryParamsChange',
+            canDeactivate: [unsavedChangesGuard]
           },
           {
             path: 'chat',
@@ -131,7 +142,12 @@ export const routes: Routes = [
           },
           {
             path: 'doc',
-            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent)
+            loadComponent: () => import('./features/editor/editor.component').then(m => m.EditorComponent),
+            // Switching documents only changes ?path=, so without this the guard
+            // would never run and the HTML editor's unsaved work would vanish
+            // on the next click in the file tree.
+            runGuardsAndResolvers: 'paramsOrQueryParamsChange',
+            canDeactivate: [unsavedChangesGuard]
           },
           {
             path: 'chat',

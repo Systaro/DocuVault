@@ -24,16 +24,13 @@ class DocumentPersistService(
     private val embeddingService: EmbeddingService
 ) {
 
-    fun extractTitle(content: String, path: String): String {
-        // Try to extract title from markdown heading
-        val headingMatch = Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)
-        if (headingMatch != null) {
-            return headingMatch.groupValues[1].trim()
-        }
+    /** The title the content carries itself (a Markdown heading), or null when it has none. */
+    fun headingTitle(content: String): String? =
+        Regex("^#\\s+(.+)$", RegexOption.MULTILINE).find(content)?.groupValues?.get(1)?.trim()
 
-        // Fall back to filename without extension
-        return path.substringAfterLast("/").substringBeforeLast(".")
-    }
+    fun extractTitle(content: String, path: String): String =
+        // Fall back to the filename without extension
+        headingTitle(content) ?: path.substringAfterLast("/").substringBeforeLast(".")
 
     fun hashContent(content: String): String {
         val digest = MessageDigest.getInstance("SHA-256")

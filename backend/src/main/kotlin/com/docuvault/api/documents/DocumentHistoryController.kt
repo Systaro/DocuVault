@@ -1,5 +1,6 @@
 package com.docuvault.api.documents
 
+import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.DocumentPersistService
@@ -31,7 +32,8 @@ class DocumentHistoryController(
     private val permissionService: PermissionService,
     private val gitService: GitService,
     private val gitDiffService: GitDiffService,
-    private val documentPersistService: DocumentPersistService
+    private val documentPersistService: DocumentPersistService,
+    private val documentRepository: DocumentRepository
 ) {
 
     @GetMapping
@@ -150,13 +152,20 @@ class DocumentHistoryController(
         val content = gitDiffService.fileAtCommit(space, request.sha, request.path)
             ?: return ResponseEntity.notFound().build()
 
+        // Content that carries its own title (a Markdown heading) sets it; anything
+        // else keeps the title it has. Without this an HTML page would silently be
+        // renamed to its filename on every restore, since the fallback title is
+        // derived from the path.
+        val restoredTitle = documentPersistService.headingTitle(content)
+            ?: documentRepository.findBySpaceIdAndPath(space.id!!, request.path)?.title
+
         // A restore is itself a new version on top of the history, never a rewind.
         val saved = documentPersistService.persistDocument(
             space = space,
             user = user,
             documentPath = request.path,
             content = content,
-            title = null,
+            title = restoredTitle,
             autoCommit = true,
             commitMessage = "Restore ${request.path} to version ${request.sha.take(8)}"
         ) ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
