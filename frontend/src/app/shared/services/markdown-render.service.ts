@@ -32,12 +32,7 @@ export class MarkdownRenderService {
   ): SafeHtml {
     const renderer = new Renderer();
     renderer.heading = (text: string, level: number, raw: string) => {
-      const id = raw.toLowerCase()
-        .replace(/<[^>]*>/g, '')
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .trim();
-      return `<h${level} id="${id}">${text}</h${level}>\n`;
+      return `<h${level} id="${this.headingId(raw)}">${text}</h${level}>\n`;
     };
     // Mermaid: emit a placeholder that runMermaid() can find.
     // marked HTML-escapes code content, so the source survives intact in
@@ -399,6 +394,28 @@ export class MarkdownRenderService {
     document.addEventListener('keydown', onKey);
 
     apply();
+  }
+
+  /**
+   * Heading text → anchor id. Umlauts are transliterated before the non-word
+   * strip, which would otherwise drop them without trace ("Die fünf Tore" →
+   * "die-fnf-tore"), leaving hand-written `[…](#die-fünf-tore)` links dead.
+   * Remaining accents are decomposed and their marks removed (é → e).
+   */
+  private headingId(raw: string): string {
+    return raw.toLowerCase()
+      .replace(/<[^>]*>/g, '')
+      // NFC first, so a decomposed "u + ̈" still matches the pairs below.
+      .normalize('NFC')
+      .replace(/ä/g, 'ae')
+      .replace(/ö/g, 'oe')
+      .replace(/ü/g, 'ue')
+      .replace(/ß/g, 'ss')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .trim();
   }
 
   private escape(s: string): string {

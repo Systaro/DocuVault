@@ -21,7 +21,9 @@ export function handleMarkdownClick(
     event.preventDefault();
     const el = document.getElementById(href.slice(1));
     if (el) el.scrollIntoView({ behavior: 'smooth' });
-    history.replaceState(null, '', window.location.pathname + href);
+    // Keep the query string: the document identity lives in ?path=, so dropping
+    // it turns a reload/share of the anchored URL into "new document".
+    history.replaceState(null, '', window.location.pathname + window.location.search + href);
     return;
   }
 

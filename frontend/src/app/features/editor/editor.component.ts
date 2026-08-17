@@ -2924,7 +2924,14 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     const space = this.space();
     if (!space) return;
     handleMarkdownClick(event, `/spaces/${space.fullPath}/doc/`, (filePath) => {
-      this.router.navigate([], { relativeTo: this.route, queryParams: { path: filePath } });
+      // merge, not replace: a bare queryParams drops every other param — notably
+      // ?lang=, so following a link while reading a translation fell back to the
+      // original language.
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { path: filePath },
+        queryParamsHandling: 'merge',
+      });
     });
   }
 
