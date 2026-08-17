@@ -440,9 +440,14 @@ interface OutlineItem {
           </div>
           <div class="preview-topbar-actions">
           @if (canEditHtmlFile()) {
-            <button class="btn-edit" (click)="startHtmlEdit()" title="Edit this page">
+            <button
+              class="btn-edit"
+              (click)="startHtmlEdit()"
+              title="Edit this page — alpha: editing a page through the browser can reformat its markup, so check the result before you save"
+            >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
               Edit
+              <span class="btn-badge">alpha</span>
             </button>
           }
           <div class="relative">
@@ -955,6 +960,20 @@ interface OutlineItem {
       transition: background 0.15s, border-color 0.15s;
 
       &:hover { background: var(--background); border-color: var(--primary); color: var(--primary); }
+    }
+
+    /* Early-access marker on the action that opens the HTML editor. The tint
+       carries the accent, the text colour comes from the theme's own secondary
+       ink — teal-on-teal at this size does not clear the contrast floor. */
+    .btn-badge {
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--primary) 18%, transparent);
+      color: var(--text-primary);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      line-height: 1.5;
     }
 
     .text-muted { color: var(--text-muted); }
