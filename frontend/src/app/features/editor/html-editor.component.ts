@@ -9,6 +9,8 @@ import { DocumentHistoryService, DocumentVersion } from '../../core/api/document
 import { ToastService } from '../../shared/services/toast.service';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { buildFrameDocument, spliceBodyHtml } from '../../shared/utils/html-document';
+import { HtmlEditSession } from './html-edit/html-edit-session';
+import { HtmlEditToolbarComponent } from './html-edit/html-edit-toolbar.component';
 
 type EditorMode = 'visual' | 'code';
 
@@ -37,11 +39,15 @@ interface ConfirmState {
  * again from the history drawer), why Revert throws the working copy away, and
  * why leaving with unsaved work has to be confirmed. The HTML tab is the escape
  * hatch: it edits the exact source, head and scripts included.
+ *
+ * Formatting, tables and undo live in `HtmlEditSession`, which edits the same
+ * document in place rather than parsing it into a model of its own — see the
+ * note there for why that matters for a file the user also owns.
  */
 @Component({
   selector: 'app-html-editor',
   standalone: true,
-  imports: [CommonModule, VersionHistoryPanelComponent],
+  imports: [CommonModule, VersionHistoryPanelComponent, HtmlEditToolbarComponent],
   template: `
     <div class="html-editor" [class.with-history]="showHistory()">
       <div class="html-editor-bar">
@@ -148,6 +154,10 @@ interface ConfirmState {
             <button type="button" class="version-btn" (click)="backToCurrent()">Back to current</button>
           </div>
         </div>
+      }
+
+      @if (session(); as editSession) {
+        <app-html-edit-toolbar [session]="editSession" />
       }
 
       <div class="html-editor-surface">
@@ -418,7 +428,11 @@ interface ConfirmState {
       flex: 1;
       width: 100%;
       border: none;
-      background: var(--surface);
+      /* The page's own canvas, not the app's: a file that sets no background of
+         its own is written for a white one, and painting the app's dark surface
+         behind it left its dark text unreadable while editing — and looking
+         nothing like the preview it is supposed to match. */
+      background: #ffffff;
     }
 
     .html-code {
@@ -481,24 +495,43 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
   /** Title of the Document row, preserved across saves. */
   private docTitle = '';
 
+  /** Formatting, tables and undo for the live iframe — only while editable. */
+  session = signal<HtmlEditSession | null>(null);
+
   private frameEl: HTMLIFrameElement | null = null;
   private codeEl: HTMLTextAreaElement | null = null;
-  private editedDoc: Document | null = null;
   /** A route guard waiting for the user to answer the leave dialog. */
   private leaveAnswer: Subject<boolean> | null = null;
 
   fileName = computed(() => this.path?.split('/').pop() ?? this.path);
 
+  /**
+   * Angular re-runs view queries whenever anything in this template is created
+   * or destroyed — opening a dialog or the toolbar is enough — and calls this
+   * setter again with the very same element. Re-rendering there would reload
+   * the iframe from the last synced copy and silently throw away everything
+   * typed since, which is exactly what used to happen the moment the "leave
+   * without saving?" dialog appeared. Only a genuinely different element is a
+   * reason to render.
+   */
   @ViewChild('frame')
   set frameRef(ref: ElementRef<HTMLIFrameElement> | undefined) {
-    this.frameEl = ref?.nativeElement ?? null;
-    if (this.frameEl) this.renderFrame();
+    const element = ref?.nativeElement ?? null;
+    if (element === this.frameEl) return;
+    this.frameEl = element;
+    if (element) {
+      this.renderFrame();
+    } else {
+      this.detachFrame();
+    }
   }
 
   @ViewChild('code')
   set codeRef(ref: ElementRef<HTMLTextAreaElement> | undefined) {
-    this.codeEl = ref?.nativeElement ?? null;
-    if (this.codeEl) this.codeEl.value = this.displaySource();
+    const element = ref?.nativeElement ?? null;
+    if (element === this.codeEl) return;
+    this.codeEl = element;
+    if (element) element.value = this.displaySource();
   }
 
   ngOnInit(): void {
@@ -574,25 +607,34 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
   onFrameLoad(): void {
     const doc = this.frameEl?.contentDocument;
     if (!doc?.body) return;
+    this.detachFrame();
     const editable = !this.viewingVersion();
     doc.body.contentEditable = editable ? 'true' : 'false';
     if (!editable) return;
-    doc.addEventListener('input', this.onFrameInput);
-    this.editedDoc = doc;
+    this.session.set(new HtmlEditSession(doc, this.zone, this.onEdit));
   }
 
   /**
-   * The iframe has its own window, so zone.js never patched its listeners —
-   * without re-entering the zone the dirty flag would change without anything
-   * re-rendering the toolbar.
+   * Every change inside the page. `committed` marks the end of an undo step —
+   * a command, or a burst of typing that has settled — which is when the
+   * working copy is worth re-reading out of the live DOM. Keeping it current
+   * means no code path can render over the iframe and lose work.
    */
-  private onFrameInput = (): void => {
-    this.zone.run(() => this.markDirty());
+  private onEdit = (committed: boolean): void => {
+    this.justSaved.set(false);
+    if (!committed) {
+      this.dirty.set(true);
+      return;
+    }
+    const source = this.currentSource();
+    this.working.set(source);
+    // Undoing all the way back to the saved state is not a change any more.
+    this.dirty.set(source !== this.savedSource);
   };
 
   private detachFrame(): void {
-    this.editedDoc?.removeEventListener('input', this.onFrameInput);
-    this.editedDoc = null;
+    this.session()?.destroy();
+    this.session.set(null);
   }
 
   onCodeInput(): void {

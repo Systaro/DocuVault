@@ -21,10 +21,14 @@ import {
  *
  * 1. Editing runs inside the page with its own CSS, with scripts paused
  * 2. Edits mark the file unsaved; nothing reaches the server until Save
- * 3. Closing the tab and navigating away are both guarded while unsaved
+ * 3. Closing the tab and navigating away are both guarded while unsaved —
+ *    and answering "keep editing" gives the unsaved work back, not a
+ *    reloaded page with an "unsaved" label on it
  * 4. Revert throws the working copy away
- * 5. Saving keeps everything outside <body> byte-identical
- * 6. Version history restores an older version without renaming the document
+ * 5. The toolbar formats and edits tables, and every command is its own
+ *    undo step
+ * 6. Saving keeps everything outside <body> byte-identical
+ * 7. Version history restores an older version without renaming the document
  */
 describe('HTML editor', () => {
   let browser: Browser;
@@ -115,6 +119,62 @@ describe('HTML editor', () => {
 
   async function saveDisabled(): Promise<boolean> {
     return page.$eval('.html-editor-save', (el) => (el as HTMLButtonElement).disabled);
+  }
+
+  /** A button on the formatting toolbar, addressed by its tooltip. */
+  async function clickFormatButton(title: string): Promise<void> {
+    const clicked = await page.evaluate((text: string) => {
+      const button = Array.from(document.querySelectorAll('.format-btn')).find((b) =>
+        b.getAttribute('title')?.startsWith(text)
+      );
+      if (!button || (button as HTMLButtonElement).disabled) return false;
+      (button as HTMLElement).click();
+      return true;
+    }, title);
+    if (!clicked) throw new Error(`Toolbar button "${title}" not available`);
+  }
+
+  async function clickTableMenuItem(label: string): Promise<void> {
+    await clickFormatButton('Table');
+    await page.waitForSelector('.format-menu', { timeout: 5000 });
+    const clicked = await page.evaluate((text: string) => {
+      const item = Array.from(document.querySelectorAll('.format-menu-item')).find(
+        (b) => b.textContent?.trim() === text
+      );
+      if (!item || (item as HTMLButtonElement).disabled) return false;
+      (item as HTMLElement).click();
+      return true;
+    }, label);
+    if (!clicked) throw new Error(`Table menu item "${label}" not available`);
+  }
+
+  /** Puts the caret inside the first element matching `selector`, at its end. */
+  async function caretInto(selector: string): Promise<void> {
+    const frame = await editorFrame();
+    await frame.evaluate((sel: string) => {
+      const element = document.querySelector(sel);
+      if (!element) throw new Error(`No ${sel} to put the caret in`);
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      const selection = document.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, selector);
+  }
+
+  /** Rows of the first table, each as the tags of its cells. */
+  async function tableShape(): Promise<string[]> {
+    const frame = await editorFrame();
+    return frame.evaluate(() => {
+      const table = document.querySelector('table');
+      if (!table) return [];
+      return Array.from(table.querySelectorAll('tr')).map((row) =>
+        Array.from(row.children)
+          .map((cell) => cell.tagName)
+          .join(',')
+      );
+    });
   }
 
   /** The file as the server has it — the only copy that counts. */
@@ -328,6 +388,15 @@ describe('HTML editor', () => {
     expect(page.url()).toBe(urlBefore);
     addStep('Leaving for another document asks first', true);
 
+    // The edits have to still be in the page while the dialog is up. Opening the
+    // dialog used to re-run Angular's view queries, which re-rendered the iframe
+    // from the last synced copy and wiped everything typed since — so by the time
+    // the user answered "Keep editing" the work was already gone, and the flag
+    // saying "unsaved changes" was all that was left of it.
+    const headingWithDialog = await (await editorFrame()).$eval('h1', (el) => el.textContent ?? '');
+    expect(headingWithDialog).toContain('geändert');
+    addStep('The unsaved edits are still in the page while the dialog is open', true);
+
     const ss = await takeScreenshot(page, 'html-editor-03-leave-guard');
     trackScreenshot('Navigation guard — leave without saving?', ss);
 
@@ -335,6 +404,9 @@ describe('HTML editor', () => {
     expect(page.url()).toBe(urlBefore);
     await waitForEditableFrame();
     expect(await editorStatus()).toContain('Unsaved');
+
+    const headingAfter = await (await editorFrame()).$eval('h1', (el) => el.textContent ?? '');
+    expect(headingAfter).toContain('geändert');
     addStep('"Keep editing" keeps the document and its unsaved changes', true);
   });
 
@@ -355,7 +427,80 @@ describe('HTML editor', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────
-  // Test 6: the HTML tab round-trips, and Save keeps the file intact
+  // Test 6: the toolbar formats, builds tables, and undo walks back
+  // ────────────────────────────────────────────────────────────────────
+  test('formats text, edits tables and steps back through undo', async () => {
+    const frame = await editorFrame();
+
+    // Formatting writes the elements the file already speaks, not inline styles.
+    const introText = await frame.$eval('#intro', (el) => el.innerHTML);
+    await frame.evaluate(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.querySelector('#intro')!);
+      const selection = document.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await clickFormatButton('Bold');
+    expect(await frame.$eval('#intro', (el) => el.innerHTML)).toBe(`<b>${introText}</b>`);
+    expect(await frame.$eval('#intro', (el) => el.outerHTML)).not.toContain('style=');
+    addStep('Bold wraps the selection in <b>, without inline styles', true);
+
+    await clickFormatButton('Undo');
+    expect(await frame.$eval('#intro', (el) => el.innerHTML)).toBe(introText);
+    addStep('Undo takes the formatting back off', true);
+
+    // Tables: built and reshaped straight on the page.
+    await caretInto('#intro');
+    await clickTableMenuItem('Insert table');
+    expect(await tableShape()).toEqual(['TH,TH,TH', 'TD,TD,TD', 'TD,TD,TD']);
+    addStep('Insert table adds a 3×3 table with a header row', true);
+
+    await clickTableMenuItem('Add column right');
+    expect(await tableShape()).toEqual(['TH,TH,TH,TH', 'TD,TD,TD,TD', 'TD,TD,TD,TD']);
+    addStep('Add column right widens every row', true);
+
+    await clickTableMenuItem('Add row below');
+    expect((await tableShape()).length).toBe(4);
+    addStep('Add row below adds a body row', true);
+
+    await clickTableMenuItem('Delete column');
+    expect(await tableShape()).toEqual(['TH,TH,TH', 'TD,TD,TD', 'TD,TD,TD', 'TD,TD,TD']);
+    addStep('Delete column narrows every row', true);
+
+    // Retagging the header row replaces its cells, so the caret has to be put
+    // back into the new ones — otherwise the next table command has nothing to
+    // work from.
+    await clickTableMenuItem('Toggle header row');
+    expect(await tableShape()).toEqual(['TD,TD,TD', 'TD,TD,TD', 'TD,TD,TD', 'TD,TD,TD']);
+    await clickTableMenuItem('Delete row');
+    expect((await tableShape()).length).toBe(3);
+    addStep('The caret survives Toggle header row, so Delete row still works', true);
+
+    const ss = await takeScreenshot(page, 'html-editor-04-toolbar');
+    trackScreenshot('Toolbar — formatting and table editing', ss);
+
+    // Every command is its own undo step, all the way back to no table at all.
+    for (let step = 0; step < 6; step++) await clickFormatButton('Undo');
+    expect(await tableShape()).toEqual([]);
+    addStep('Six undo steps take all six table commands back', true);
+
+    await clickFormatButton('Redo');
+    expect((await tableShape()).length).toBe(3);
+    addStep('Redo puts the table back', true);
+
+    // None of it was written: the toolbar edits like every other edit here.
+    const stored = await fetchStoredDocument();
+    expect(stored.content).not.toContain('<table');
+    addStep('Toolbar edits are not autosaved either', true);
+
+    await clickEditorButton('Revert');
+    await clickDialogButton('Discard changes');
+    await waitForEditableFrame();
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  // Test 7: the HTML tab round-trips, and Save keeps the file intact
   // ────────────────────────────────────────────────────────────────────
   test('edits made in the HTML tab render in the visual view and save intact', async () => {
     await page.evaluate(() => {
@@ -425,7 +570,7 @@ describe('HTML editor', () => {
   });
 
   // ────────────────────────────────────────────────────────────────────
-  // Test 7: history restores an older version without renaming the file
+  // Test 8: history restores an older version without renaming the file
   // ────────────────────────────────────────────────────────────────────
   test('restores an older version and keeps the document title', async () => {
     await clickEditorButton('History');

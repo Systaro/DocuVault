@@ -22,7 +22,25 @@ function afterTag(source: string, re: RegExp): number | null {
 export function buildFrameDocument(source: string, baseHref: string): string {
   const head =
     (/<base\b/i.test(source) ? '' : `<base href="${baseHref.replace(/"/g, '%22')}">`) +
-    '<style>body{min-height:100vh;}</style>';
+    `<style>
+      body{min-height:100vh;}
+      /* Editing affordances only, scoped to the editable state and dropped with
+         the rest of <head> on save: a table whose page draws no borders is
+         otherwise impossible to aim a caret at. Outline rather than border, so
+         nothing in the page's own layout moves.
+
+         The size floor is deliberately limited to cells that are still empty —
+         a fresh table would otherwise collapse to a few invisible pixels — so
+         a page that already styles its tables keeps rendering them its way.
+         An "empty" cell holds a lone <br>: without it the caret has nowhere to
+         go, so :empty alone would not catch them. */
+      body[contenteditable="true"] td,
+      body[contenteditable="true"] th{outline:1px dashed rgba(56,128,135,.4);outline-offset:-1px;}
+      body[contenteditable="true"] td:empty,
+      body[contenteditable="true"] th:empty,
+      body[contenteditable="true"] td:has(>br:only-child),
+      body[contenteditable="true"] th:has(>br:only-child){min-width:5rem;height:1.8em;}
+    </style>`;
 
   const inHead = afterTag(source, /<head\b[^>]*>/i);
   if (inHead !== null) {
