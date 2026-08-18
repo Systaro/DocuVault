@@ -3,7 +3,23 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked, Renderer } from 'marked';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js/lib/common';
+import groovy from 'highlight.js/lib/languages/groovy';
+import gradle from 'highlight.js/lib/languages/gradle';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import properties from 'highlight.js/lib/languages/properties';
+import http from 'highlight.js/lib/languages/http';
+import nginx from 'highlight.js/lib/languages/nginx';
 import { resolveRelativePath } from '../utils/file-utils';
+
+// The `common` bundle covers ~35 mainstream languages but misses several our
+// docs rely on (Grails/Groovy above all). Registered here once for every
+// render surface that shares this service.
+hljs.registerLanguage('groovy', groovy);
+hljs.registerLanguage('gradle', gradle);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('properties', properties);
+hljs.registerLanguage('http', http);
+hljs.registerLanguage('nginx', nginx);
 
 @Injectable({ providedIn: 'root' })
 export class MarkdownRenderService {
