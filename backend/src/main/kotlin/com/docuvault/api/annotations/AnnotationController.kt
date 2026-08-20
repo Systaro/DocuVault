@@ -35,7 +35,13 @@ class AnnotationController(
 
         val perFile = annotationService.getUnresolvedCounts(spaceId)
         val total = perFile.values.sum()
-        return ResponseEntity.ok(mapOf("total" to total, "perFile" to perFile))
+        return ResponseEntity.ok(
+            mapOf(
+                "total" to total,
+                "perFile" to perFile,
+                "unanchored" to annotationService.getUnanchoredCount(spaceId)
+            )
+        )
     }
 
     @GetMapping
@@ -84,10 +90,48 @@ class AnnotationController(
             authorName = user.name,
             body = request.body,
             anchor = if (parent == null) request.anchor else null,
-            parent = parent
+            parent = parent,
+            docHash = if (parent == null) request.docHash else null
         )
 
         return ResponseEntity.status(HttpStatus.CREATED).body(annotation.toDto())
+    }
+
+    /**
+     * Record where this comment currently lands in the document.
+     *
+     * Resolution happens in the browser, against the rendered text, so the
+     * result has to travel back here to be cached — otherwise every reader
+     * re-runs the same matching, and the space's unanchored count never
+     * reflects reality. It is a cache write rather than content, so read access
+     * is enough: a viewer who can see the document can refresh where its
+     * comments sit.
+     */
+    @PatchMapping("/{annotationId}/anchor")
+    fun updateAnchor(
+        @PathVariable spaceId: UUID,
+        @PathVariable annotationId: UUID,
+        @Valid @RequestBody request: UpdateAnchorRequest,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<AnnotationDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (!permissionService.hasAccess(user.id!!, spaceId, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val annotation = annotationService.findById(annotationId)
+            ?: return ResponseEntity.notFound().build()
+        if (annotation.space.id != spaceId) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val updated = annotationService.updateAnchor(
+            annotationId, request.anchorCurrent, request.anchorState, request.docHash
+        ) ?: return ResponseEntity.badRequest().build()
+
+        return ResponseEntity.ok(updated.toDto())
     }
 
     @PatchMapping("/{annotationId}")

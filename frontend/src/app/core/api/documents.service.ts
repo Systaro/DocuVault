@@ -21,6 +21,8 @@ export interface DocumentContent {
   path: string;
   title?: string;
   content: string;
+  /** SHA-256 of the content as served — the API has always sent it. */
+  contentHash?: string;
   lastSyncedAt?: string;
 }
 

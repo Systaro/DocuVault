@@ -4,6 +4,7 @@ import com.docuvault.domain.space.Document
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.AnnotationService
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.ai.WritingAssistantService
@@ -38,7 +39,8 @@ class DocumentController(
     private val gitDiffService: GitDiffService,
     private val embeddingService: EmbeddingService,
     private val writingAssistantService: WritingAssistantService,
-    private val documentPersistService: DocumentPersistService
+    private val documentPersistService: DocumentPersistService,
+    private val annotationService: AnnotationService
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
     private fun hashContent(content: String) = documentPersistService.hashContent(content)
@@ -765,6 +767,16 @@ class DocumentController(
             doc?.let { documentRepository.save(it.copy(path = request.newPath)) }
         }
 
+        // Comments are addressed by (space, path), so they have to follow the
+        // file — otherwise a rename strands every thread on it for good.
+        annotationService.repointToNewPath(
+            sourceSpaceId = spaceId,
+            sourcePath = request.oldPath,
+            targetSpace = space,
+            targetPath = request.newPath,
+            isDirectory = isDir
+        )
+
         documentPersistService.commitIfRequested(
             space, autoCommit = true,
             message = "Rename ${request.oldPath} to ${request.newPath}", user = user
@@ -774,7 +786,6 @@ class DocumentController(
     }
 
 }
-
 /**
  * Extensions AI editing is never offered for. Mirrors AI_EDIT_BLOCKED_EXTENSIONS
  * in frontend/src/app/shared/utils/file-utils.ts — keep the two in sync.

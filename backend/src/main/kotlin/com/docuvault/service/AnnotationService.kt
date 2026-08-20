@@ -39,18 +39,56 @@ class AnnotationService(
         authorName: String,
         body: String,
         anchor: Map<String, Any>?,
-        parent: Annotation? = null
+        parent: Annotation? = null,
+        docHash: String? = null
     ): Annotation {
+        val serialised = anchor?.let { objectMapper.writeValueAsString(it) }
         val annotation = Annotation(
             space = space,
             filePath = filePath,
             user = user,
             authorName = authorName,
             body = body,
-            anchor = anchor?.let { objectMapper.writeValueAsString(it) },
+            anchor = serialised,
+            // The original doubles as the current resolution until something moves.
+            anchorCurrent = serialised,
+            anchorState = "ANCHORED",
+            anchorDocHash = docHash,
+            anchorVersion = ((anchor?.get("v") as? Number)?.toShort()) ?: 0,
             parent = parent
         )
         return annotationRepository.save(annotation)
+    }
+
+    /**
+     * Record where a comment currently lands. Called by whichever client last
+     * rendered the document, so a re-anchor is computed once and then read from
+     * the cache by everyone after them.
+     */
+    @Transactional
+    fun updateAnchor(
+        annotationId: UUID,
+        anchorCurrent: Map<String, Any>?,
+        anchorState: String,
+        docHash: String?
+    ): Annotation? {
+        val annotation = annotationRepository.findById(annotationId).orElse(null) ?: return null
+        val state = anchorState.uppercase()
+        if (state !in ANCHOR_STATES) return null
+
+        anchorCurrent?.let {
+            annotation.anchorCurrent = objectMapper.writeValueAsString(it)
+            (it["v"] as? Number)?.let { version -> annotation.anchorVersion = version.toShort() }
+        }
+        annotation.anchorState = state
+        annotation.anchorDocHash = docHash
+        // Deliberately not touching updatedAt: re-anchoring is bookkeeping, and
+        // letting it bump the timestamp would reorder threads on every render.
+        return annotationRepository.save(annotation)
+    }
+
+    private companion object {
+        val ANCHOR_STATES = setOf("ANCHORED", "SHIFTED", "ORPHANED")
     }
 
     @Transactional
@@ -106,6 +144,44 @@ class AnnotationService(
     fun getUnresolvedCounts(spaceId: UUID): Map<String, Long> {
         return annotationRepository.countUnresolvedBySpaceGroupedByFile(spaceId)
             .associate { row -> row[0] as String to row[1] as Long }
+    }
+
+    /** Open comments that no longer have a place in their document. */
+    @Transactional(readOnly = true)
+    fun getUnanchoredCount(spaceId: UUID): Long =
+        annotationRepository.countUnanchoredBySpace(spaceId)
+
+    /**
+     * Move the comments on a document to wherever the document went — a rename,
+     * a move within a space, or a transfer into another one.
+     *
+     * Comments are addressed by (space, path), so without this a rename strands
+     * every thread on the file: the rows survive, but nothing queries that pair
+     * again. The bulk update needs a transaction of its own, which is the whole
+     * reason this lives here rather than being inlined at the call sites.
+     */
+    @Transactional
+    fun repointToNewPath(
+        sourceSpaceId: UUID,
+        sourcePath: String,
+        targetSpace: Space,
+        targetPath: String,
+        isDirectory: Boolean
+    ): Int = if (isDirectory) {
+        annotationRepository.repointUnderFolder(
+            sourceSpaceId = sourceSpaceId,
+            sourceLike = "$sourcePath/%",
+            cutFrom = sourcePath.length + 1,
+            targetSpace = targetSpace,
+            targetPrefix = targetPath
+        )
+    } else {
+        annotationRepository.repoint(
+            sourceSpaceId = sourceSpaceId,
+            sourcePath = sourcePath,
+            targetSpace = targetSpace,
+            targetPath = targetPath
+        )
     }
 
     @Transactional(readOnly = true)

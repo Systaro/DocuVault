@@ -35,9 +35,32 @@ data class Annotation(
     @Column(nullable = false, columnDefinition = "TEXT")
     var body: String,
 
+    /**
+     * Where the comment was originally put. Never rewritten — it is what lets a
+     * reader see what a comment used to point at once the text has moved on.
+     */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     val anchor: String? = null,
+
+    /** The last successful re-resolution, written back by whoever opened the document. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "anchor_current", columnDefinition = "jsonb")
+    var anchorCurrent: String? = null,
+
+    /** ANCHORED, SHIFTED or ORPHANED — never a synonym for resolved. */
+    @Column(name = "anchor_state", nullable = false, length = 16)
+    var anchorState: String = "ANCHORED",
+
+    /** Document content hash at the last resolution; equal means skip re-anchoring. */
+    @Column(name = "anchor_doc_hash", length = 71)
+    var anchorDocHash: String? = null,
+
+    @Column(name = "anchor_commit", length = 40)
+    val anchorCommit: String? = null,
+
+    @Column(name = "anchor_version", nullable = false)
+    var anchorVersion: Short = 0,
 
     @Column(nullable = false)
     var resolved: Boolean = false,
