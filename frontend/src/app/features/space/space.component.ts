@@ -331,7 +331,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                    (dragleave)="onFolderDragLeave(node.path, $event)"
                    (drop)="onFolderDrop(node.path, $event)">
                 <button
-                  (click)="openFolder(node.path)"
+                  (click)="onFolderRowClick(node.path)"
                   class="tree-item"
                   [class.expanded]="isTreeExpanded(node.path)"
                   [class.active]="currentFolderPath() === node.path"
@@ -1761,6 +1761,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.treeSync.changesFor(() => this.spaceSignal()?.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(spaceId => this.loadFileTree(spaceId));
+
+    document.addEventListener('dragover', this.trackDragIntent, true);
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -2257,8 +2259,12 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   dropTargetPath = signal<string | null>(null);
   /** True while a drag is over empty sidebar space (→ space root). */
   rootDropActive = signal(false);
-  /** The tree node being dragged to reorganise it (internal move), or null. */
+  /** The tree node being dragged to reorganise it (internal move), or null.
+   *  Only set once the pointer has travelled {@link DRAG_INTENT_PX} — see
+   *  {@link onNodeDragStart}. */
   draggingNode = signal<FileNode | null>(null);
+  /** A native drag has begun but hasn't travelled far enough to count as one. */
+  private pendingDrag: { node: FileNode; x: number; y: number } | null = null;
   uploading = signal(false);
   uploadProgress = signal<BulkUploadProgress | null>(null);
   /** Folder the hidden pickers upload into — set just before one is opened. */
@@ -2275,6 +2281,30 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     return this.hasFiles(event) || !!this.draggingNode();
   }
 
+  /**
+   * How far the pointer must travel before a press on a tree row counts as a
+   * drag rather than a click. The browser's own threshold is ~4px, which is
+   * close enough to a stationary click that opening a folder regularly turned
+   * into moving it. Everything below the threshold is replayed as a click in
+   * {@link onNodeDragEnd} — once a native drag has started the browser
+   * suppresses the click event, so it has to be reissued by hand.
+   */
+  private static readonly DRAG_INTENT_PX = 12;
+
+  /**
+   * Promote a pending drag once it has travelled far enough. Bound in the
+   * capture phase because the folder rows call `stopPropagation()` on their own
+   * `dragover` handlers, which would otherwise keep the event from reaching
+   * document level at all.
+   */
+  private trackDragIntent = (event: DragEvent): void => {
+    const pending = this.pendingDrag;
+    if (!pending) return;
+    const travelled = Math.hypot(event.clientX - pending.x, event.clientY - pending.y);
+    if (travelled < SpaceComponent.DRAG_INTENT_PX) return;
+    this.pendingDrag = null;
+    this.draggingNode.set(pending.node);
+  };
 
   private dropEffectFor(event: DragEvent): 'copy' | 'move' {
     return this.hasFiles(event) ? 'copy' : 'move';
@@ -2283,7 +2313,10 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   // --- Dragging a tree node to reorganise (internal move) ---
 
   onNodeDragStart(node: FileNode, event: DragEvent): void {
-    this.draggingNode.set(node);
+    // Held back rather than published straight away: until the pointer clears
+    // DRAG_INTENT_PX this is still a click as far as the tree is concerned, so
+    // no drop target lights up and no drop is accepted.
+    this.pendingDrag = { node, x: event.clientX, y: event.clientY };
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
       // text/plain keeps Firefox from cancelling the drag; the node itself is
@@ -2293,9 +2326,40 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onNodeDragEnd(): void {
+    // Released without ever clearing the intent threshold: the user meant to
+    // click. The browser swallowed the click when it started the drag, so the
+    // row's own action has to run here instead.
+    const unpromoted = this.pendingDrag;
+    this.pendingDrag = null;
     this.draggingNode.set(null);
     this.dropTargetPath.set(null);
     this.rootDropActive.set(false);
+    if (unpromoted) this.activateNode(unpromoted.node);
+  }
+
+  /** What clicking a tree row does — folders open, files navigate. */
+  private activateNode(node: FileNode): void {
+    this.replayedClickAt = Date.now();
+    if (node.isDirectory) {
+      this.openFolder(node.path);
+      return;
+    }
+    const space = this.spaceSignal();
+    if (!space) return;
+    this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: node.path } });
+  }
+
+  /**
+   * When {@link activateNode} last stood in for a click the browser swallowed.
+   * Every browser we support drops the click after a drag, but a browser that
+   * doesn't would toggle the folder twice and collapse it again — so a real
+   * click arriving right behind the replay is ignored.
+   */
+  private replayedClickAt = 0;
+
+  onFolderRowClick(path: string): void {
+    if (Date.now() - this.replayedClickAt < 200) return;
+    this.openFolder(path);
   }
 
   // --- Folder rows: accept OS files (upload) or a dragged node (move) ---
@@ -2484,6 +2548,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     document.removeEventListener('mousemove', this.boundOnMouseMove);
     document.removeEventListener('mouseup', this.boundOnMouseUp);
+    document.removeEventListener('dragover', this.trackDragIntent, true);
     this.titleService.setTitle('DocuVault');
   }
 }
