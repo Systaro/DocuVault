@@ -32,6 +32,14 @@ export interface Space {
   conflictDetectedAt?: string;
 }
 
+/** A destination candidate for moving or copying an item into. */
+export interface WritableSpace {
+  id: string;
+  name: string;
+  fullPath: string;
+  inConflict: boolean;
+}
+
 export interface CreateSpaceRequest {
   name: string;
   slug: string;
@@ -72,6 +80,11 @@ export class SpacesService {
 
   getSpaces(): Observable<Space[]> {
     return this.http.get<Space[]>('/api/spaces');
+  }
+
+  /** Spaces this user can write documents into — the move/copy destinations. */
+  getWritableSpaces(): Observable<WritableSpace[]> {
+    return this.http.get<WritableSpace[]>('/api/spaces/writable');
   }
 
   getTopLevelSpaces(): Observable<Space[]> {

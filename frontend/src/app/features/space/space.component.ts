@@ -23,11 +23,12 @@ import { getInitials, avatarHue } from '../../shared/utils/user-utils';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
 import { FileActionsService } from '../../shared/services/file-actions.service';
+import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/move-item-dialog.component';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, SpaceRoutePipe],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, MoveItemDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -307,49 +308,14 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
         }
 
         @if (movingNode(); as node) {
-          <div class="modal-overlay" (click)="cancelMoveFile()">
-            <div class="modal" (click)="$event.stopPropagation()">
-              <div class="modal-header"><h2>Move file</h2></div>
-              <div class="modal-body">
-                <p>Move <strong>{{ node.name }}</strong> to:</p>
-                <div class="move-search-wrap">
-                  <span class="material-icons move-search-icon">search</span>
-                  <input
-                    class="move-search"
-                    type="text"
-                    autofocus
-                    placeholder="Search folders…"
-                    [ngModel]="moveSearch()"
-                    (ngModelChange)="moveSearch.set($event)"
-                  />
-                </div>
-                <ul class="move-folder-list">
-                  @for (folder of filteredFolderOptions(); track folder) {
-                    <li>
-                      <button
-                        type="button"
-                        class="move-folder-option"
-                        [class.selected]="folder === moveTargetFolder"
-                        (click)="moveTargetFolder = folder"
-                      >
-                        <span class="material-icons opt-icon">{{ folder ? 'folder' : 'home' }}</span>
-                        <span class="move-folder-label">{{ folder || '(space root)' }}</span>
-                        @if (folder === moveTargetFolder) {
-                          <span class="material-icons opt-check">check</span>
-                        }
-                      </button>
-                    </li>
-                  } @empty {
-                    <li class="move-folder-empty">No matching folders</li>
-                  }
-                </ul>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" (click)="cancelMoveFile()">Cancel</button>
-                <button type="button" class="btn btn-primary" (click)="confirmMoveFile()" [disabled]="moveBusy()">Move</button>
-              </div>
-            </div>
-          </div>
+          @if (spaceSignal(); as currentSpace) {
+            <app-move-item-dialog
+              [node]="node"
+              [sourceSpaceId]="currentSpace.id"
+              (done)="onMoveDone($event)"
+              (cancelled)="cancelMoveFile()"
+            />
+          }
         }
       }
 
@@ -419,6 +385,10 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
                       <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
                         <span class="material-icons">drive_file_rename_outline</span>
                         Rename
+                      </button>
+                      <button class="tree-dropdown-item" (click)="startMoveFile(node)">
+                        <span class="material-icons">drive_file_move</span>
+                        Move or copy
                       </button>
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, true)">
                         <span class="material-icons">share</span>
@@ -518,7 +488,7 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
                       </button>
                       <button class="tree-dropdown-item" (click)="startMoveFile(node)">
                         <span class="material-icons">drive_file_move</span>
-                        Move
+                        Move or copy
                       </button>
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, false)">
                         <span class="material-icons">share</span>
@@ -1734,37 +1704,8 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   /** File pending deletion — drives the delete-confirmation modal. */
   deletingNode = signal<FileNode | null>(null);
   deleteBusy = signal(false);
-  /** File being moved — drives the move modal. */
+  /** Item being moved or copied — drives the move dialog. */
   movingNode = signal<FileNode | null>(null);
-  moveBusy = signal(false);
-  /** Destination folder selected in the move modal ('' = space root). */
-  moveTargetFolder = '';
-  /** Search query in the move modal's folder picker. */
-  moveSearch = signal('');
-
-  /** All folder paths in the tree, for the move modal's destination picker. */
-  folderOptions = computed<string[]>(() => {
-    const out: string[] = [];
-    const walk = (nodes: FileNode[]): void => {
-      for (const n of nodes) {
-        if (n.isDirectory) {
-          out.push(n.path);
-          if (n.children) walk(n.children);
-        }
-      }
-    };
-    walk(this.fileTree());
-    return out.sort((a, b) => a.localeCompare(b));
-  });
-
-  /** Folder options filtered by the move-modal search box. '' (space root) is
-   *  always offered first, and hidden only when it doesn't match the query. */
-  filteredFolderOptions = computed<string[]>(() => {
-    const q = this.moveSearch().toLowerCase().trim();
-    const all = ['', ...this.folderOptions()];
-    if (!q) return all;
-    return all.filter(f => (f || 'space root').toLowerCase().includes(q));
-  });
 
   /** Everyone with effective access to this space, strongest level first. */
   members = signal<SpaceMember[]>([]);
@@ -2334,6 +2275,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     return this.hasFiles(event) || !!this.draggingNode();
   }
 
+
   private dropEffectFor(event: DragEvent): 'copy' | 'move' {
     return this.hasFiles(event) ? 'copy' : 'move';
   }
@@ -2502,41 +2444,41 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   startMoveFile(node: FileNode): void {
     this.movingNode.set(node);
-    this.moveTargetFolder = this.parentFolderOf(node.path);
-    this.moveSearch.set('');
     this.openMenuPath.set(null);
   }
 
-  confirmMoveFile(): void {
+  /**
+   * The dialog has already done the transfer; all that's left is to reflect it.
+   * A move out of this space takes the open document with it, so the editor
+   * follows the file to its new home rather than sitting on a dead path.
+   */
+  onMoveDone({ mode, result }: MoveOutcome): void {
     const node = this.movingNode();
     const space = this.spaceSignal();
+    this.movingNode.set(null);
     if (!node || !space) return;
-    const target = this.moveTargetFolder;
-    const newPath = target ? `${target}/${node.name}` : node.name;
-    if (newPath === node.path) { this.cancelMoveFile(); return; }
-    this.moveBusy.set(true);
+
+    const leftThisSpace = result.targetSpaceId !== space.id;
+    const wasMove = mode === 'MOVE';
+    const detail = result.renamed
+      ? `"${node.name}" → ${result.targetPath} (renamed — the name was taken)`
+      : `"${node.name}" → ${result.targetSpaceFullPath} / ${result.targetPath}`;
+    this.toastService.success(wasMove ? 'Moved' : 'Copied', detail);
+
+    this.treeSync.notify(space.id);
+    if (leftThisSpace) this.treeSync.notify(result.targetSpaceId);
+
     const wasActive = this.currentDocPath() === node.path;
-    this.documentsService.rename(space.id, node.path, newPath).subscribe({
-      next: () => {
-        this.moveBusy.set(false);
-        this.movingNode.set(null);
-        this.toastService.success('Moved', `"${node.name}" → ${target || 'space root'}`);
-        this.treeSync.notify(space.id);
-        if (wasActive) {
-          this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
-        }
-      },
-      error: (err) => {
-        this.moveBusy.set(false);
-        this.toastService.error('Move failed', err?.error?.message ?? 'Could not move the file.');
-      }
-    });
+    if (wasActive && wasMove) {
+      const route = leftThisSpace
+        ? spaceRoute(result.targetSpaceFullPath, 'doc')
+        : spaceRoute(space.fullPath, 'doc');
+      this.router.navigate(route, { queryParams: { path: result.targetPath } });
+    }
   }
 
   cancelMoveFile(): void {
     this.movingNode.set(null);
-    this.moveTargetFolder = '';
-    this.moveSearch.set('');
   }
 
   ngOnDestroy(): void {

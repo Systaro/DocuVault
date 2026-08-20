@@ -65,6 +65,25 @@ export interface UploadedFile {
   name: string;
 }
 
+export type TransferMode = 'MOVE' | 'COPY';
+
+export interface TransferRequest {
+  sourcePath: string;
+  targetSpaceId: string;
+  /** '' targets the destination space's root. */
+  targetFolder: string;
+  mode: TransferMode;
+}
+
+export interface TransferResult {
+  targetSpaceId: string;
+  targetSpaceFullPath: string;
+  targetPath: string;
+  /** True when the name was suffixed because the destination was taken. */
+  renamed: boolean;
+  fileCount: number;
+}
+
 /** A commit as the history APIs report it. */
 export interface FileVersion {
   sha: string;
@@ -136,6 +155,14 @@ export class DocumentsService {
 
   rename(spaceId: string, oldPath: string, newPath: string): Observable<void> {
     return this.http.post<void>(`/api/spaces/${spaceId}/documents/rename`, { oldPath, newPath });
+  }
+
+  /**
+   * Move or copy an item into `targetSpaceId` — which may be the space it is
+   * already in. `spaceId` is always where it comes from.
+   */
+  transfer(spaceId: string, request: TransferRequest): Observable<TransferResult> {
+    return this.http.post<TransferResult>(`/api/spaces/${spaceId}/documents/transfer`, request);
   }
 
   /**

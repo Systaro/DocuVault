@@ -6,7 +6,10 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.AnnotationService
 import com.docuvault.service.DocumentPersistService
+import com.docuvault.service.DocumentTransferService
 import com.docuvault.service.PermissionService
+import com.docuvault.service.TransferMode
+import com.docuvault.service.TransferResult
 import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.requireSpaceWritable
@@ -40,6 +43,7 @@ class DocumentController(
     private val embeddingService: EmbeddingService,
     private val writingAssistantService: WritingAssistantService,
     private val documentPersistService: DocumentPersistService,
+    private val documentTransferService: DocumentTransferService,
     private val annotationService: AnnotationService
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
@@ -785,7 +789,90 @@ class DocumentController(
         return ResponseEntity.ok().build()
     }
 
+    /**
+     * Move or copy an item into another space — or into another folder of this
+     * one. `spaceId` is always the source; the destination travels in the body.
+     *
+     * A move needs edit rights on both ends, because it writes to one and
+     * removes from the other. A copy only reads the source, so view rights there
+     * are enough as long as the user can write to the destination.
+     */
+    @PostMapping("/transfer")
+    fun transferItem(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: TransferRequest
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val mode = runCatching { TransferMode.valueOf(request.mode.uppercase()) }.getOrNull()
+            ?: return ResponseEntity.badRequest().body(mapOf("message" to "Unknown mode '${request.mode}'."))
+
+        val sourceSpace = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+        val targetSpace = spaceRepository.findById(request.targetSpaceId).orElse(null)
+            ?: return ResponseEntity.badRequest().body(mapOf("message" to "That space no longer exists."))
+
+        val sourceOk = if (mode == TransferMode.MOVE) {
+            permissionService.hasEditAccess(user.id!!, sourceSpace.id!!, user.role)
+        } else {
+            permissionService.hasAccess(user.id!!, sourceSpace.id!!, user.role)
+        }
+        if (!sourceOk || !permissionService.hasEditAccess(user.id!!, targetSpace.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        requireSpaceWritable(targetSpace)
+        if (mode == TransferMode.MOVE) requireSpaceWritable(sourceSpace)
+
+        return when (val result = documentTransferService.transfer(
+            sourceSpace = sourceSpace,
+            sourcePath = request.sourcePath,
+            targetSpace = targetSpace,
+            targetFolder = request.targetFolder,
+            mode = mode,
+            user = user
+        )) {
+            is TransferResult.Ok -> ResponseEntity.ok(
+                TransferResponse(
+                    targetSpaceId = targetSpace.id!!,
+                    targetSpaceFullPath = targetSpace.getFullPath(),
+                    targetPath = result.targetPath,
+                    renamed = result.renamed,
+                    fileCount = result.fileCount
+                )
+            )
+            is TransferResult.Failed ->
+                ResponseEntity.badRequest().body(mapOf("message" to result.reason))
+        }
+    }
+
 }
+
+data class TransferRequest(
+    @field:NotBlank(message = "Source path is required")
+    val sourcePath: String,
+
+    val targetSpaceId: UUID,
+
+    /** '' means the destination space's root. */
+    val targetFolder: String = "",
+
+    /** MOVE or COPY. */
+    @field:NotBlank(message = "Mode is required")
+    val mode: String
+)
+
+data class TransferResponse(
+    val targetSpaceId: UUID,
+    val targetSpaceFullPath: String,
+    val targetPath: String,
+    /** True when the name had to be suffixed because the destination was taken. */
+    val renamed: Boolean,
+    val fileCount: Int
+)
+
 /**
  * Extensions AI editing is never offered for. Mirrors AI_EDIT_BLOCKED_EXTENSIONS
  * in frontend/src/app/shared/utils/file-utils.ts — keep the two in sync.

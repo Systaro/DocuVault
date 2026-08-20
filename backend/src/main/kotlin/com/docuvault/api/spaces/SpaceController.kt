@@ -4,6 +4,7 @@ import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
 import com.docuvault.domain.space.SpacePermission
 import com.docuvault.domain.space.SpaceType
+import com.docuvault.domain.space.SyncStatus
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.api.teams.TeamSpacePermissionDto
@@ -92,6 +93,40 @@ class SpaceController(
             documentCount = if (it.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(it.id!!) else 0,
             childCount = spaceRepository.countChildren(it.id!!)
         ) })
+    }
+
+    /**
+     * Every space this user could put a document into: repositories only —
+     * groups hold no files — and only where they hold edit rights. Feeds the
+     * destination picker when moving or copying an item between spaces.
+     */
+    @GetMapping("/writable")
+    fun listWritableSpaces(
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<List<WritableSpaceDto>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val candidates = if (user.role == UserRole.SUPER_ADMIN) {
+            spaceRepository.findAll()
+        } else {
+            permissionService.getAccessibleSpaces(user.id!!, user.role)
+        }
+
+        val writable = candidates
+            .filter { it.type == SpaceType.REPOSITORY }
+            .filter { permissionService.hasEditAccess(user.id!!, it.id!!, user.role) }
+            .map {
+                WritableSpaceDto(
+                    id = it.id!!,
+                    name = it.name,
+                    fullPath = it.getFullPath(),
+                    inConflict = it.syncStatus == SyncStatus.IN_CONFLICT
+                )
+            }
+            .sortedBy { it.fullPath.lowercase() }
+
+        return ResponseEntity.ok(writable)
     }
 
     @GetMapping("/children/{parentId}")
@@ -759,6 +794,14 @@ data class AddPermissionRequest(
 data class AddTeamPermissionRequest(
     val teamId: UUID,
     val permissionLevel: String
+)
+
+/** A destination candidate for a move or copy — just enough to label a row. */
+data class WritableSpaceDto(
+    val id: UUID,
+    val name: String,
+    val fullPath: String,
+    val inConflict: Boolean
 )
 
 data class SpaceDto(
