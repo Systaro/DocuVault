@@ -1,7 +1,18 @@
-import { Component, input, output, signal, ViewEncapsulation } from '@angular/core';
+import { Component, computed, input, output, signal, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Annotation, AnnotationPermission } from '../../core/api/annotations.service';
+import { TextQuoteSelector, findSelector, toAnchorRecord } from '../annotations/anchoring/selectors';
+
+/** The words a comment was originally written against, if it recorded any. */
+function originalQuote(annotation: Annotation): string | null {
+  const quote = findSelector<TextQuoteSelector>(toAnchorRecord(annotation.anchor), 'TextQuote');
+  return quote?.exact?.trim() || null;
+}
+
+function truncate(value: string, limit = 140): string {
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
+}
 
 @Component({
   selector: 'app-annotation-thread',
@@ -37,6 +48,29 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
       </div>
 
       <div class="thread-body">{{ annotation().body }}</div>
+
+      <!-- Only a fuzzy match was possible: the pin is on the right passage, but
+           that passage has been edited since the comment was written. Showing
+           both texts lets the reader judge whether the comment still applies —
+           which is a decision only a person can make. -->
+      @if (shiftedNote(); as note) {
+        <div class="drift-note">
+          <div class="drift-head">
+            <span class="material-icons">history_edu</span>
+            <span>The text this refers to has changed</span>
+          </div>
+          <div class="drift-row">
+            <span class="drift-label">Was</span>
+            <span class="drift-text was">{{ note.was }}</span>
+          </div>
+          @if (note.now) {
+            <div class="drift-row">
+              <span class="drift-label">Now</span>
+              <span class="drift-text">{{ note.now }}</span>
+            </div>
+          }
+        </div>
+      }
 
       @if (annotation().resolved) {
         <div class="resolved-badge">
@@ -186,6 +220,56 @@ import { Annotation, AnnotationPermission } from '../../core/api/annotations.ser
 
     .reply:hover .thread-btn.small { opacity: 1; }
 
+    /* Drift note. Amber, like the pin's ring: informational, not an error —
+       the comment is fine, its ground has moved. */
+    .drift-note {
+      margin: 0 14px 10px;
+      padding: 8px 10px;
+      border: 1px solid rgba(180, 125, 42, 0.35);
+      border-radius: 8px;
+      background: rgba(180, 125, 42, 0.08);
+      font-size: 12px;
+    }
+
+    .drift-head {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: #8a5f19;
+    }
+
+    .drift-head .material-icons { font-size: 15px; }
+
+    .drift-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 3px;
+      line-height: 1.45;
+    }
+
+    .drift-label {
+      flex: none;
+      width: 30px;
+      color: var(--text-muted, #7a9a9d);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      padding-top: 2px;
+    }
+
+    .drift-text {
+      min-width: 0;
+      color: var(--text-primary, #1a2e30);
+      overflow-wrap: anywhere;
+    }
+
+    .drift-text.was {
+      text-decoration: line-through;
+      color: var(--text-muted, #7a9a9d);
+    }
+
     .thread-body {
       padding: 10px 14px;
       font-size: 13px;
@@ -288,6 +372,8 @@ export class AnnotationThreadComponent {
   currentUserId = input<string | null>(null);
   posX = input<number>(0);
   posY = input<number>(0);
+  /** What the document says where this comment now sits, when it has drifted. */
+  currentText = input<string | null>(null);
 
   close = output<void>();
   reply = output<string>();
@@ -295,6 +381,18 @@ export class AnnotationThreadComponent {
   remove = output<string>();
 
   replyText = '';
+
+  /** The then-and-now pair for a comment whose text was edited under it. */
+  shiftedNote = computed<{ was: string; now: string | null } | null>(() => {
+    const annotation = this.annotation();
+    if (annotation.anchorState !== 'SHIFTED') return null;
+    const was = originalQuote(annotation);
+    if (!was) return null;
+    const now = this.currentText()?.trim() || null;
+    // Identical texts mean the passage merely moved, which needs no warning.
+    if (now && now === was) return null;
+    return { was: truncate(was), now: now ? truncate(now) : null };
+  });
 
   canComment(): boolean {
     const p = this.permission();

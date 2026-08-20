@@ -8,8 +8,10 @@ import { Component, input, output, ViewEncapsulation } from '@angular/core';
       class="annotation-pin"
       [class.resolved]="resolved()"
       [class.active]="active()"
-      [style.left.%]="x()"
-      [style.top.%]="y()"
+      [class.shifted]="shifted()"
+      [title]="shifted() ? 'The text this comment refers to has changed' : ''"
+      [style.left]="x() + unit()"
+      [style.top]="y() + unit()"
       (click)="markerClick.emit($event)"
       (mouseenter)="markerHover.emit(true)"
       (mouseleave)="markerHover.emit(false)"
@@ -55,6 +57,18 @@ import { Component, input, output, ViewEncapsulation } from '@angular/core';
       background: #059669;
     }
 
+    /* Fuzzy match: the pin is on the right passage, but that passage has been
+       edited since the comment was written. The ring says "look before you
+       trust this" without hiding the comment. */
+    .annotation-pin.shifted {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(180, 125, 42, 0.55);
+    }
+
+    .annotation-pin.shifted:hover,
+    .annotation-pin.shifted.active {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(180, 125, 42, 0.8);
+    }
+
     .pin-number {
       transform: rotate(45deg);
       font-size: 12px;
@@ -71,6 +85,14 @@ export class AnnotationMarkerComponent {
   index = input.required<number>();
   resolved = input<boolean>(false);
   active = input<boolean>(false);
+  /** True when the anchor only matched fuzzily — the text has since been edited. */
+  shifted = input<boolean>(false);
+  /**
+   * Percentages for images, where a coordinate genuinely is the anchor; pixels
+   * for text, where the position comes from a resolved range and so has to be
+   * measured rather than guessed.
+   */
+  unit = input<'%' | 'px'>('%');
 
   markerClick = output<MouseEvent>();
   markerHover = output<boolean>();

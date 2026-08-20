@@ -766,6 +766,7 @@ interface OutlineItem {
                 [filePath]="documentPath"
                 [renderMode]="'markdown'"
                 [permission]="annotationPermission()"
+                [docHash]="anchorDocHash()"
               />
             }
             @if (!isDataView()) {
@@ -1938,6 +1939,13 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   // Read/edit split: documents open in rendered read mode; the user clicks Edit
   // to switch to the TipTap editor.
   editMode = signal(false);
+  /**
+   * Content hash to resolve comment anchors against — only while showing saved
+   * content. In edit mode it is deliberately null: the document on screen is a
+   * draft that may never be saved, and caching anchors against it would point
+   * every other reader at text that does not exist.
+   */
+  anchorDocHash = computed(() => this.editMode() ? null : (this.document()?.contentHash ?? null));
   canEdit = computed(() => !this.isReadOnly());
   // True only when the TipTap editor + toolbar should be shown.
   showEditor = computed(() => this.canEdit() && this.editMode());

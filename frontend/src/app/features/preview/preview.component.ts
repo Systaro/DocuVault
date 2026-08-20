@@ -130,6 +130,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
                 [renderMode]="renderMode()!"
                 [permission]="annotationPermission()"
                 [currentUserId]="currentUserId()"
+                [docHash]="docHash()"
                 [allowComment]="false"
               />
             </div>
@@ -594,6 +595,9 @@ export class PreviewComponent implements OnInit, OnDestroy {
   error = signal<string | null>(null);
   renderMode = signal<RenderMode | null>(null);
   renderedHtml = signal<SafeHtml>('');
+  /** Content hash of the loaded document — lets comment anchors skip re-resolving
+   *  when the document hasn't changed since they were last placed. */
+  docHash = signal<string | null>(null);
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
 
@@ -765,6 +769,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
         .pipe(takeUntil(this.destroy$))
         .subscribe({
           next: (doc) => {
+            this.docHash.set(doc.contentHash ?? null);
             const docDir = path.substring(0, path.lastIndexOf('/') + 1);
             this.renderedHtml.set(this.markdownService.render(
               doc.content,

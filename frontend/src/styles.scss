@@ -886,7 +886,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  /* Above the annotation layer, which tops out at 400 (pins 150, threads 200,
+     the re-anchor banner 400). At 100 a comment pin floated over every dialog.
+     Still below toasts (1000) and the fullscreen diagram viewer (10000). */
+  z-index: 500;
 }
 
 .modal {

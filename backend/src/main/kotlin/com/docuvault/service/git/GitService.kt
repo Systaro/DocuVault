@@ -14,6 +14,7 @@ import java.io.File
 import java.net.UnknownHostException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -422,6 +423,114 @@ class GitService(
         } catch (e: Exception) {
             logger.error("Failed to rename '$oldPath' to '$newPath' for space '${space.name}': ${e.message}", e)
             false
+        }
+    }
+
+    /**
+     * Whether anything at all — file or directory — sits at [path]. Used to pick
+     * a free name before a transfer rather than overwriting what is already there.
+     */
+    fun itemExists(space: Space, path: String): Boolean {
+        val repoDir = getRepoPath(space.id!!)
+        val resolved = try {
+            validatePath(repoDir, path)
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        return Files.exists(resolved)
+    }
+
+    /**
+     * Copy a file or a whole directory from one space's working tree into
+     * another's. Byte-level throughout — a `readString`/`writeString` round trip
+     * would corrupt every image, PDF and archive in the tree.
+     *
+     * Both endpoints are validated against their own repository root, so neither
+     * side of the transfer can be talked into escaping its space.
+     */
+    fun copyItemAcrossSpaces(
+        sourceSpace: Space,
+        sourcePath: String,
+        targetSpace: Space,
+        targetPath: String
+    ): Boolean {
+        ensureVersionedBeforeMutation(targetSpace)
+        val from = validatePath(getRepoPath(sourceSpace.id!!), sourcePath)
+        val to = validatePath(getRepoPath(targetSpace.id!!), targetPath)
+
+        return try {
+            if (!Files.exists(from)) return false
+            Files.createDirectories(to.parent)
+            if (Files.isDirectory(from)) {
+                Files.walk(from).use { stream ->
+                    stream.forEach { entry ->
+                        val destination = to.resolve(from.relativize(entry).toString())
+                        if (Files.isDirectory(entry)) {
+                            Files.createDirectories(destination)
+                        } else {
+                            Files.createDirectories(destination.parent)
+                            Files.copy(entry, destination, StandardCopyOption.REPLACE_EXISTING)
+                        }
+                    }
+                }
+            } else {
+                Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING)
+            }
+            true
+        } catch (e: Exception) {
+            logger.error(
+                "Failed to copy '$sourcePath' from space '${sourceSpace.name}' " +
+                    "to '$targetPath' in space '${targetSpace.name}': ${e.message}", e
+            )
+            false
+        }
+    }
+
+    /**
+     * Remove a file or directory from a space's working tree. The counterpart to
+     * {@link copyItemAcrossSpaces} for a move, run only once the copy succeeded
+     * so a failure part-way leaves the original in place rather than nothing.
+     */
+    fun removeItem(space: Space, path: String): Boolean {
+        ensureVersionedBeforeMutation(space)
+        val resolved = validatePath(getRepoPath(space.id!!), path)
+        return try {
+            if (!Files.exists(resolved)) return false
+            if (Files.isDirectory(resolved)) {
+                Files.walk(resolved).use { stream ->
+                    stream.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+                }
+            } else {
+                Files.deleteIfExists(resolved)
+            }
+            true
+        } catch (e: Exception) {
+            logger.error("Failed to remove '$path' from space '${space.name}': ${e.message}", e)
+            false
+        }
+    }
+
+    /** Every regular file under [path], as space-relative paths. */
+    fun listFilesUnder(space: Space, path: String): List<String> {
+        val repoDir = getRepoPath(space.id!!)
+        val resolved = try {
+            validatePath(repoDir, path)
+        } catch (_: IllegalArgumentException) {
+            return emptyList()
+        }
+        if (!Files.exists(resolved)) return emptyList()
+        if (Files.isRegularFile(resolved)) return listOf(path)
+        return try {
+            Files.walk(resolved).use { stream ->
+                stream.filter { Files.isRegularFile(it) }
+                    .map { repoDir.relativize(it).joinToString("/") }
+                    .filter { !it.startsWith(".git/") }
+                    .sorted()
+                    .toList()
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to list files under '$path' in space '${space.name}': ${e.message}", e)
+            emptyList()
         }
     }
 

@@ -11,6 +11,40 @@ import { AnnotationMarkerComponent } from './annotation-marker.component';
 import { AnnotationThreadComponent } from './annotation-thread.component';
 import { RenderMode } from '../utils/file-utils';
 import { ToastService } from '../services/toast.service';
+import { anchorRecord, describePoint, describeRange, Anchored, AnchorState } from '../annotations/anchoring/anchoring';
+import { TextIndex } from '../annotations/anchoring/text-index';
+import { AnchorRecord, ANCHOR_VERSION, TextQuoteSelector, findSelector, toAnchorRecord } from '../annotations/anchoring/selectors';
+
+/** Where one comment currently sits, in host-relative pixels. */
+interface Placement {
+  state: AnchorState;
+  position: { start: number; end: number } | null;
+  currentText?: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * A comment being written but not yet posted. The placement dot is carried in
+ * its own coordinates because the anchor may be a text quote, which has no
+ * percentage to render from.
+ */
+interface NewAnnotationDraft {
+  anchor: AnnotationAnchor;
+  screenX: number;
+  screenY: number;
+  dotX: number;
+  dotY: number;
+  dotUnit: '%' | 'px';
+}
+
+/** The first rect a range actually paints into, ignoring zero-size fragments. */
+function firstVisibleRect(range: Range): DOMRect | null {
+  const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
+  if (rects.length > 0) return rects[0];
+  const fallback = range.getBoundingClientRect();
+  return fallback.width || fallback.height ? fallback : null;
+}
 
 @Component({
   selector: 'app-annotation-overlay',
@@ -30,8 +64,8 @@ import { ToastService } from '../services/toast.service';
         @for (a of annotations(); track a.id; let i = $index) {
           @if (a.anchor) {
             <app-annotation-marker
-              [x]="a.anchor.xPercent"
-              [y]="a.anchor.yPercent"
+              [x]="a.anchor.xPercent ?? 50"
+              [y]="a.anchor.yPercent ?? 50"
               [index]="i + 1"
               [resolved]="a.resolved"
               [active]="activeAnnotationId() === a.id"
@@ -48,13 +82,30 @@ import { ToastService } from '../services/toast.service';
         <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
       }
 
-      <!-- Markers (skip for html mode — iframe renders its own markers) -->
-      @if (renderMode() !== 'html') {
+      <!-- Markers. Text documents position from a resolved range, measured in
+           pixels off the live DOM, so reflow and zoom move the pin with the
+           text instead of away from it. Everything else keeps percentages. -->
+      @if (usesTextAnchoring()) {
+        @for (a of placedAnnotations(); track a.id) {
+          @if (placementOf(a.id); as placement) {
+            <app-annotation-marker
+              [x]="placement.x"
+              [y]="placement.y"
+              unit="px"
+              [index]="markerIndexOf(a)"
+              [resolved]="a.resolved"
+              [shifted]="placement.state === 'SHIFTED'"
+              [active]="activeAnnotationId() === a.id"
+              (markerClick)="openThread(a, $event)"
+            />
+          }
+        }
+      } @else if (renderMode() !== 'html') {
         @for (a of annotations(); track a.id; let i = $index) {
           @if (a.anchor) {
             <app-annotation-marker
-              [x]="a.anchor.xPercent"
-              [y]="a.anchor.yPercent"
+              [x]="a.anchor.xPercent ?? 50"
+              [y]="a.anchor.yPercent ?? 50"
               [index]="i + 1"
               [resolved]="a.resolved"
               [active]="activeAnnotationId() === a.id"
@@ -97,6 +148,7 @@ import { ToastService } from '../services/toast.service';
         [currentUserId]="currentUserId()"
         [posX]="threadPosX()"
         [posY]="threadPosY()"
+        [currentText]="placementOf(active.id)?.currentText ?? null"
         (close)="closeThread()"
         (reply)="onReply($event)"
         (resolve)="onResolve($event)"
@@ -109,8 +161,8 @@ import { ToastService } from '../services/toast.service';
     @if (newAnnotation(); as na) {
       @if (renderMode() !== 'html') {
         <div class="annotation-placement-dot"
-             [style.left.%]="na.anchor.xPercent"
-             [style.top.%]="na.anchor.yPercent"></div>
+             [style.left]="na.dotX + na.dotUnit"
+             [style.top]="na.dotY + na.dotUnit"></div>
       }
     }
 
@@ -148,9 +200,11 @@ import { ToastService } from '../services/toast.service';
               <span class="material-icons">close</span>
             </button>
           </div>
-          @for (a of annotations(); track a.id; let i = $index) {
+          <!-- Only the comments that still have a pin; the unanchored ones get
+               their own section below, with the actions they actually need. -->
+          @for (a of placedAnnotations(); track a.id) {
             <div class="list-item" [class.resolved]="a.resolved" (click)="openThreadFromList(a)">
-              <span class="list-index" [class.resolved]="a.resolved">{{ i + 1 }}</span>
+              <span class="list-index" [class.resolved]="a.resolved">{{ markerIndexOf(a) }}</span>
               <div class="list-content">
                 <div class="list-meta">
                   <span class="list-author">{{ a.authorName }}</span>
@@ -166,7 +220,56 @@ import { ToastService } from '../services/toast.service';
           @if (annotations().length === 0) {
             <div class="list-empty">No comments yet</div>
           }
+
+          <!-- Comments whose text is gone. Never auto-resolved: a comment about
+               a paragraph someone rewrote is the one most likely to still need
+               an answer, and possibly to be about the rewrite itself. -->
+          @if (orphanedAnnotations().length > 0) {
+            <div class="orphan-section">
+              <div class="orphan-header">
+                <span class="material-icons">link_off</span>
+                <span>Unanchored ({{ orphanedAnnotations().length }})</span>
+              </div>
+              <p class="orphan-explainer">
+                The text these were written on isn't in the document any more.
+              </p>
+              @for (a of orphanedAnnotations(); track a.id) {
+                <div class="list-item orphan-item" [class.resolved]="a.resolved">
+                  <div class="list-content">
+                    <div class="list-meta">
+                      <span class="list-author">{{ a.authorName }}</span>
+                      <span class="list-date">{{ formatDate(a.createdAt) }}</span>
+                    </div>
+                    <div class="list-body">{{ a.body }}</div>
+                    @if (originalQuoteOf(a); as quote) {
+                      <blockquote class="orphan-quote">“{{ quote }}”</blockquote>
+                    }
+                    <div class="orphan-actions">
+                      @if (canComment()) {
+                        <button type="button" class="orphan-btn" (click)="startReanchor(a)">
+                          <span class="material-icons">my_location</span> Re-anchor
+                        </button>
+                      }
+                      <button type="button" class="orphan-btn" (click)="onResolve(a.id)">
+                        <span class="material-icons">check</span>
+                        {{ a.resolved ? 'Reopen' : 'Resolve' }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
         </div>
+    }
+
+    <!-- Re-anchor mode banner: the click layer is repurposed, so say so. -->
+    @if (reanchoring(); as target) {
+      <div class="reanchor-banner">
+        <span class="material-icons">my_location</span>
+        <span class="reanchor-text">Click where “{{ target.body }}” belongs now</span>
+        <button type="button" class="reanchor-cancel" (click)="cancelReanchor()">Cancel</button>
+      </div>
     }
   `,
   encapsulation: ViewEncapsulation.None,
@@ -503,6 +606,111 @@ import { ToastService } from '../services/toast.service';
       color: var(--text-muted, #7a9a9d);
       font-size: 14px;
     }
+
+    /* Unanchored comments. Amber rather than red: nothing is broken and nothing
+       is lost — the text simply moved on and a person needs to decide. */
+    .orphan-section {
+      border-top: 1px solid var(--border, #d4e5e7);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+
+    .orphan-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px 2px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #b07d2a;
+
+      .material-icons { font-size: 16px; }
+    }
+
+    .orphan-explainer {
+      margin: 0;
+      padding: 0 16px 8px;
+      font-size: 12px;
+      color: var(--text-muted, #7a9a9d);
+    }
+
+    .orphan-item {
+      cursor: default;
+      border-left: 3px solid rgba(180, 125, 42, 0.6);
+    }
+
+    .orphan-quote {
+      margin: 6px 0 0;
+      padding-left: 8px;
+      border-left: 2px solid var(--border, #d4e5e7);
+      font-size: 12.5px;
+      font-style: italic;
+      color: var(--text-muted, #7a9a9d);
+      overflow-wrap: anywhere;
+    }
+
+    .orphan-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .orphan-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border: 1px solid var(--border, #d4e5e7);
+      border-radius: 6px;
+      background: none;
+      color: var(--text-primary, #12262a);
+      font-size: 12px;
+      cursor: pointer;
+
+      .material-icons { font-size: 14px; }
+
+      &:hover { background: var(--background, #f6f6f2); }
+    }
+
+    .reanchor-banner {
+      position: fixed;
+      left: 50%;
+      bottom: 88px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: min(520px, 92vw);
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #b07d2a;
+      color: #fff;
+      font-size: 13px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      z-index: 400;
+
+      .material-icons { font-size: 18px; }
+    }
+
+    .reanchor-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .reanchor-cancel {
+      border: none;
+      background: rgba(255, 255, 255, 0.22);
+      color: #fff;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 12px;
+      cursor: pointer;
+
+      &:hover { background: rgba(255, 255, 255, 0.35); }
+    }
   `]
 })
 export class AnnotationOverlayComponent implements OnInit, OnDestroy {
@@ -515,6 +723,12 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   currentUserId = input<string | null>(null);
   // Set false to hide the annotation FAB entirely (e.g. distraction-free fullscreen preview)
   allowComment = input<boolean>(true);
+  /**
+   * Content hash of the document as currently rendered. When it matches what an
+   * anchor was last resolved against, the stored placement still holds and the
+   * whole matching pipeline is skipped.
+   */
+  docHash = input<string | null>(null);
 
   // State
   annotations = signal<Annotation[]>([]);
@@ -523,7 +737,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   showList = signal(false);
   threadPosX = signal(0);
   threadPosY = signal(0);
-  newAnnotation = signal<{ anchor: AnnotationAnchor; screenX: number; screenY: number } | null>(null);
+  newAnnotation = signal<NewAnnotationDraft | null>(null);
   newAnnotationText = '';
   authorNameInput = '';
   authorName = signal<string | null>(null);
@@ -546,6 +760,48 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
   requiresName = computed(() => this.shareToken() !== null);
 
+  // --- Anchoring (text documents) ---
+
+  /** Where each comment currently lands, keyed by annotation id. */
+  placements = signal<Map<string, Placement>>(new Map());
+
+  /** True for the render modes whose anchors are text rather than coordinates. */
+  usesTextAnchoring = computed(() => this.renderMode() === 'markdown');
+
+  /** Comments that still have a place on the page, in stable display order. */
+  placedAnnotations = computed(() => {
+    if (!this.usesTextAnchoring()) return this.annotations();
+    const placements = this.placements();
+    return this.annotations().filter(a => placements.get(a.id)?.state !== 'ORPHANED');
+  });
+
+  /**
+   * Comments whose text is gone. Kept and shown rather than resolved — a
+   * comment about a paragraph someone rewrote is the one most likely to still
+   * need an answer.
+   */
+  orphanedAnnotations = computed(() => {
+    if (!this.usesTextAnchoring()) return [];
+    const placements = this.placements();
+    return this.annotations().filter(a => placements.get(a.id)?.state === 'ORPHANED');
+  });
+
+  /** The annotation being given a new home by clicking, or null. */
+  reanchoring = signal<Annotation | null>(null);
+
+  placementOf(id: string): Placement | undefined {
+    return this.placements().get(id);
+  }
+
+  /** 1-based badge number, counted over the comments actually on the page. */
+  markerIndexOf(annotation: Annotation): number {
+    return this.annotations().findIndex(a => a.id === annotation.id) + 1;
+  }
+
+  /** Consecutive resolution passes that found no text to anchor against. */
+  private emptyRetries = 0;
+  private resizeObserver: ResizeObserver | null = null;
+  private reflowHandle: ReturnType<typeof setTimeout> | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private iframeReady = false;
   private boundMessageHandler = this.onIframeMessage.bind(this);
@@ -588,12 +844,197 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       // Defer to next tick so the <img> sibling is rendered before we observe it
       setTimeout(() => this.observeContentTarget(), 0);
     }
+
+    if (this.usesTextAnchoring()) {
+      setTimeout(() => this.observeHostResize(), 0);
+    }
+  }
+
+  // --- Anchor resolution ---
+
+  /** The element the document is rendered into — everything anchors inside it. */
+  private get host(): HTMLElement | null {
+    return (this.elRef.nativeElement.parentElement as HTMLElement) ?? null;
+  }
+
+  /**
+   * Put every comment back onto the document as it stands right now.
+   *
+   * Runs on load, on resize and whenever the rendered content changes, because
+   * a resolved position is measured from the live DOM rather than stored — which
+   * is exactly why reflow and zoom stop moving pins around.
+   */
+  private resolveAnchors(): void {
+    const host = this.host;
+    if (!host || !this.usesTextAnchoring()) return;
+
+    const annotations = this.annotations();
+    if (annotations.length === 0) {
+      if (this.placements().size) this.placements.set(new Map());
+      return;
+    }
+
+    // Built once for the whole pass rather than per comment, and used as the
+    // gate below: an empty index means the document hasn't rendered yet, not
+    // that every comment lost its text.
+    const index = TextIndex.build(host);
+    if (!index.text.trim()) {
+      // Resolving now would orphan every comment on the page and — worse —
+      // persist that, so the next reader loads a document whose comments are
+      // all marked unanchored. Wait for the content instead. Bounded, because
+      // a document really can be empty and this must not spin forever.
+      if (this.emptyRetries < 20) {
+        this.emptyRetries++;
+        this.scheduleReflow(150);
+      }
+      return;
+    }
+
+    this.emptyRetries = 0;
+    const hostBox = host.getBoundingClientRect();
+    const next = new Map<string, Placement>();
+
+    for (const annotation of annotations) {
+      const stored = toAnchorRecord(annotation.anchorCurrent ?? annotation.anchor);
+      const result = anchorRecord(host, stored, index);
+
+      let x = 0;
+      let y = 0;
+      if (result.range) {
+        const box = firstVisibleRect(result.range);
+        if (box) {
+          // Document-space, not viewport-space: the pin lives inside the
+          // scrolling host, so it must not move when the host scrolls.
+          x = box.left - hostBox.left + host.scrollLeft;
+          y = box.top - hostBox.top + host.scrollTop;
+        }
+      }
+
+      next.set(annotation.id, {
+        state: result.state,
+        position: result.position,
+        currentText: result.currentText,
+        x,
+        y
+      });
+
+      this.persistPlacement(annotation, result, stored);
+    }
+
+    this.placements.set(next);
+  }
+
+  /**
+   * Write a re-resolved anchor back, so the next reader doesn't redo the work
+   * and the space's unanchored count reflects reality. Skipped when nothing
+   * changed, which is the overwhelmingly common case.
+   */
+  private persistPlacement(annotation: Annotation, result: Anchored, stored: AnchorRecord | null): void {
+    const docHash = this.docHash();
+    // No hash means the surface can't vouch for what it is rendering — the
+    // editor shows unsaved text, and caching an anchor against a draft that may
+    // never be saved would point every reader at text that doesn't exist.
+    // Those surfaces still resolve and display; they just don't write back.
+    if (!docHash) return;
+
+    const stateChanged = annotation.anchorState !== result.state;
+    const hashChanged = annotation.anchorDocHash !== docHash;
+    // A legacy anchor gets promoted the first time it resolves — that is how the
+    // percentage-only backlog acquires a quote selector without a migration.
+    const needsUpgrade = (annotation.anchorVersion ?? 0) < ANCHOR_VERSION && result.state !== 'ORPHANED';
+    if (!stateChanged && !hashChanged && !needsUpgrade) return;
+
+    const record = result.range && result.position
+      ? describeRange(this.host!, result.range) ?? stored
+      : stored;
+
+    const request = {
+      anchorCurrent: (record as AnnotationAnchor | null) ?? undefined,
+      anchorState: result.state,
+      docHash
+    };
+
+    const token = this.shareToken();
+    const call = token
+      ? this.annotationsService.updatePublicAnchor(token, annotation.id, request)
+      : this.annotationsService.updateAnchor(this.spaceId(), annotation.id, request);
+
+    // Best-effort: a failure here costs a recomputation next time, nothing more.
+    call.subscribe({
+      next: (updated) => this.annotations.update(list =>
+        list.map(a => a.id === updated.id ? { ...a, ...updated, replies: a.replies } : a)
+      ),
+      error: () => {}
+    });
+  }
+
+  /** Recompute positions after layout settles — images and diagrams arrive late. */
+  private scheduleReflow(delay = 120): void {
+    if (this.reflowHandle) clearTimeout(this.reflowHandle);
+    this.reflowHandle = setTimeout(() => {
+      this.reflowHandle = null;
+      this.resolveAnchors();
+    }, delay);
+  }
+
+  private observeHostResize(): void {
+    const host = this.host;
+    if (!host || !this.usesTextAnchoring()) return;
+    this.resizeObserver = new ResizeObserver(() => this.scheduleReflow(60));
+    this.resizeObserver.observe(host);
+  }
+
+  // --- Re-anchoring an orphan ---
+
+  startReanchor(annotation: Annotation): void {
+    this.reanchoring.set(annotation);
+    this.showList.set(false);
+    this.annotationMode.set(true);
+    this.closeThread();
+    this.toastService.info(
+      'Pick a spot',
+      `Click where "${annotation.body.slice(0, 40)}" belongs now.`
+    );
+  }
+
+  cancelReanchor(): void {
+    this.reanchoring.set(null);
+    this.annotationMode.set(false);
+  }
+
+  private applyReanchor(annotation: Annotation, anchor: AnnotationAnchor): void {
+    const request = {
+      anchorCurrent: anchor,
+      anchorState: 'ANCHORED' as const,
+      docHash: this.docHash() ?? undefined
+    };
+    const token = this.shareToken();
+    const call = token
+      ? this.annotationsService.updatePublicAnchor(token, annotation.id, request)
+      : this.annotationsService.updateAnchor(this.spaceId(), annotation.id, request);
+
+    call.subscribe({
+      next: () => {
+        this.reanchoring.set(null);
+        this.annotationMode.set(false);
+        this.toastService.success('Re-anchored', 'The comment now points at the text you picked.');
+        this.loadAnnotations();
+      },
+      error: () => {
+        this.toastService.error('Re-anchor failed', 'Could not move that comment.');
+      }
+    });
   }
 
   ngOnDestroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
+    if (this.reflowHandle) clearTimeout(this.reflowHandle);
     window.removeEventListener('message', this.boundMessageHandler);
     document.removeEventListener('mousedown', this.boundDocClick);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     if (this.contentObserver) {
       this.contentObserver.disconnect();
       this.contentObserver = null;
@@ -654,7 +1095,10 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     };
 
     this.closeThread();
-    this.newAnnotation.set({ anchor, screenX: event.clientX + 16, screenY: event.clientY });
+    this.newAnnotation.set({
+      anchor, screenX: event.clientX + 16, screenY: event.clientY,
+      dotX: xPercent, dotY: yPercent, dotUnit: '%'
+    });
   }
 
   private boundDocClick = (event: MouseEvent) => {
@@ -678,37 +1122,77 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   }
 
   onLayerClick(event: MouseEvent): void {
-    if (!this.canComment()) return;
+    const reanchoring = this.reanchoring();
+    if (!reanchoring && !this.canComment()) return;
 
     const target = event.target as HTMLElement;
     if (target.closest('.annotation-pin, .annotation-thread, .new-annotation-popover, .annotation-fab, .annotation-list')) return;
 
     const container = this.elRef.nativeElement.parentElement as HTMLElement;
-    const rect = container.getBoundingClientRect();
-    const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
-    const yPercent = ((event.clientY - rect.top + container.scrollTop) / container.scrollHeight) * 100;
+    const anchor = this.describeClick(container, event);
+    if (!anchor) return;
 
-    let snippet: string | undefined;
-    if (this.renderMode() === 'markdown') {
-      // Temporarily disable pointer-events on the click layer to peek at content below
-      const layer = (this.elRef.nativeElement.parentElement as HTMLElement)?.querySelector('.annotation-click-layer') as HTMLElement;
-      if (layer) layer.style.pointerEvents = 'none';
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      if (layer) layer.style.pointerEvents = '';
-      if (el && el.textContent) {
-        snippet = el.textContent.substring(0, 40).trim();
+    if (reanchoring) {
+      this.applyReanchor(reanchoring, anchor);
+      return;
+    }
+
+    this.closeThread();
+    const box = container.getBoundingClientRect();
+    const usesPixels = this.usesTextAnchoring();
+    this.newAnnotation.set({
+      anchor,
+      screenX: event.clientX + 16,
+      screenY: event.clientY,
+      dotX: usesPixels
+        ? event.clientX - box.left + container.scrollLeft
+        : ((event.clientX - box.left) / box.width) * 100,
+      dotY: usesPixels
+        ? event.clientY - box.top + container.scrollTop
+        : ((event.clientY - box.top + container.scrollTop) / container.scrollHeight) * 100,
+      dotUnit: usesPixels ? 'px' : '%'
+    });
+  }
+
+  /**
+   * Turn a click into an anchor. For text documents that means the text under
+   * the pointer, not the coordinates of the pointer: a percentage of the page
+   * height stops being true the moment anyone adds a paragraph above it.
+   *
+   * The click layer sits over the content, so it has to be made transparent to
+   * hit-testing for the moment it takes to see what is underneath.
+   */
+  private describeClick(container: HTMLElement, event: MouseEvent): AnnotationAnchor | null {
+    if (!this.usesTextAnchoring()) {
+      const rect = container.getBoundingClientRect();
+      return {
+        type: this.renderMode() as AnnotationAnchor['type'],
+        xPercent: ((event.clientX - rect.left) / rect.width) * 100,
+        yPercent: ((event.clientY - rect.top + container.scrollTop) / container.scrollHeight) * 100
+      };
+    }
+
+    // A live selection is the strongest signal available — the reader has told
+    // us exactly which words they mean.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      if (container.contains(range.commonAncestorContainer)) {
+        const described = describeRange(container, range);
+        if (described) {
+          selection.removeAllRanges();
+          return described as unknown as AnnotationAnchor;
+        }
       }
     }
 
-    const anchor: AnnotationAnchor = {
-      type: this.renderMode() as AnnotationAnchor['type'],
-      xPercent,
-      yPercent,
-      snippet
-    };
+    const layer = container.querySelector('.annotation-click-layer') as HTMLElement | null;
+    const previous = layer?.style.pointerEvents ?? '';
+    if (layer) layer.style.pointerEvents = 'none';
+    const described = describePoint(container, event.clientX, event.clientY);
+    if (layer) layer.style.pointerEvents = previous;
 
-    this.closeThread();
-    this.newAnnotation.set({ anchor, screenX: event.clientX + 16, screenY: event.clientY });
+    return (described as unknown as AnnotationAnchor) ?? null;
   }
 
   canComment(): boolean {
@@ -727,6 +1211,11 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   // --- iframe communication ---
 
   private onIframeMessage(event: MessageEvent): void {
+    // The previewed document may run untrusted scripts of its own — that is a
+    // deliberate product decision (see SECURITY.md) — so a message claiming to
+    // be from the bridge is not enough on its own. The frame is same-origin, so
+    // anything from elsewhere is not ours.
+    if (event.origin !== window.location.origin) return;
     const data = event.data;
     if (!data || data.source !== 'docuvault-annotations') return;
 
@@ -757,14 +1246,26 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     }
 
     if (data.type === 'click-position' && this.annotationMode() && this.canComment()) {
+      // Carries both shapes: the flat fields the bridge positions from, and a
+      // v1 selector list so the quote is stored the same way as everywhere else.
+      const quote: string | undefined = data.quote || undefined;
       const anchor: AnnotationAnchor = {
         type: 'html',
+        v: ANCHOR_VERSION,
         xPercent: data.xPercent,
         yPercent: data.yPercent,
         offsetX: typeof data.offsetX === 'number' ? data.offsetX : undefined,
         offsetY: typeof data.offsetY === 'number' ? data.offsetY : undefined,
         elementId: data.elementId || undefined,
-        selector: data.selector || undefined
+        selector: data.selector || undefined,
+        snippet: quote,
+        selectors: [
+          ...(data.elementId || data.selector
+            ? [{ type: 'Structural', elementId: data.elementId || undefined, path: data.selector || undefined }]
+            : []),
+          ...(quote ? [{ type: 'TextQuote', exact: quote }] : []),
+          { type: 'Geometric', xPercent: data.xPercent, yPercent: data.yPercent }
+        ]
       };
 
       this.closeThread();
@@ -790,24 +1291,36 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         screenX = rect ? rect.left + rect.width / 2 - 140 : window.innerWidth / 2;
         screenY = rect ? rect.top + 60 : window.innerHeight * 0.3;
       }
-      this.newAnnotation.set({ anchor, screenX, screenY });
+      this.newAnnotation.set({
+        anchor, screenX, screenY,
+        dotX: anchor.xPercent ?? 0, dotY: anchor.yPercent ?? 0, dotUnit: '%'
+      });
     }
   }
 
   private sendMarkersToIframe(): void {
     if (this.renderMode() !== 'html' || !this.iframeReady) return;
 
-    const markerData = this.annotations().map((a, i) => ({
-      id: a.id,
-      index: i + 1,
-      xPercent: a.anchor?.xPercent ?? 50,
-      yPercent: a.anchor?.yPercent ?? 50,
-      elementId: a.anchor?.elementId,
-      selector: a.anchor?.selector,
-      offsetX: a.anchor?.offsetX,
-      offsetY: a.anchor?.offsetY,
-      resolved: a.resolved
-    }));
+    const markerData = this.annotations().map((a, i) => {
+      const stored = a.anchorCurrent ?? a.anchor;
+      const record = toAnchorRecord(stored);
+      const quote = findSelector<TextQuoteSelector>(record, 'TextQuote');
+      return {
+        id: a.id,
+        index: i + 1,
+        xPercent: stored?.xPercent ?? 50,
+        yPercent: stored?.yPercent ?? 50,
+        elementId: stored?.elementId,
+        selector: stored?.selector,
+        offsetX: stored?.offsetX,
+        offsetY: stored?.offsetY,
+        // The bridge prefers this over the selector path, for the same reason
+        // the parent does: a path matches whatever now sits in that slot.
+        quote: quote?.exact ?? stored?.snippet,
+        shifted: a.anchorState === 'SHIFTED',
+        resolved: a.resolved
+      };
+    });
 
     this.sendToIframe({
       source: 'docuvault-annotations',
@@ -818,9 +1331,9 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
   private sendToIframe(message: any): void {
     const iframe = this.getIframeElement();
-    if (iframe?.contentWindow) {
-      iframe.contentWindow.postMessage(message, '*');
-    }
+    // Addressed to our own origin rather than '*': the frame is same-origin, and
+    // a wildcard would hand the payload to whatever ends up loaded there.
+    iframe?.contentWindow?.postMessage(message, window.location.origin);
   }
 
   private getIframeElement(): HTMLIFrameElement | null {
@@ -840,9 +1353,21 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       next: (annotations) => {
         this.annotations.set(annotations);
         this.sendMarkersToIframe();
+        // Deferred one frame: the document may still be rendering, and a range
+        // measured against an unlaid-out DOM gives a zero-size rect.
+        this.scheduleReflow(0);
       },
       error: () => {}
     });
+  }
+
+  /** The text a comment was originally written against, if it recorded any. */
+  originalQuoteOf(annotation: Annotation): string | null {
+    const record = toAnchorRecord(annotation.anchor);
+    const quote = findSelector<TextQuoteSelector>(record, 'TextQuote');
+    const exact = quote?.exact?.trim();
+    if (!exact) return null;
+    return exact.length > 160 ? `${exact.slice(0, 160)}…` : exact;
   }
 
   // --- Thread interactions ---
@@ -889,6 +1414,24 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     const container = this.elRef.nativeElement.parentElement as HTMLElement;
     if (!container) return;
 
+    // Text documents already know where the comment landed, in container
+    // pixels — no percentage arithmetic needed, and no drift when the page has
+    // reflowed since the anchor was written.
+    if (this.usesTextAnchoring()) {
+      const placement = this.placements().get(annotation.id);
+      if (!placement || placement.state === 'ORPHANED') {
+        this.threadPosX.set(Math.max(20, (window.innerWidth - 340) / 2));
+        this.threadPosY.set(Math.max(20, window.innerHeight * 0.2));
+        return;
+      }
+      container.scrollTo({
+        top: Math.max(0, placement.y - container.clientHeight / 3),
+        behavior: 'smooth'
+      });
+      setTimeout(() => this.placeThreadNear(container, placement.x, placement.y), 350);
+      return;
+    }
+
     // For image mode, anchor coords are relative to the IMG (content-layer), not the container.
     // Use the content layer's offsetTop + the image's height to compute the scroll target.
     const isImage = this.renderMode() === 'image';
@@ -896,26 +1439,37 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     const refTopOffset = isImage ? this.contentTop() : 0;
     const refWidth = isImage ? this.contentWidth() : container.scrollWidth;
     const refLeftOffset = isImage ? this.contentLeft() : 0;
+    const xPercent = annotation.anchor.xPercent ?? 50;
+    const yPercent = annotation.anchor.yPercent ?? 50;
 
     // Scroll the container so the annotation's y position is visible
-    const targetScrollTop = refTopOffset + (annotation.anchor.yPercent / 100) * refHeight - container.clientHeight / 3;
+    const targetScrollTop = refTopOffset + (yPercent / 100) * refHeight - container.clientHeight / 3;
     container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
 
     // Position the thread popover near the marker after scroll settles
     setTimeout(() => {
-      const rect = container.getBoundingClientRect();
-      const markerX = rect.left + refLeftOffset + (annotation.anchor!.xPercent / 100) * refWidth - container.scrollLeft;
-      const markerY = rect.top + refTopOffset + (annotation.anchor!.yPercent / 100) * refHeight - container.scrollTop;
-
-      let x = markerX + 20;
-      let y = markerY - 20;
-      if (x + 340 > window.innerWidth) x = markerX - 360;
-      if (y + 300 > window.innerHeight) y = window.innerHeight - 320;
-      if (y < 10) y = 10;
-
-      this.threadPosX.set(x);
-      this.threadPosY.set(y);
+      this.placeThreadNear(
+        container,
+        refLeftOffset + (xPercent / 100) * refWidth,
+        refTopOffset + (yPercent / 100) * refHeight
+      );
     }, 350);
+  }
+
+  /** Put the thread popover beside a marker at container-relative coordinates. */
+  private placeThreadNear(container: HTMLElement, containerX: number, containerY: number): void {
+    const rect = container.getBoundingClientRect();
+    const markerX = rect.left + containerX - container.scrollLeft;
+    const markerY = rect.top + containerY - container.scrollTop;
+
+    let x = markerX + 20;
+    let y = markerY - 20;
+    if (x + 340 > window.innerWidth) x = markerX - 360;
+    if (y + 300 > window.innerHeight) y = window.innerHeight - 320;
+    if (y < 10) y = 10;
+
+    this.threadPosX.set(x);
+    this.threadPosY.set(y);
   }
 
   closeThread(): void {
@@ -940,7 +1494,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     const request: CreateAnnotationRequest = {
       body: text,
       anchor: na.anchor,
-      authorName: this.authorName()
+      authorName: this.authorName(),
+      docHash: this.docHash()
     };
 
     const token = this.shareToken();
