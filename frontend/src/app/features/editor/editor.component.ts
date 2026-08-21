@@ -44,6 +44,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
+import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../shared/utils/scroll-anchor';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
 import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
@@ -2831,8 +2832,47 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.translationLang.set(null);
     // Editing always starts from the current version, never the AI-previous preview.
     this.viewingAiPrevious.set(false);
+    // Remember the passage on screen before the read view is torn down —
+    // dropping someone at the top of a long document to edit a paragraph
+    // halfway down means finding their place again by hand.
+    const place = this.captureReadingPosition();
     this.editMode.set(true);
-    setTimeout(() => this.initTiptap(this.markdownContent()));
+    setTimeout(() => {
+      this.initTiptap(this.markdownContent());
+      this.restoreReadingPosition(place, () => this.editorElement?.nativeElement);
+    });
+  }
+
+  /** Where the reader is in whichever view is currently rendered. */
+  private captureReadingPosition(): ScrollAnchor | null {
+    const container = this.scrollContainer?.nativeElement;
+    const content = this.showEditor()
+      ? this.editorElement?.nativeElement
+      : this.readonlyElement?.nativeElement;
+    if (!container || !content) return null;
+    return captureScrollAnchor(container, content);
+  }
+
+  /**
+   * Put the reader back on the same passage once the other view has rendered.
+   * Deferred a frame past the initial paint because both views settle late —
+   * TipTap builds its document asynchronously, and the read view is still
+   * running Mermaid and draw.io.
+   */
+  private restoreReadingPosition(
+    place: ScrollAnchor | null,
+    content: () => HTMLElement | undefined
+  ): void {
+    if (!place) return;
+    const apply = () => {
+      const container = this.scrollContainer?.nativeElement;
+      const el = content();
+      if (container && el) restoreScrollAnchor(container, el, place);
+    };
+    requestAnimationFrame(apply);
+    // Late-rendering content (diagrams, highlighted code) changes the height
+    // after the first pass, so correct once more when it has settled.
+    setTimeout(apply, 250);
   }
 
   /**
@@ -3238,9 +3278,15 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
 
   /** Tear down the editor and drop back to the rendered read view after a save. */
   private exitToReadView(content: string): void {
+    // Same courtesy on the way back: saving a paragraph shouldn't cost you
+    // your place in the document either.
+    const place = this.captureReadingPosition();
     this.markdownContent.set(content);
     this.editMode.set(false);
-    setTimeout(() => this.renderReadView(content));
+    setTimeout(() => {
+      this.renderReadView(content);
+      this.restoreReadingPosition(place, () => this.readonlyElement?.nativeElement);
+    });
   }
 
   saveAndCommit(): void {
