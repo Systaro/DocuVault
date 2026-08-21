@@ -53,7 +53,7 @@ export interface ContextMenuItem {
           (click)="choose(item)"
         >
           @if (item.icon) {
-            <span class="material-icons context-menu-icon">{{ item.icon }}</span>
+            <span translate="no" class="material-icons context-menu-icon">{{ item.icon }}</span>
           }
           <span class="context-menu-label">{{ item.label }}</span>
           @if (item.hint) {

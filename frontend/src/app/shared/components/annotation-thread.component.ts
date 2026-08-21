@@ -33,16 +33,16 @@ function truncate(value: string, limit = 140): string {
           @if (canResolve()) {
             <button class="thread-btn" [class.resolved]="annotation().resolved"
                     (click)="resolve.emit(annotation().id)" [title]="annotation().resolved ? 'Reopen' : 'Resolve'">
-              <span class="material-icons">{{ annotation().resolved ? 'check_circle' : 'check_circle_outline' }}</span>
+              <span translate="no" class="material-icons">{{ annotation().resolved ? 'check_circle' : 'check_circle_outline' }}</span>
             </button>
           }
           @if (canDelete(annotation())) {
             <button class="thread-btn danger" (click)="remove.emit(annotation().id)" title="Delete">
-              <span class="material-icons">delete_outline</span>
+              <span translate="no" class="material-icons">delete_outline</span>
             </button>
           }
           <button class="thread-btn" (click)="close.emit()" title="Close">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
       </div>
@@ -56,7 +56,7 @@ function truncate(value: string, limit = 140): string {
       @if (shiftedNote(); as note) {
         <div class="drift-note">
           <div class="drift-head">
-            <span class="material-icons">history_edu</span>
+            <span translate="no" class="material-icons">history_edu</span>
             <span>The text this refers to has changed</span>
           </div>
           <div class="drift-row">
@@ -74,7 +74,7 @@ function truncate(value: string, limit = 140): string {
 
       @if (annotation().resolved) {
         <div class="resolved-badge">
-          <span class="material-icons">check_circle</span>
+          <span translate="no" class="material-icons">check_circle</span>
           Resolved{{ annotation().resolvedByName ? ' by ' + annotation().resolvedByName : '' }}
         </div>
       }
@@ -89,7 +89,7 @@ function truncate(value: string, limit = 140): string {
                 <span class="reply-date">{{ formatDate(reply.createdAt) }}</span>
                 @if (canDelete(reply)) {
                   <button class="thread-btn small danger" (click)="remove.emit(reply.id)" title="Delete reply">
-                    <span class="material-icons">close</span>
+                    <span translate="no" class="material-icons">close</span>
                   </button>
                 }
               </div>
@@ -110,7 +110,7 @@ function truncate(value: string, limit = 140): string {
             (keydown.control.Enter)="submitReply()"
           ></textarea>
           <button class="reply-submit" [disabled]="!replyText.trim()" (click)="submitReply()">
-            <span class="material-icons">send</span>
+            <span translate="no" class="material-icons">send</span>
           </button>
         </div>
       }

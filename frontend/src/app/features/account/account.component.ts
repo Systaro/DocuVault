@@ -23,7 +23,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- Profile Section -->
         <div class="card">
           <div class="card-header">
-            <span class="material-icons card-icon">person</span>
+            <span translate="no" class="material-icons card-icon">person</span>
             <div>
               <h2>Profile</h2>
               <p>Your account information</p>
@@ -50,7 +50,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- Change Password Section -->
         <div class="card">
           <div class="card-header">
-            <span class="material-icons card-icon">lock</span>
+            <span translate="no" class="material-icons card-icon">lock</span>
             <div>
               <h2>Change Password</h2>
               <p>Update your account password</p>
@@ -71,7 +71,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                     [disabled]="changingPassword()"
                   />
                   <button type="button" class="btn btn-ghost password-toggle" (click)="showCurrentPassword.set(!showCurrentPassword())">
-                    <span class="material-icons">{{ showCurrentPassword() ? 'visibility_off' : 'visibility' }}</span>
+                    <span translate="no" class="material-icons">{{ showCurrentPassword() ? 'visibility_off' : 'visibility' }}</span>
                   </button>
                 </div>
               </div>
@@ -88,7 +88,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                     [disabled]="changingPassword()"
                   />
                   <button type="button" class="btn btn-ghost password-toggle" (click)="showNewPassword.set(!showNewPassword())">
-                    <span class="material-icons">{{ showNewPassword() ? 'visibility_off' : 'visibility' }}</span>
+                    <span translate="no" class="material-icons">{{ showNewPassword() ? 'visibility_off' : 'visibility' }}</span>
                   </button>
                 </div>
               </div>
@@ -112,7 +112,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               }
               @if (passwordSuccess()) {
                 <div class="form-success">
-                  <span class="material-icons">check_circle</span>
+                  <span translate="no" class="material-icons">check_circle</span>
                   {{ passwordSuccess() }}
                 </div>
               }
@@ -122,7 +122,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 [disabled]="!currentPassword || !newPassword || !confirmPassword || changingPassword()"
               >
                 @if (changingPassword()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                 }
                 Change Password
               </button>
@@ -136,7 +136,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- API Tokens Section -->
         <div class="card">
           <div class="card-header">
-            <span class="material-icons card-icon">key</span>
+            <span translate="no" class="material-icons card-icon">key</span>
             <div>
               <h2>API Tokens</h2>
               <p>Create tokens for external integrations like the MCP server</p>
@@ -165,9 +165,9 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                   [disabled]="!newTokenName.trim() || creating()"
                 >
                   @if (creating()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                   } @else {
-                    <span class="material-icons">add</span>
+                    <span translate="no" class="material-icons">add</span>
                   }
                   Create Token
                 </button>
@@ -181,13 +181,13 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             @if (newToken()) {
               <div class="new-token-display">
                 <div class="new-token-header">
-                  <span class="material-icons">check_circle</span>
+                  <span translate="no" class="material-icons">check_circle</span>
                   <strong>Token created! Copy it now — it won't be shown again.</strong>
                 </div>
                 <div class="token-copy-row">
                   <code class="token-value">{{ newToken() }}</code>
                   <button class="btn btn-ghost" (click)="copyToken()" [title]="copied() ? 'Copied!' : 'Copy'">
-                    <span class="material-icons">{{ copied() ? 'check' : 'content_copy' }}</span>
+                    <span translate="no" class="material-icons">{{ copied() ? 'check' : 'content_copy' }}</span>
                   </button>
                 </div>
               </div>
@@ -196,12 +196,12 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             <!-- Token List -->
             @if (loading()) {
               <div class="loading-state">
-                <span class="material-icons animate-spin">sync</span>
+                <span translate="no" class="material-icons animate-spin">sync</span>
                 Loading tokens...
               </div>
             } @else if (tokens().length === 0) {
               <div class="empty-state">
-                <span class="material-icons">vpn_key_off</span>
+                <span translate="no" class="material-icons">vpn_key_off</span>
                 <p>No API tokens yet. Create one to get started.</p>
               </div>
             } @else {
@@ -248,7 +248,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- MCP Setup Instructions -->
         <div class="card">
           <div class="card-header">
-            <span class="material-icons card-icon">terminal</span>
+            <span translate="no" class="material-icons card-icon">terminal</span>
             <div>
               <h2>MCP Server Setup</h2>
               <p>Use DocuVault documentation directly in Claude Code</p>
@@ -263,7 +263,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
               <div class="mcp-capabilities">
                 <div class="capability-group">
-                  <h4><span class="material-icons">search</span> Read &amp; Search</h4>
+                  <h4><span translate="no" class="material-icons">search</span> Read &amp; Search</h4>
                   <ul>
                     <li><strong>search_documentation</strong> &mdash; semantic search across all docs</li>
                     <li><strong>search_by_keyword</strong> &mdash; find docs by title or path</li>
@@ -273,7 +273,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                   </ul>
                 </div>
                 <div class="capability-group">
-                  <h4><span class="material-icons">edit_note</span> Write &amp; Edit</h4>
+                  <h4><span translate="no" class="material-icons">edit_note</span> Write &amp; Edit</h4>
                   <ul>
                     <li><strong>create_document</strong> &mdash; create new pages (inline or from a local file)</li>
                     <li><strong>update_document</strong> &mdash; fully replace a document's content</li>
@@ -285,7 +285,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               </div>
 
               <div class="mcp-note">
-                <span class="material-icons">info</span>
+                <span translate="no" class="material-icons">info</span>
                 <p>
                   Write tools require an API token with <strong>Editor</strong> or <strong>Admin</strong> permissions on the target space.
                   Edits use optimistic locking — if the document changes between reading and writing, the edit is safely rejected.
@@ -301,7 +301,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               <div class="code-header">
                 <span>.mcp.json</span>
                 <button class="btn btn-ghost btn-sm" (click)="copyMcpConfig()" [title]="mcpCopied() ? 'Copied!' : 'Copy'">
-                  <span class="material-icons">{{ mcpCopied() ? 'check' : 'content_copy' }}</span>
+                  <span translate="no" class="material-icons">{{ mcpCopied() ? 'check' : 'content_copy' }}</span>
                 </button>
               </div>
               <pre>{{ mcpConfig }}</pre>

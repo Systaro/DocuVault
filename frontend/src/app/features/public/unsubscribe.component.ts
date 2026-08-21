@@ -11,7 +11,7 @@ import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
     <div class="unsub-page">
       <div class="unsub-card">
         <div class="unsub-logo">
-          <span class="material-icons">notifications_off</span>
+          <span translate="no" class="material-icons">notifications_off</span>
         </div>
 
         @if (loadingInfo()) {

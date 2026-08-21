@@ -130,7 +130,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
         @if (canComment()) {
           <button class="fab-btn" [class.active]="annotationMode()"
                   (click)="toggleAnnotationMode()" [title]="annotationMode() ? 'Exit comment mode (Esc)' : 'Add comment'">
-            <span class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
+            <span translate="no" class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
             @if (annotationMode()) {
               <span class="fab-label">Click to place comment</span>
             }
@@ -140,7 +140,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="fab-divider"></div>
           <button class="fab-btn" [class.active]="showList()"
                   (click)="showList.set(!showList())" title="View all comments">
-            <span class="material-icons">chat_bubble_outline</span>
+            <span translate="no" class="material-icons">chat_bubble_outline</span>
             <span class="fab-badge">{{ annotations().length }}</span>
           </button>
         }
@@ -181,7 +181,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <input class="annotation-name-input" [(ngModel)]="authorNameInput" placeholder="Your name..."
                  (keydown.enter)="confirmName()" autofocus />
           <button class="annotation-name-btn" [disabled]="!authorNameInput.trim()" (click)="confirmName()">
-            <span class="material-icons">arrow_forward</span>
+            <span translate="no" class="material-icons">arrow_forward</span>
           </button>
         } @else {
           <textarea class="annotation-input" [(ngModel)]="newAnnotationText" placeholder="Add a comment..."
@@ -191,7 +191,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="new-annotation-actions">
             <button class="btn-cancel" (click)="cancelNewAnnotation()">Cancel</button>
             <button class="btn-submit" [disabled]="!newAnnotationText.trim()" (click)="submitNewAnnotation()">
-              <span class="material-icons">send</span> Comment
+              <span translate="no" class="material-icons">send</span> Comment
             </button>
           </div>
         }
@@ -204,7 +204,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="list-header">
             <h3>Comments ({{ annotations().length }})</h3>
             <button class="thread-btn" (click)="showList.set(false)">
-              <span class="material-icons">close</span>
+              <span translate="no" class="material-icons">close</span>
             </button>
           </div>
           <!-- Only the comments that still have a pin; the unanchored ones get
@@ -234,7 +234,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           @if (orphanedAnnotations().length > 0) {
             <div class="orphan-section">
               <div class="orphan-header">
-                <span class="material-icons">link_off</span>
+                <span translate="no" class="material-icons">link_off</span>
                 <span>Unanchored ({{ orphanedAnnotations().length }})</span>
               </div>
               <p class="orphan-explainer">
@@ -254,11 +254,11 @@ function firstVisibleRect(range: Range): DOMRect | null {
                     <div class="orphan-actions">
                       @if (canComment()) {
                         <button type="button" class="orphan-btn" (click)="startReanchor(a)">
-                          <span class="material-icons">my_location</span> Re-anchor
+                          <span translate="no" class="material-icons">my_location</span> Re-anchor
                         </button>
                       }
                       <button type="button" class="orphan-btn" (click)="onResolve(a.id)">
-                        <span class="material-icons">check</span>
+                        <span translate="no" class="material-icons">check</span>
                         {{ a.resolved ? 'Reopen' : 'Resolve' }}
                       </button>
                     </div>
@@ -285,7 +285,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
     <!-- Re-anchor mode banner: the click layer is repurposed, so say so. -->
     @if (reanchoring(); as target) {
       <div class="reanchor-banner">
-        <span class="material-icons">my_location</span>
+        <span translate="no" class="material-icons">my_location</span>
         <span class="reanchor-text">Click where “{{ target.body }}” belongs now</span>
         <button type="button" class="reanchor-cancel" (click)="cancelReanchor()">Cancel</button>
       </div>

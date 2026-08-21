@@ -71,7 +71,7 @@ interface ListingEntry extends FileEntry {
           <div class="min-w-0 flex-1">
             <nav class="hero-breadcrumb" aria-label="Folder path">
               <a routerLink="/dashboard" class="hero-crumb">
-                <span class="material-icons">home</span>
+                <span translate="no" class="material-icons">home</span>
               </a>
               @for (group of groupCrumbs(); track group.path) {
                 <span class="hero-crumb-sep">/</span>
@@ -120,26 +120,26 @@ interface ListingEntry extends FileEntry {
                 [title]="isInConflict() ? 'Editing disabled — space is in conflict' : 'Create new'"
                 (click)="showNewMenu.set(!showNewMenu())"
               >
-                <span class="material-icons" style="font-size:18px;margin-right:4px;">add</span>
+                <span translate="no" class="material-icons" style="font-size:18px;margin-right:4px;">add</span>
                 New
-                <span class="material-icons" style="font-size:18px;margin-left:4px;">arrow_drop_down</span>
+                <span translate="no" class="material-icons" style="font-size:18px;margin-left:4px;">arrow_drop_down</span>
               </button>
               @if (showNewMenu()) {
                 <div class="new-menu">
                   <button class="new-menu-item" (click)="startNewDocument(); showNewMenu.set(false)">
-                    <span class="material-icons">description</span>
+                    <span translate="no" class="material-icons">description</span>
                     New document
                   </button>
                   <button class="new-menu-item" (click)="fileInput.click(); showNewMenu.set(false)">
-                    <span class="material-icons">upload_file</span>
+                    <span translate="no" class="material-icons">upload_file</span>
                     Upload files
                   </button>
                   <button class="new-menu-item" (click)="folderInput.click(); showNewMenu.set(false)">
-                    <span class="material-icons">drive_folder_upload</span>
+                    <span translate="no" class="material-icons">drive_folder_upload</span>
                     Upload folder
                   </button>
                   <button class="new-menu-item" (click)="startNewFolder(); showNewMenu.set(false)">
-                    <span class="material-icons">create_new_folder</span>
+                    <span translate="no" class="material-icons">create_new_folder</span>
                     New folder
                   </button>
                 </div>
@@ -172,7 +172,7 @@ interface ListingEntry extends FileEntry {
         @if (space()?.syncStatus === 'IN_CONFLICT') {
           <div class="sync-error-alert mb-6">
             <div class="sync-error-icon">
-              <span class="material-icons">merge_type</span>
+              <span translate="no" class="material-icons">merge_type</span>
             </div>
             <div class="sync-error-content">
               <div class="sync-error-title">Sync paused — merge conflict</div>
@@ -206,7 +206,7 @@ interface ListingEntry extends FileEntry {
           <!-- Sync Error Alert -->
           <div class="sync-error-alert mb-6">
             <div class="sync-error-icon">
-              <span class="material-icons">error_outline</span>
+              <span translate="no" class="material-icons">error_outline</span>
             </div>
             <div class="sync-error-content">
               <div class="sync-error-title">Sync Error</div>
@@ -222,7 +222,7 @@ interface ListingEntry extends FileEntry {
         @if (uncommittedFiles().length > 0) {
           <div class="uncommitted-alert mb-6">
             <div class="uncommitted-icon">
-              <span class="material-icons">warning_amber</span>
+              <span translate="no" class="material-icons">warning_amber</span>
             </div>
             <div class="uncommitted-content">
               <div class="uncommitted-title">{{ uncommittedFiles().length }} uncommitted file{{ uncommittedFiles().length > 1 ? 's' : '' }}</div>
@@ -272,7 +272,7 @@ interface ListingEntry extends FileEntry {
         <div class="card">
           <div class="listing-toolbar">
             <div class="listing-toolbar-title">
-              <span class="material-icons">folder_open</span>
+              <span translate="no" class="material-icons">folder_open</span>
               <span>{{ heroTitle() }}</span>
               <span class="listing-count">{{ entryCountLabel() }}</span>
             </div>
@@ -283,7 +283,7 @@ interface ListingEntry extends FileEntry {
                 (click)="prefs.setViewMode('list')"
                 title="List view"
               >
-                <span class="material-icons">view_list</span>
+                <span translate="no" class="material-icons">view_list</span>
               </button>
               <button
                 type="button"
@@ -291,7 +291,7 @@ interface ListingEntry extends FileEntry {
                 (click)="prefs.setViewMode('tiles')"
                 title="Tile view"
               >
-                <span class="material-icons">grid_view</span>
+                <span translate="no" class="material-icons">grid_view</span>
               </button>
             </div>
           </div>
@@ -335,7 +335,7 @@ interface ListingEntry extends FileEntry {
             <div class="tile-grid">
               @if (creatingFolderInline()) {
                 <div class="tile tile-new-folder">
-                  <span class="material-icons folder-icon">folder</span>
+                  <span translate="no" class="material-icons folder-icon">folder</span>
                   <input
                     type="text"
                     [(ngModel)]="newFolderName"
@@ -356,7 +356,7 @@ interface ListingEntry extends FileEntry {
                   class="tile tile-up"
                   title="Up one level"
                 >
-                  <span class="material-icons">arrow_upward</span>
+                  <span translate="no" class="material-icons">arrow_upward</span>
                   <span class="tile-name">{{ parentLabel() }}</span>
                 </a>
               }
@@ -370,7 +370,7 @@ interface ListingEntry extends FileEntry {
                   >
                     <div class="tile-preview">
                       @if (entry.isDirectory) {
-                        <span class="material-icons folder-icon tile-folder-icon">folder</span>
+                        <span translate="no" class="material-icons folder-icon tile-folder-icon">folder</span>
                       } @else {
                         <app-file-thumb
                           [url]="spaceFileUrl(space()!.id, entry.path)"
@@ -397,7 +397,7 @@ interface ListingEntry extends FileEntry {
                   </a>
                   <button class="row-menu-btn tile-menu-btn" title="Actions"
                           (click)="openRowMenu(entry, $event)">
-                    <span class="material-icons">more_vert</span>
+                    <span translate="no" class="material-icons">more_vert</span>
                   </button>
                 </div>
               }
@@ -418,7 +418,7 @@ interface ListingEntry extends FileEntry {
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
                   } @else {
-                    <span class="material-icons folder-icon">folder</span>
+                    <span translate="no" class="material-icons folder-icon">folder</span>
                   }
                   <input
                     type="text"
@@ -444,7 +444,7 @@ interface ListingEntry extends FileEntry {
                   title="Up one level"
                 >
                   <span class="listing-main">
-                    <span class="material-icons overview-text-muted">arrow_upward</span>
+                    <span translate="no" class="material-icons overview-text-muted">arrow_upward</span>
                     <span class="font-medium overview-text-secondary">{{ parentLabel() }}</span>
                   </span>
                 </a>
@@ -458,7 +458,7 @@ interface ListingEntry extends FileEntry {
                     [queryParamsHandling]="entry.isDirectory ? 'merge' : ''"
                   >
                     @if (entry.isDirectory) {
-                      <span class="material-icons folder-icon">folder</span>
+                      <span translate="no" class="material-icons folder-icon">folder</span>
                     } @else {
                       <!-- The list stays scannable with a plain type icon; the
                            tile view is where content previews earn their space. -->
@@ -486,7 +486,7 @@ interface ListingEntry extends FileEntry {
                     }
                   </div>
                   <button class="row-menu-btn" title="Actions" (click)="openRowMenu(entry, $event)">
-                    <span class="material-icons">more_vert</span>
+                    <span translate="no" class="material-icons">more_vert</span>
                   </button>
                 </div>
               }
@@ -498,7 +498,7 @@ interface ListingEntry extends FileEntry {
         @if (readmeHere(); as readme) {
           <div class="card readme-card">
             <div class="readme-card-header">
-              <span class="material-icons overview-text-muted">description</span>
+              <span translate="no" class="material-icons overview-text-muted">description</span>
               <a
                 [routerLink]="space()?.fullPath | spaceRoute:'doc'"
                 [queryParams]="{ path: readme.path }"
@@ -529,33 +529,33 @@ interface ListingEntry extends FileEntry {
       <div class="row-menu" [style.left.px]="menu.x" [style.top.px]="menu.y">
         @if (menu.entry.isDirectory) {
           <button class="row-menu-item" (click)="uploadInto(menu.entry, 'files')">
-            <span class="material-icons">upload_file</span>
+            <span translate="no" class="material-icons">upload_file</span>
             Upload files
           </button>
           <button class="row-menu-item" (click)="uploadInto(menu.entry, 'folder')">
-            <span class="material-icons">drive_folder_upload</span>
+            <span translate="no" class="material-icons">drive_folder_upload</span>
             Upload folder
           </button>
         } @else {
           <button class="row-menu-item" (click)="openEntry(menu.entry)">
-            <span class="material-icons">open_in_new</span>
+            <span translate="no" class="material-icons">open_in_new</span>
             Open
           </button>
         }
         <button class="row-menu-item" (click)="startRename(menu.entry)">
-          <span class="material-icons">drive_file_rename_outline</span>
+          <span translate="no" class="material-icons">drive_file_rename_outline</span>
           Rename
         </button>
         <button class="row-menu-item" (click)="startShare(menu.entry)">
-          <span class="material-icons">share</span>
+          <span translate="no" class="material-icons">share</span>
           {{ menu.entry.isDirectory ? 'Share folder' : 'Share file' }}
         </button>
         <button class="row-menu-item" (click)="startDownload(menu.entry)">
-          <span class="material-icons">download</span>
+          <span translate="no" class="material-icons">download</span>
           {{ menu.entry.isDirectory ? 'Download folder' : 'Download' }}
         </button>
         <button class="row-menu-item danger" (click)="startDelete(menu.entry)">
-          <span class="material-icons">delete</span>
+          <span translate="no" class="material-icons">delete</span>
           {{ menu.entry.isDirectory ? 'Delete folder' : 'Delete' }}
         </button>
       </div>
@@ -569,7 +569,7 @@ interface ListingEntry extends FileEntry {
             <p>Delete <strong>{{ entry.name }}</strong>? This removes it from the space and its Git repository.</p>
             @if (entry.isDirectory) {
               <p class="modal-warning">
-                <span class="material-icons">warning_amber</span>
+                <span translate="no" class="material-icons">warning_amber</span>
                 <span>
                   Everything inside is deleted with it{{ deleteFileCount() > 0 ? ' — ' + deleteFileCount() + ' file' + (deleteFileCount() === 1 ? '' : 's') + ', including any subfolders' : '' }}.
                 </span>

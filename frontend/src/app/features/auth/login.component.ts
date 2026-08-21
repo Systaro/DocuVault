@@ -26,7 +26,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
           @if (error()) {
             <div class="error-message">
-              <span class="material-icons">error_outline</span>
+              <span translate="no" class="material-icons">error_outline</span>
               {{ error() }}
             </div>
           }
@@ -35,7 +35,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Email address</label>
               <div class="input-icon">
-                <span class="material-icons">mail</span>
+                <span translate="no" class="material-icons">mail</span>
                 <input
                   type="email"
                   [(ngModel)]="email"
@@ -53,7 +53,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Password</label>
               <div class="input-icon">
-                <span class="material-icons">lock</span>
+                <span translate="no" class="material-icons">lock</span>
                 <input
                   [type]="showPassword() ? 'text' : 'password'"
                   [(ngModel)]="password"
@@ -64,7 +64,7 @@ import { AuthService } from '../../core/auth/auth.service';
                   enterkeyhint="go"
                   required
                 />
-                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                   {{ showPassword() ? 'visibility_off' : 'visibility' }}
                 </span>
               </div>
@@ -80,10 +80,10 @@ import { AuthService } from '../../core/auth/auth.service';
 
             <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Sign In">
               @if (loading()) {
-                <span class="material-icons animate-spin">sync</span>
+                <span translate="no" class="material-icons animate-spin">sync</span>
                 Signing in...
               } @else {
-                <span class="material-icons">login</span>
+                <span translate="no" class="material-icons">login</span>
                 Sign In
               }
             </button>
@@ -97,7 +97,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="dev-login">
               <div class="divider">Development</div>
               <button type="button" (click)="devLogin()" class="btn btn-dev">
-                <span class="material-icons">bolt</span>
+                <span translate="no" class="material-icons">bolt</span>
                 Quick Admin Login
               </button>
             </div>

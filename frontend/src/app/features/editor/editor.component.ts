@@ -424,7 +424,7 @@ interface OutlineItem {
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar">
           <div class="preview-filename">
-            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
+            <span translate="no" class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -755,8 +755,12 @@ interface OutlineItem {
                 }
               } @else {
                 <!-- TipTap Editor Container -->
+                <!-- translate="no": browser page translation rewrites the text
+                     nodes in place, and TipTap would read that back as an edit
+                     and commit the translated prose to Git on the next save. -->
                 <div
                   #editorElement
+                  translate="no"
                   class="prose prose-lg max-w-none"
                 ></div>
               }
@@ -814,7 +818,7 @@ interface OutlineItem {
       <!-- Floating AI chat entry — same bubble as the dashboard, scoped to this document -->
       @if (caps.aiChat() && space() && documentPath && !showAiEditDialog()) {
         <button class="ai-fab" title="Chat with AI about this document" (click)="openAiChat()">
-          <span class="material-icons">auto_awesome</span>
+          <span translate="no" class="material-icons">auto_awesome</span>
         </button>
       }
 

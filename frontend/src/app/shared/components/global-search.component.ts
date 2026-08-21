@@ -14,7 +14,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
       <div class="search-dialog" (click)="$event.stopPropagation()">
         <!-- Search Input -->
         <div class="search-input-row">
-          <span class="material-icons search-icon">search</span>
+          <span translate="no" class="material-icons search-icon">search</span>
           <input
             #searchInput
             type="text"
@@ -32,12 +32,12 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
         <div class="search-results" *ngIf="query().length >= 2">
           @if (loading()) {
             <div class="search-status">
-              <span class="material-icons spin">sync</span>
+              <span translate="no" class="material-icons spin">sync</span>
               Searching...
             </div>
           } @else if (results().length === 0 && query().length >= 2) {
             <div class="search-status">
-              <span class="material-icons">search_off</span>
+              <span translate="no" class="material-icons">search_off</span>
               No documents found
             </div>
           } @else {
@@ -49,7 +49,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
                 (mouseenter)="activeIndex.set(i)"
               >
                 <div class="result-icon">
-                  <span class="material-icons">{{ getFileIcon(result.documentPath) }}</span>
+                  <span translate="no" class="material-icons">{{ getFileIcon(result.documentPath) }}</span>
                 </div>
                 <div class="result-body">
                   <div class="result-title">{{ result.documentTitle }}</div>

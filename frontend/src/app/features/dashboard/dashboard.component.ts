@@ -29,15 +29,15 @@ interface BreadcrumbItem {
         <div class="breadcrumb-bar">
           <div class="breadcrumb">
             <button class="breadcrumb-item" [class.active]="breadcrumbs().length === 0" (click)="navigateToRoot()">
-              <span class="material-icons">home</span>
+              <span translate="no" class="material-icons">home</span>
             </button>
-            <span class="material-icons breadcrumb-sep">chevron_right</span>
+            <span translate="no" class="material-icons breadcrumb-sep">chevron_right</span>
             @if (breadcrumbs().length === 0) {
               <span class="breadcrumb-item active">Workspaces</span>
             } @else {
               <button class="breadcrumb-item" (click)="navigateToRoot()">Workspaces</button>
               @for (crumb of breadcrumbs(); track crumb.id; let last = $last) {
-                <span class="material-icons breadcrumb-sep">chevron_right</span>
+                <span translate="no" class="material-icons breadcrumb-sep">chevron_right</span>
                 @if (last) {
                   <span class="breadcrumb-item active">{{ crumb.name }}</span>
                 } @else {
@@ -63,18 +63,18 @@ interface BreadcrumbItem {
               <div class="header-actions">
                 @if (currentParent()) {
                   <button (click)="openCreateModal('REPOSITORY')" class="btn btn-primary">
-                    <span class="material-icons">source</span>
+                    <span translate="no" class="material-icons">source</span>
                     New Repository
                   </button>
                   @if (currentParent()!.type === 'GROUP' && !currentParent()!.parentId) {
                     <button (click)="openCreateModal('GROUP')" class="btn btn-secondary">
-                      <span class="material-icons">folder</span>
+                      <span translate="no" class="material-icons">folder</span>
                       New Subgroup
                     </button>
                   }
                 } @else {
                   <button (click)="openCreateModal('GROUP')" class="btn btn-primary">
-                    <span class="material-icons">create_new_folder</span>
+                    <span translate="no" class="material-icons">create_new_folder</span>
                     New Group
                   </button>
                 }
@@ -84,17 +84,17 @@ interface BreadcrumbItem {
 
           @if (loading()) {
             <div class="loading-state">
-              <span class="material-icons animate-spin">sync</span>
+              <span translate="no" class="material-icons animate-spin">sync</span>
               <p>Loading workspaces...</p>
             </div>
           } @else if (spaces().length === 0) {
             <div class="empty-state">
-              <span class="material-icons">auto_stories</span>
+              <span translate="no" class="material-icons">auto_stories</span>
               <h3>No documentation spaces yet</h3>
               <p>Get started by creating your first documentation space.</p>
               @if (authService.isAdmin()) {
                 <button (click)="showCreateModal.set(true)" class="btn btn-primary">
-                  <span class="material-icons">add</span>
+                  <span translate="no" class="material-icons">add</span>
                   Create your first space
                 </button>
               }
@@ -108,20 +108,20 @@ interface BreadcrumbItem {
                     @if (authService.isAdmin()) {
                       <div class="workspace-card-menu" (click)="$event.stopPropagation()">
                         <button class="icon-btn" (click)="toggleMenu(space.id)">
-                          <span class="material-icons">more_vert</span>
+                          <span translate="no" class="material-icons">more_vert</span>
                         </button>
                         @if (openMenuId() === space.id) {
                           <div class="dropdown-menu">
                             <button class="dropdown-item" (click)="openShareDialog(space)">
-                              <span class="material-icons">share</span>
+                              <span translate="no" class="material-icons">share</span>
                               Share
                             </button>
                             <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
-                              <span class="material-icons">settings</span>
+                              <span translate="no" class="material-icons">settings</span>
                               Settings
                             </button>
                             <button class="dropdown-item danger" (click)="confirmDelete(space)">
-                              <span class="material-icons">delete</span>
+                              <span translate="no" class="material-icons">delete</span>
                               Delete
                             </button>
                           </div>
@@ -135,37 +135,37 @@ interface BreadcrumbItem {
                         </div>
                       } @else {
                         <div class="workspace-icon group-icon">
-                          <span class="material-icons">folder</span>
+                          <span translate="no" class="material-icons">folder</span>
                         </div>
                       }
                       <div class="workspace-card-info">
                         <div class="workspace-card-name">{{ space.name }}</div>
                         <span class="workspace-card-type">
-                          <span class="material-icons">folder_open</span>
+                          <span translate="no" class="material-icons">folder_open</span>
                           Group
                         </span>
                       </div>
                     </div>
                     <div class="workspace-card-details">
                       <div class="workspace-detail-row">
-                        <span class="material-icons">inventory_2</span>
+                        <span translate="no" class="material-icons">inventory_2</span>
                         <span>{{ space.childCount ?? 0 }} {{ (space.childCount ?? 0) === 1 ? 'item' : 'items' }}</span>
                       </div>
                       @if (space.description) {
                         <div class="workspace-detail-row">
-                          <span class="material-icons">description</span>
+                          <span translate="no" class="material-icons">description</span>
                           <span>{{ space.description }}</span>
                         </div>
                       }
                     </div>
                     <div class="workspace-card-footer">
                       <div class="workspace-type-badge group">
-                        <span class="material-icons">folder</span>
+                        <span translate="no" class="material-icons">folder</span>
                         Group
                       </div>
                       @if (inboxCount(space) > 0) {
                         <div class="inbox-count-badge" title="Unsorted inbox notes">
-                          <span class="material-icons">move_to_inbox</span>
+                          <span translate="no" class="material-icons">move_to_inbox</span>
                           {{ inboxCount(space) }}
                         </div>
                       }
@@ -177,20 +177,20 @@ interface BreadcrumbItem {
                     @if (authService.isAdmin()) {
                       <div class="workspace-card-menu" (click)="$event.preventDefault(); $event.stopPropagation()">
                         <button class="icon-btn" (click)="toggleMenu(space.id)">
-                          <span class="material-icons">more_vert</span>
+                          <span translate="no" class="material-icons">more_vert</span>
                         </button>
                         @if (openMenuId() === space.id) {
                           <div class="dropdown-menu">
                             <button class="dropdown-item" (click)="openShareDialog(space)">
-                              <span class="material-icons">share</span>
+                              <span translate="no" class="material-icons">share</span>
                               Share
                             </button>
                             <button class="dropdown-item" (click)="goToSettings(space.fullPath)">
-                              <span class="material-icons">settings</span>
+                              <span translate="no" class="material-icons">settings</span>
                               Settings
                             </button>
                             <button class="dropdown-item danger" (click)="confirmDelete(space)">
-                              <span class="material-icons">delete</span>
+                              <span translate="no" class="material-icons">delete</span>
                               Delete
                             </button>
                           </div>
@@ -210,46 +210,46 @@ interface BreadcrumbItem {
                       <div class="workspace-card-info">
                         <div class="workspace-card-name">{{ space.name }}</div>
                         <span class="workspace-card-type">
-                          <span class="material-icons">{{ space.gitlabUrl ? 'cloud_sync' : 'source' }}</span>
+                          <span translate="no" class="material-icons">{{ space.gitlabUrl ? 'cloud_sync' : 'source' }}</span>
                           {{ space.gitlabUrl ? 'Git Repository' : 'Repository' }}
                         </span>
                       </div>
                     </div>
                     <div class="workspace-card-details">
                       <div class="workspace-detail-row">
-                        <span class="material-icons">article</span>
+                        <span translate="no" class="material-icons">article</span>
                         <span>{{ space.documentCount ?? 0 }} {{ (space.documentCount ?? 0) === 1 ? 'document' : 'documents' }}</span>
                       </div>
                       @if (space.description) {
                         <div class="workspace-detail-row">
-                          <span class="material-icons">description</span>
+                          <span translate="no" class="material-icons">description</span>
                           <span>{{ space.description }}</span>
                         </div>
                       }
                       @if (space.gitlabUrl) {
                         <div class="workspace-detail-row">
-                          <span class="material-icons">link</span>
+                          <span translate="no" class="material-icons">link</span>
                           <span class="path">{{ extractRepoPath(space.gitlabUrl) }}</span>
                         </div>
                         <div class="workspace-detail-row">
-                          <span class="material-icons">account_tree</span>
+                          <span translate="no" class="material-icons">account_tree</span>
                           <span>{{ space.branch || 'main' }} branch</span>
                         </div>
                       }
                     </div>
                     @if (space.gitError) {
                       <div class="workspace-card-error">
-                        <span class="material-icons">error_outline</span>
+                        <span translate="no" class="material-icons">error_outline</span>
                         <span>{{ space.gitError }}</span>
                       </div>
                     }
                     <div class="workspace-card-footer">
                       <div class="workspace-sync-status" [class.synced]="space.syncEnabled && !space.gitError" [class.error]="space.gitError" [class.pending]="!space.syncEnabled && !space.gitError">
                         @if (space.gitError) {
-                          <span class="material-icons">error</span>
+                          <span translate="no" class="material-icons">error</span>
                           Sync error
                         } @else if (space.syncEnabled) {
-                          <span class="material-icons">check_circle</span>
+                          <span translate="no" class="material-icons">check_circle</span>
                           @if (space.lastSyncedAt) {
                             Synced {{ formatDate(space.lastSyncedAt) }}
                             <span class="sync-details">
@@ -262,13 +262,13 @@ interface BreadcrumbItem {
                             Sync enabled
                           }
                         } @else {
-                          <span class="material-icons">sync_disabled</span>
+                          <span translate="no" class="material-icons">sync_disabled</span>
                           Sync disabled
                         }
                       </div>
                       @if (inboxCount(space) > 0) {
                         <div class="inbox-count-badge" title="Unsorted inbox notes">
-                          <span class="material-icons">move_to_inbox</span>
+                          <span translate="no" class="material-icons">move_to_inbox</span>
                           {{ inboxCount(space) }}
                         </div>
                       }
@@ -281,13 +281,13 @@ interface BreadcrumbItem {
               @if (authService.isAdmin()) {
                 @if (currentParent()) {
                   <div class="add-workspace-card" (click)="openCreateModal('REPOSITORY')">
-                    <span class="material-icons">source</span>
+                    <span translate="no" class="material-icons">source</span>
                     <h3>Add Repository</h3>
                     <p>Connect a Git repository</p>
                   </div>
                 } @else {
                   <div class="add-workspace-card" (click)="openCreateModal('GROUP')">
-                    <span class="material-icons">create_new_folder</span>
+                    <span translate="no" class="material-icons">create_new_folder</span>
                     <h3>Add Group</h3>
                     <p>Organize your workspaces</p>
                   </div>
@@ -300,7 +300,7 @@ interface BreadcrumbItem {
         <!-- Floating AI Button -->
         @if (!showSpacePicker() && caps.aiChat()) {
           <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
-            <span class="material-icons">auto_awesome</span>
+            <span translate="no" class="material-icons">auto_awesome</span>
           </button>
         }
 
@@ -310,7 +310,7 @@ interface BreadcrumbItem {
               <div class="space-picker-header">
                 <h3>Select a space to chat about</h3>
                 <button class="icon-btn" (click)="showSpacePicker.set(false)">
-                  <span class="material-icons">close</span>
+                  <span translate="no" class="material-icons">close</span>
                 </button>
               </div>
               <div class="space-picker-list">
@@ -320,7 +320,7 @@ interface BreadcrumbItem {
                       <img [src]="space.logoUrl" [alt]="space.name" class="space-picker-logo" />
                     } @else if (space.type === 'GROUP') {
                       <div class="space-picker-icon group">
-                        <span class="material-icons">folder</span>
+                        <span translate="no" class="material-icons">folder</span>
                       </div>
                     } @else {
                       <div class="space-picker-icon">{{ space.name.charAt(0).toUpperCase() }}</div>
@@ -370,7 +370,7 @@ interface BreadcrumbItem {
             <div class="modal-header">
               <h2>Delete Space</h2>
               <button class="icon-btn" (click)="cancelDelete()">
-                <span class="material-icons">close</span>
+                <span translate="no" class="material-icons">close</span>
               </button>
             </div>
             <div class="modal-body">
@@ -385,10 +385,10 @@ interface BreadcrumbItem {
               </button>
               <button type="button" (click)="deleteSpace()" [disabled]="deleting()" class="btn btn-danger">
                 @if (deleting()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Deleting...
                 } @else {
-                  <span class="material-icons">delete</span>
+                  <span translate="no" class="material-icons">delete</span>
                   Delete Space
                 }
               </button>

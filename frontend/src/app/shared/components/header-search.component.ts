@@ -16,7 +16,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
   imports: [CommonModule],
   template: `
     <div class="header-search">
-      <span class="material-icons search-icon">search</span>
+      <span translate="no" class="material-icons search-icon">search</span>
       <input
         type="text"
         class="search-field"
@@ -29,7 +29,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
       />
       @if (query()) {
         <button class="clear-btn" (click)="clear()" title="Clear">
-          <span class="material-icons">close</span>
+          <span translate="no" class="material-icons">close</span>
         </button>
       }
 
@@ -37,12 +37,12 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
         <div class="search-dropdown">
           @if (loading()) {
             <div class="dropdown-status">
-              <span class="material-icons spin">sync</span>
+              <span translate="no" class="material-icons spin">sync</span>
               Searching...
             </div>
           } @else if (results().length === 0) {
             <div class="dropdown-status">
-              <span class="material-icons">search_off</span>
+              <span translate="no" class="material-icons">search_off</span>
               No documents found
             </div>
           } @else {
@@ -53,7 +53,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
                 (click)="navigateTo(result)"
                 (mouseenter)="activeIndex.set(i)"
               >
-                <span class="material-icons result-icon">{{ fileIcon(result.documentPath) }}</span>
+                <span translate="no" class="material-icons result-icon">{{ fileIcon(result.documentPath) }}</span>
                 <span class="result-body">
                   <span class="result-title">{{ result.documentTitle }}</span>
                   <span class="result-meta">

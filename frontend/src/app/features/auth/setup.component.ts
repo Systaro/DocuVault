@@ -26,7 +26,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
           @if (error()) {
             <div class="error-message">
-              <span class="material-icons">error_outline</span>
+              <span translate="no" class="material-icons">error_outline</span>
               {{ error() }}
             </div>
           }
@@ -35,7 +35,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Your name</label>
               <div class="input-icon">
-                <span class="material-icons">person</span>
+                <span translate="no" class="material-icons">person</span>
                 <input
                   type="text"
                   [(ngModel)]="name"
@@ -52,7 +52,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Email address</label>
               <div class="input-icon">
-                <span class="material-icons">mail</span>
+                <span translate="no" class="material-icons">mail</span>
                 <input
                   type="email"
                   [(ngModel)]="email"
@@ -70,7 +70,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Password</label>
               <div class="input-icon">
-                <span class="material-icons">lock</span>
+                <span translate="no" class="material-icons">lock</span>
                 <input
                   [type]="showPassword() ? 'text' : 'password'"
                   [(ngModel)]="password"
@@ -82,7 +82,7 @@ import { AuthService } from '../../core/auth/auth.service';
                   required
                   minlength="8"
                 />
-                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                   {{ showPassword() ? 'visibility_off' : 'visibility' }}
                 </span>
               </div>
@@ -91,7 +91,7 @@ import { AuthService } from '../../core/auth/auth.service';
             <div class="form-group">
               <label class="form-label">Confirm password</label>
               <div class="input-icon">
-                <span class="material-icons">lock</span>
+                <span translate="no" class="material-icons">lock</span>
                 <input
                   [type]="showPassword() ? 'text' : 'password'"
                   [(ngModel)]="confirmPassword"
@@ -102,7 +102,7 @@ import { AuthService } from '../../core/auth/auth.service';
                   enterkeyhint="go"
                   required
                 />
-                <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                   {{ showPassword() ? 'visibility_off' : 'visibility' }}
                 </span>
               </div>
@@ -110,10 +110,10 @@ import { AuthService } from '../../core/auth/auth.service';
 
             <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Create administrator account">
               @if (loading()) {
-                <span class="material-icons animate-spin">sync</span>
+                <span translate="no" class="material-icons animate-spin">sync</span>
                 Creating administrator…
               } @else {
-                <span class="material-icons">admin_panel_settings</span>
+                <span translate="no" class="material-icons">admin_panel_settings</span>
                 Create administrator
               }
             </button>

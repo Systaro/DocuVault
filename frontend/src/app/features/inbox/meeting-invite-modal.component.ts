@@ -20,11 +20,11 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       <div class="modal-box" (click)="$event.stopPropagation()">
         <div class="modal-head">
           <h3>
-            <span class="material-icons">graphic_eq</span>
+            <span translate="no" class="material-icons">graphic_eq</span>
             Meeting transkribieren
           </h3>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
@@ -72,7 +72,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             title="Gesprochene Sprache des Meetings — fixiert die Transkription und die Sprache des Protokolls."
           />
           <button class="btn btn-primary" [disabled]="!canCreate()" (click)="create()">
-            <span class="material-icons">add</span>
+            <span translate="no" class="material-icons">add</span>
             @if (platform() === 'TEAMS') {
               {{ creating() ? 'Lade ein…' : 'Bot einladen' }}
             } @else {
@@ -90,7 +90,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           />
         }
         <p class="lang-hint">
-          <span class="material-icons">translate</span>
+          <span translate="no" class="material-icons">translate</span>
           Sprache fixiert die Transkription — verhindert falsch erkannte Sprache bei kurzen Wortbeiträgen.
         </p>
 
@@ -99,7 +99,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           @if (inv.platform === 'TEAMS') {
             <div class="token-box">
               <div class="token-box-head">
-                <span class="material-icons">groups</span>
+                <span translate="no" class="material-icons">groups</span>
                 „{{ inv.label }}" — Bot tritt bei
               </div>
               <div class="cmd-hint">
@@ -111,20 +111,20 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           } @else {
             <div class="token-box">
               <div class="token-box-head">
-                <span class="material-icons">vpn_key</span>
+                <span translate="no" class="material-icons">vpn_key</span>
                 Token für „{{ inv.label }}" — nur jetzt sichtbar
               </div>
               <div class="token-line">
                 <code class="token">{{ inv.token }}</code>
                 <button class="btn btn-ghost btn-sm" (click)="copy(inv.token!)">
-                  <span class="material-icons">content_copy</span>
+                  <span translate="no" class="material-icons">content_copy</span>
                 </button>
               </div>
               <div class="cmd-hint">
                 In Discord eingeben:
                 <code>/transcribe token:{{ inv.token }}</code>
                 <button class="btn btn-ghost btn-sm" (click)="copy('/transcribe token:' + inv.token)">
-                  <span class="material-icons">content_copy</span>
+                  <span translate="no" class="material-icons">content_copy</span>
                 </button>
               </div>
             </div>
@@ -151,7 +151,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                   </span>
                   @if (inv.status === 'ACTIVE') {
                     <div class="live-progress">
-                      <span class="material-icons spinning">graphic_eq</span>
+                      <span translate="no" class="material-icons spinning">graphic_eq</span>
                       <span class="live-text">{{ phaseLabel(inv) }}</span>
                       @if (inv.progressTotal) {
                         <span class="live-count">{{ inv.progressCurrent ?? 0 }}/{{ inv.progressTotal }}</span>
@@ -170,7 +170,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 </span>
                 @if (inv.status === 'PENDING') {
                   <button class="btn btn-ghost btn-sm" (click)="cancel(inv)" title="Token zurückziehen">
-                    <span class="material-icons">delete_outline</span>
+                    <span translate="no" class="material-icons">delete_outline</span>
                   </button>
                 }
                 @if (inv.status === 'ACTIVE') {
@@ -182,7 +182,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                       ? 'Aufnahme wird beendet…'
                       : 'Aufnahme beenden und Protokoll erstellen'"
                   >
-                    <span class="material-icons">{{ inv.stopRequested ? 'hourglass_top' : 'stop_circle' }}</span>
+                    <span translate="no" class="material-icons">{{ inv.stopRequested ? 'hourglass_top' : 'stop_circle' }}</span>
                     {{ inv.stopRequested ? 'Stoppt…' : 'Stopp' }}
                   </button>
                 }

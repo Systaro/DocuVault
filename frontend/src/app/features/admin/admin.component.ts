@@ -14,9 +14,9 @@ import { LayoutComponent } from '../../shared/components/layout.component';
         <div class="breadcrumb-bar">
           <div class="breadcrumb">
             <span class="breadcrumb-item">
-              <span class="material-icons">home</span>
+              <span translate="no" class="material-icons">home</span>
             </span>
-            <span class="material-icons breadcrumb-sep">chevron_right</span>
+            <span translate="no" class="material-icons breadcrumb-sep">chevron_right</span>
             <span class="breadcrumb-item active">Administration</span>
           </div>
         </div>
@@ -32,7 +32,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLinkActive="active"
                   class="sidebar-link"
                 >
-                  <span class="material-icons">group</span>
+                  <span translate="no" class="material-icons">group</span>
                   User Management
                 </a>
                 <a
@@ -40,7 +40,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLinkActive="active"
                   class="sidebar-link"
                 >
-                  <span class="material-icons">groups</span>
+                  <span translate="no" class="material-icons">groups</span>
                   Teams
                 </a>
                 <a
@@ -48,7 +48,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLinkActive="active"
                   class="sidebar-link"
                 >
-                  <span class="material-icons">settings</span>
+                  <span translate="no" class="material-icons">settings</span>
                   Settings
                 </a>
               </div>
@@ -60,7 +60,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLinkActive="active"
                   class="sidebar-link"
                 >
-                  <span class="material-icons">cloud_sync</span>
+                  <span translate="no" class="material-icons">cloud_sync</span>
                   Git Configuration
                 </a>
                 <a
@@ -69,7 +69,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLinkActive="active"
                   class="sidebar-link"
                 >
-                  <span class="material-icons">auto_awesome</span>
+                  <span translate="no" class="material-icons">auto_awesome</span>
                   AI Settings
                 </a>
               </div>

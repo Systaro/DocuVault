@@ -33,7 +33,7 @@ import { APP_VERSION } from '../version';
             [routerLinkActiveOptions]="{ exact: true }"
             class="nav-link"
           >
-            <span class="material-icons">dashboard</span>
+            <span translate="no" class="material-icons">dashboard</span>
             Dashboard
           </a>
           @if (authService.isAdmin()) {
@@ -42,7 +42,7 @@ import { APP_VERSION } from '../version';
               routerLinkActive="active"
               class="nav-link"
             >
-              <span class="material-icons">admin_panel_settings</span>
+              <span translate="no" class="material-icons">admin_panel_settings</span>
               Admin
             </a>
           }
@@ -51,19 +51,19 @@ import { APP_VERSION } from '../version';
         <div class="header-actions">
           <app-header-search class="desktop-search" />
           <button class="quick-note-btn" title="Quick Note (⌘K)" (click)="showCapture.set(true)">
-            <span class="material-icons">add</span>
+            <span translate="no" class="material-icons">add</span>
             Quick Note
           </button>
           <button class="icon-btn mobile-search-btn" title="Search" (click)="showSearch.set(true)">
-            <span class="material-icons">search</span>
+            <span translate="no" class="material-icons">search</span>
           </button>
           <app-header-notifications />
           <button class="icon-btn" (click)="themeService.toggle()" [title]="themeService.darkMode() ? 'Light mode' : 'Dark mode'">
-            <span class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
+            <span translate="no" class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
           </button>
           @if (authService.isAdmin()) {
             <a routerLink="/admin/settings" class="icon-btn" title="Settings">
-              <span class="material-icons">settings</span>
+              <span translate="no" class="material-icons">settings</span>
             </a>
           }
           <div class="header-user">
@@ -71,7 +71,7 @@ import { APP_VERSION } from '../version';
               {{ getInitials(authService.user()?.name) }}
             </a>
             <button (click)="authService.logout()" class="btn btn-ghost">
-              <span class="material-icons">logout</span>
+              <span translate="no" class="material-icons">logout</span>
               Sign out
             </button>
           </div>
@@ -81,7 +81,7 @@ import { APP_VERSION } from '../version';
       <!-- Impersonation Banner -->
       @if (authService.isImpersonating()) {
         <div class="impersonation-banner">
-          <span class="material-icons">swap_horiz</span>
+          <span translate="no" class="material-icons">swap_horiz</span>
           <span>Viewing as <strong>{{ authService.user()?.name }}</strong></span>
           <button class="stop-btn" (click)="authService.stopImpersonation()">
             Stop Impersonating
@@ -185,11 +185,16 @@ import { APP_VERSION } from '../version';
       margin-left: var(--spacing-xl);
     }
 
+    /* Every label in this bar stays on one line. Browser page translation
+       (Chrome's "Translate this page") makes them noticeably longer — "Quick
+       Note" becomes "Kurzer Hinweis" — and a wrapped label breaks the fixed
+       64px header instead of just taking more width. */
     .nav-link {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs);
       padding: var(--spacing-sm) var(--spacing-md);
+      white-space: nowrap;
       color: var(--text-primary);
       text-decoration: none;
       font-size: 14px;
@@ -234,6 +239,7 @@ import { APP_VERSION } from '../version';
       border-radius: var(--radius-md);
       font-size: 13px;
       font-weight: 600;
+      white-space: nowrap;
       cursor: pointer;
       transition: all var(--transition);
       font-family: inherit;
@@ -250,6 +256,10 @@ import { APP_VERSION } from '../version';
       margin-left: var(--spacing-sm);
       padding-left: var(--spacing-md);
       border-left: 1px solid var(--border);
+
+      .btn {
+        white-space: nowrap;
+      }
     }
 
     .impersonation-banner {

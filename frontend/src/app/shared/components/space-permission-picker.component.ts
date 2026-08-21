@@ -21,7 +21,7 @@ export interface InheritedGrant {
   template: `
     @if (loading) {
       <div class="loading-permissions">
-        <span class="material-icons animate-spin">sync</span>
+        <span translate="no" class="material-icons animate-spin">sync</span>
         Loading...
       </div>
     } @else {
@@ -32,14 +32,14 @@ export interface InheritedGrant {
                [class.is-group]="space.type === 'GROUP'"
                [style.padding-left.px]="getIndent(space)">
             <div class="permission-space">
-              <span class="material-icons space-icon">
+              <span translate="no" class="material-icons space-icon">
                 {{ space.type === 'GROUP' ? 'folder' : 'description' }}
               </span>
               <span class="space-name">{{ space.name }}</span>
               <span class="space-path">{{ space.fullPath }}</span>
               @for (grant of inheritedFor(space.id); track grant.source) {
                 <span class="inherited-chip" [title]="'Inherited from ' + grant.source">
-                  <span class="material-icons">groups</span>
+                  <span translate="no" class="material-icons">groups</span>
                   {{ grant.source }} · {{ formatLevel(grant.level) }}
                 </span>
               }

@@ -32,7 +32,7 @@ export interface MoveOutcome {
 
         <div class="modal-body">
           <p class="move-subject">
-            <span class="material-icons">{{ isDirectory() ? 'folder' : 'description' }}</span>
+            <span translate="no" class="material-icons">{{ isDirectory() ? 'folder' : 'description' }}</span>
             <strong>{{ itemName() }}</strong>
           </p>
 
@@ -48,7 +48,7 @@ export interface MoveOutcome {
               [class.selected]="mode() === 'MOVE'"
               (click)="mode.set('MOVE')"
             >
-              <span class="material-icons">drive_file_move</span>
+              <span translate="no" class="material-icons">drive_file_move</span>
               <span class="mode-text">
                 <span class="mode-title">Move it</span>
                 <span class="mode-hint">Nothing stays behind</span>
@@ -62,7 +62,7 @@ export interface MoveOutcome {
               [class.selected]="mode() === 'COPY'"
               (click)="mode.set('COPY')"
             >
-              <span class="material-icons">content_copy</span>
+              <span translate="no" class="material-icons">content_copy</span>
               <span class="mode-text">
                 <span class="mode-title">Copy it</span>
                 <span class="mode-hint">The original stays here</span>
@@ -92,7 +92,7 @@ export interface MoveOutcome {
 
           <label class="move-label" for="move-folder-search">Destination folder</label>
           <div class="move-search-wrap">
-            <span class="material-icons move-search-icon">search</span>
+            <span translate="no" class="material-icons move-search-icon">search</span>
             <input
               id="move-folder-search"
               class="move-search"
@@ -117,10 +117,10 @@ export interface MoveOutcome {
                     [title]="isBlockedFolder(folder) ? 'A folder can\\'t go inside itself' : folder || 'Space root'"
                     (click)="targetFolder.set(folder)"
                   >
-                    <span class="material-icons opt-icon">{{ folder ? 'folder' : 'home' }}</span>
+                    <span translate="no" class="material-icons opt-icon">{{ folder ? 'folder' : 'home' }}</span>
                     <span class="move-folder-label">{{ folder || '(space root)' }}</span>
                     @if (folder === targetFolder()) {
-                      <span class="material-icons opt-check">check</span>
+                      <span translate="no" class="material-icons opt-check">check</span>
                     }
                   </button>
                 </li>

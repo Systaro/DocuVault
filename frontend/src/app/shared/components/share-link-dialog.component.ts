@@ -16,14 +16,14 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
         <div class="share-header">
           <h2>{{ isDirectory() ? 'Share Folder' : 'Share File' }}</h2>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
         <div class="share-body">
           <!-- File info -->
           <div class="file-info">
-            <span class="material-icons file-icon">{{ getFileIcon() }}</span>
+            <span translate="no" class="material-icons file-icon">{{ getFileIcon() }}</span>
             <span class="file-name">{{ getFileName() }}</span>
           </div>
 
@@ -32,7 +32,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             <div class="share-type-section">
               <label class="toggle-label">
                 <input type="checkbox" [(ngModel)]="shareAsFolder" />
-                <span class="material-icons toggle-icon">{{ shareAsFolder ? 'folder_shared' : 'insert_drive_file' }}</span>
+                <span translate="no" class="material-icons toggle-icon">{{ shareAsFolder ? 'folder_shared' : 'insert_drive_file' }}</span>
                 <span>{{ shareAsFolder ? 'Share entire folder with navigation' : 'Share as single file link' }}</span>
               </label>
             </div>
@@ -54,9 +54,9 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                 (click)="createLink()"
               >
                 @if (creating()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                 } @else {
-                  <span class="material-icons">link</span>
+                  <span translate="no" class="material-icons">link</span>
                 }
                 Generate Link
               </button>
@@ -68,7 +68,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
               <div class="access-level-options">
                 <label class="access-option" [class.selected]="accessLevel === 'VIEW'">
                   <input type="radio" name="accessLevel" value="VIEW" [(ngModel)]="accessLevel" />
-                  <span class="material-icons">visibility</span>
+                  <span translate="no" class="material-icons">visibility</span>
                   <div class="access-option-text">
                     <span class="access-option-title">View only</span>
                     <span class="access-option-desc">Can view content and annotations</span>
@@ -76,7 +76,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                 </label>
                 <label class="access-option" [class.selected]="accessLevel === 'COMMENT'">
                   <input type="radio" name="accessLevel" value="COMMENT" [(ngModel)]="accessLevel" />
-                  <span class="material-icons">add_comment</span>
+                  <span translate="no" class="material-icons">add_comment</span>
                   <div class="access-option-text">
                     <span class="access-option-title">Can comment</span>
                     <span class="access-option-desc">Can view and add annotations</span>
@@ -89,7 +89,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             <div class="password-section">
               <label class="toggle-label">
                 <input type="checkbox" [(ngModel)]="usePassword" />
-                <span class="material-icons toggle-icon">lock</span>
+                <span translate="no" class="material-icons toggle-icon">lock</span>
                 <span>Password protect</span>
               </label>
               @if (usePassword) {
@@ -106,7 +106,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             <div class="writable-section">
               <label class="toggle-label">
                 <input type="checkbox" [(ngModel)]="enableWritableScopes" />
-                <span class="material-icons toggle-icon">edit</span>
+                <span translate="no" class="material-icons toggle-icon">edit</span>
                 <span>Allow state writes (for interactive HTML)</span>
               </label>
               @if (enableWritableScopes) {
@@ -126,13 +126,13 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             <div class="section-label">
               Active Links
               @if (loading()) {
-                <span class="material-icons animate-spin loading-icon">sync</span>
+                <span translate="no" class="material-icons animate-spin loading-icon">sync</span>
               }
             </div>
 
             @if (!loading() && activeLinks().length === 0) {
               <div class="empty-links">
-                <span class="material-icons">link_off</span>
+                <span translate="no" class="material-icons">link_off</span>
                 <p>No active share links</p>
               </div>
             } @else {
@@ -145,18 +145,18 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                     <div class="link-meta">
                       @if (link.hasPassword) {
                         <span class="meta-badge password-badge">
-                          <span class="material-icons">lock</span> Password
+                          <span translate="no" class="material-icons">lock</span> Password
                         </span>
                       }
                       <span class="meta-badge type-badge">{{ link.shareType === 'FOLDER' ? 'Folder' : 'File' }}</span>
                       @if (link.accessLevel === 'COMMENT') {
                         <span class="meta-badge comment-badge">
-                          <span class="material-icons">add_comment</span> Comments
+                          <span translate="no" class="material-icons">add_comment</span> Comments
                         </span>
                       }
                       @if (link.writableScopes?.length) {
                         <span class="meta-badge writable-badge">
-                          <span class="material-icons">edit</span> Writable
+                          <span translate="no" class="material-icons">edit</span> Writable
                         </span>
                       }
                       <span>{{ link.accessCount }} views</span>
@@ -175,13 +175,13 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                       rel="noopener noreferrer"
                       title="Open link"
                     >
-                      <span class="material-icons">open_in_new</span>
+                      <span translate="no" class="material-icons">open_in_new</span>
                     </a>
                     <button class="icon-btn" title="Copy link" (click)="copyLink(link.token)">
-                      <span class="material-icons">content_copy</span>
+                      <span translate="no" class="material-icons">content_copy</span>
                     </button>
                     <button class="icon-btn remove-btn" title="Revoke link" (click)="revokeLink(link.id)">
-                      <span class="material-icons">delete</span>
+                      <span translate="no" class="material-icons">delete</span>
                     </button>
                   </div>
                 </div>

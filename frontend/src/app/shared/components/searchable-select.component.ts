@@ -48,14 +48,14 @@ interface RenderGroup {
       <span class="trigger-label" [class.placeholder]="!selectedOption()">
         {{ selectedOption()?.label || placeholder }}
       </span>
-      <span class="material-icons trigger-arrow">{{ open() ? 'expand_less' : 'expand_more' }}</span>
+      <span translate="no" class="material-icons trigger-arrow">{{ open() ? 'expand_less' : 'expand_more' }}</span>
     </button>
 
     @if (open()) {
       <div class="select-panel" [style.top.px]="panelTop()" [style.left.px]="panelLeft()" [style.width.px]="panelWidth()" [style.maxHeight.px]="panelMaxHeight()">
         @if (showSearch()) {
           <div class="panel-search">
-            <span class="material-icons">search</span>
+            <span translate="no" class="material-icons">search</span>
             <input
               #searchField
               type="text"
@@ -91,7 +91,7 @@ interface RenderGroup {
                   }
                 </span>
                 @if (isSelected(option)) {
-                  <span class="material-icons option-check">check</span>
+                  <span translate="no" class="material-icons option-check">check</span>
                 }
               </button>
             }

@@ -20,7 +20,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
         <div class="share-header">
           <h2>Share {{ spaceName() }}</h2>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
@@ -29,7 +29,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
           <div class="search-section">
             <div class="search-row">
               <div class="search-input-wrapper">
-                <span class="material-icons search-icon">search</span>
+                <span translate="no" class="material-icons search-icon">search</span>
                 <input
                   type="text"
                   class="input search-input"
@@ -46,7 +46,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
               <div class="search-results">
                 @if (searching()) {
                   <div class="search-status">
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                     Searching...
                   </div>
                 } @else if (searchResults().length > 0) {
@@ -64,18 +64,18 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                         [searchable]="false"
                       />
                       <button class="btn btn-sm btn-primary" (click)="addUser(user)">
-                        <span class="material-icons">person_add</span>
+                        <span translate="no" class="material-icons">person_add</span>
                       </button>
                     </div>
                   }
                 } @else {
                   <div class="search-status">
-                    <span class="material-icons">person_off</span>
+                    <span translate="no" class="material-icons">person_off</span>
                     No users found
                   </div>
                   @if (authService.isAdmin() && isValidEmail(searchQuery())) {
                     <button class="invite-option" (click)="inviteByEmail(searchQuery())">
-                      <span class="material-icons">mail</span>
+                      <span translate="no" class="material-icons">mail</span>
                       Invite "{{ searchQuery() }}" via email
                     </button>
                   }
@@ -90,7 +90,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
               <div class="section-label">Invite via email</div>
               <div class="invite-row">
                 <div class="search-input-wrapper">
-                  <span class="material-icons search-icon">mail</span>
+                  <span translate="no" class="material-icons search-icon">mail</span>
                   <input
                     type="email"
                     class="input search-input"
@@ -104,9 +104,9 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                   (click)="inviteByEmail(inviteEmail)"
                 >
                   @if (inviting()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                   } @else {
-                    <span class="material-icons">send</span>
+                    <span translate="no" class="material-icons">send</span>
                     Send
                   }
                 </button>
@@ -119,12 +119,12 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             <div class="section-label">
               Members
               @if (loading()) {
-                <span class="material-icons animate-spin loading-icon">sync</span>
+                <span translate="no" class="material-icons animate-spin loading-icon">sync</span>
               }
             </div>
             @if (permissions().length === 0 && !loading()) {
               <div class="empty-members">
-                <span class="material-icons">group_off</span>
+                <span translate="no" class="material-icons">group_off</span>
                 <p>No members added yet</p>
               </div>
             } @else {
@@ -143,7 +143,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                     [searchable]="false"
                   />
                   <button class="icon-btn remove-btn" (click)="removeMember(perm.userId)" title="Remove access">
-                    <span class="material-icons">close</span>
+                    <span translate="no" class="material-icons">close</span>
                   </button>
                 </div>
               }

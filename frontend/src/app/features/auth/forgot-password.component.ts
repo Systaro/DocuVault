@@ -21,11 +21,11 @@ import { AuthService } from '../../core/auth/auth.service';
         <div class="forgot-form">
           @if (submitted()) {
             <div class="success-state">
-              <span class="material-icons success-icon">mark_email_read</span>
+              <span translate="no" class="material-icons success-icon">mark_email_read</span>
               <h2>Check Your Email</h2>
               <p>If an account with that email exists, we've sent a password reset link. Please check your inbox.</p>
               <a routerLink="/login" class="btn btn-primary btn-full">
-                <span class="material-icons">arrow_back</span>
+                <span translate="no" class="material-icons">arrow_back</span>
                 Back to Sign In
               </a>
             </div>
@@ -35,7 +35,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
             @if (error()) {
               <div class="error-message">
-                <span class="material-icons">error_outline</span>
+                <span translate="no" class="material-icons">error_outline</span>
                 {{ error() }}
               </div>
             }
@@ -44,7 +44,7 @@ import { AuthService } from '../../core/auth/auth.service';
               <div class="form-group">
                 <label class="form-label">Email address</label>
                 <div class="input-icon">
-                  <span class="material-icons">mail</span>
+                  <span translate="no" class="material-icons">mail</span>
                   <input
                     type="email"
                     [(ngModel)]="email"
@@ -61,10 +61,10 @@ import { AuthService } from '../../core/auth/auth.service';
 
               <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Send Reset Link">
                 @if (loading()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Sending...
                 } @else {
-                  <span class="material-icons">send</span>
+                  <span translate="no" class="material-icons">send</span>
                   Send Reset Link
                 }
               </button>
