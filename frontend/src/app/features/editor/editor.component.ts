@@ -44,6 +44,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
+import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../shared/utils/scroll-anchor';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
 import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
@@ -423,7 +424,7 @@ interface OutlineItem {
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar">
           <div class="preview-filename">
-            <span class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
+            <span translate="no" class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -754,8 +755,12 @@ interface OutlineItem {
                 }
               } @else {
                 <!-- TipTap Editor Container -->
+                <!-- translate="no": browser page translation rewrites the text
+                     nodes in place, and TipTap would read that back as an edit
+                     and commit the translated prose to Git on the next save. -->
                 <div
                   #editorElement
+                  translate="no"
                   class="prose prose-lg max-w-none"
                 ></div>
               }
@@ -813,7 +818,7 @@ interface OutlineItem {
       <!-- Floating AI chat entry — same bubble as the dashboard, scoped to this document -->
       @if (caps.aiChat() && space() && documentPath && !showAiEditDialog()) {
         <button class="ai-fab" title="Chat with AI about this document" (click)="openAiChat()">
-          <span class="material-icons">auto_awesome</span>
+          <span translate="no" class="material-icons">auto_awesome</span>
         </button>
       }
 
@@ -2831,8 +2836,47 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.translationLang.set(null);
     // Editing always starts from the current version, never the AI-previous preview.
     this.viewingAiPrevious.set(false);
+    // Remember the passage on screen before the read view is torn down —
+    // dropping someone at the top of a long document to edit a paragraph
+    // halfway down means finding their place again by hand.
+    const place = this.captureReadingPosition();
     this.editMode.set(true);
-    setTimeout(() => this.initTiptap(this.markdownContent()));
+    setTimeout(() => {
+      this.initTiptap(this.markdownContent());
+      this.restoreReadingPosition(place, () => this.editorElement?.nativeElement);
+    });
+  }
+
+  /** Where the reader is in whichever view is currently rendered. */
+  private captureReadingPosition(): ScrollAnchor | null {
+    const container = this.scrollContainer?.nativeElement;
+    const content = this.showEditor()
+      ? this.editorElement?.nativeElement
+      : this.readonlyElement?.nativeElement;
+    if (!container || !content) return null;
+    return captureScrollAnchor(container, content);
+  }
+
+  /**
+   * Put the reader back on the same passage once the other view has rendered.
+   * Deferred a frame past the initial paint because both views settle late —
+   * TipTap builds its document asynchronously, and the read view is still
+   * running Mermaid and draw.io.
+   */
+  private restoreReadingPosition(
+    place: ScrollAnchor | null,
+    content: () => HTMLElement | undefined
+  ): void {
+    if (!place) return;
+    const apply = () => {
+      const container = this.scrollContainer?.nativeElement;
+      const el = content();
+      if (container && el) restoreScrollAnchor(container, el, place);
+    };
+    requestAnimationFrame(apply);
+    // Late-rendering content (diagrams, highlighted code) changes the height
+    // after the first pass, so correct once more when it has settled.
+    setTimeout(apply, 250);
   }
 
   /**
@@ -3238,9 +3282,15 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
 
   /** Tear down the editor and drop back to the rendered read view after a save. */
   private exitToReadView(content: string): void {
+    // Same courtesy on the way back: saving a paragraph shouldn't cost you
+    // your place in the document either.
+    const place = this.captureReadingPosition();
     this.markdownContent.set(content);
     this.editMode.set(false);
-    setTimeout(() => this.renderReadView(content));
+    setTimeout(() => {
+      this.renderReadView(content);
+      this.restoreReadingPosition(place, () => this.readonlyElement?.nativeElement);
+    });
   }
 
   saveAndCommit(): void {

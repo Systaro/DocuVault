@@ -19,19 +19,19 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       <!-- Header -->
       <div class="inbox-header">
         <h1>
-          <span class="material-icons">move_to_inbox</span>
+          <span translate="no" class="material-icons">move_to_inbox</span>
           Inbox
         </h1>
         <div class="header-right">
           @if (liveMeeting(); as lm) {
             <button class="live-pill" (click)="showMeetingModal.set(true)" [title]="lm.label">
               <span class="live-dot"></span>
-              <span class="material-icons spinning">graphic_eq</span>
+              <span translate="no" class="material-icons spinning">graphic_eq</span>
               <span class="live-pill-text">{{ liveLabel(lm) }}</span>
             </button>
           }
           <button class="btn btn-secondary btn-sm" (click)="showMeetingModal.set(true)">
-            <span class="material-icons">graphic_eq</span>
+            <span translate="no" class="material-icons">graphic_eq</span>
             Meeting transkribieren
           </button>
           <span class="notes-meta">{{ activeNotes().length }} {{ activeTab() === 'unsorted' ? 'unsorted' : 'filed' }}</span>
@@ -61,12 +61,12 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
           <div class="note-list-panel">
             @if (loading()) {
               <div class="empty-state">
-                <span class="material-icons spinning">refresh</span>
+                <span translate="no" class="material-icons spinning">refresh</span>
                 Loading...
               </div>
             } @else if (unsortedNotes().length === 0) {
               <div class="empty-state">
-                <span class="material-icons">check_circle</span>
+                <span translate="no" class="material-icons">check_circle</span>
                 <p>All caught up! No unsorted notes.</p>
               </div>
             } @else {
@@ -91,7 +91,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
           <div class="suggestion-panel">
             @if (!selectedNote()) {
               <div class="empty-state">
-                <span class="material-icons">arrow_back</span>
+                <span translate="no" class="material-icons">arrow_back</span>
                 <p>Select a note to see AI filing suggestion</p>
               </div>
             } @else {
@@ -106,19 +106,19 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                 <!-- AI suggestion -->
                 @if (suggestingNote()) {
                   <div class="suggestion-loading">
-                    <span class="material-icons spinning">auto_awesome</span>
+                    <span translate="no" class="material-icons spinning">auto_awesome</span>
                     Analysing note...
                   </div>
                 } @else if (currentSuggestion()) {
                   @if (currentSuggestion()!.error) {
                     <div class="suggestion-error">
-                      <span class="material-icons">warning</span>
+                      <span translate="no" class="material-icons">warning</span>
                       {{ currentSuggestion()!.error }}
                     </div>
                   } @else {
                     <div class="suggestion-box">
                       <div class="suggestion-header">
-                        <span class="material-icons ai-icon">auto_awesome</span>
+                        <span translate="no" class="material-icons ai-icon">auto_awesome</span>
                         <span class="suggestion-label">AI Suggestion</span>
                         <div class="confidence-pill" [class.high]="currentSuggestion()!.confidence >= 0.7" [class.low]="currentSuggestion()!.confidence < 0.5">
                           {{ (currentSuggestion()!.confidence * 100).toFixed(0) }}% confident
@@ -126,7 +126,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                       </div>
 
                       <div class="suggestion-destination">
-                        <span class="material-icons">subdirectory_arrow_right</span>
+                        <span translate="no" class="material-icons">subdirectory_arrow_right</span>
                         @if (currentSuggestion()!.action === 'APPEND_TO_DOCUMENT') {
                           <span class="dest-path">{{ currentSuggestion()!.documentPath }}</span>
                           <span class="dest-action">append</span>
@@ -140,7 +140,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
 
                       @if (currentSuggestion()!.mergedContent) {
                         <button class="btn btn-ghost btn-sm" (click)="showDiff.set(true)">
-                          <span class="material-icons">compare</span>
+                          <span translate="no" class="material-icons">compare</span>
                           Preview changes
                         </button>
                       }
@@ -154,7 +154,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                         (keydown.enter)="requestSuggestion()"
                       />
                       <button class="btn btn-ghost btn-sm" (click)="requestSuggestion()" title="Re-analyze with your hint">
-                        <span class="material-icons">refresh</span>
+                        <span translate="no" class="material-icons">refresh</span>
                         Re-analyze
                       </button>
                     </div>
@@ -169,7 +169,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                       (keydown.enter)="requestSuggestion()"
                     />
                     <button class="btn btn-secondary" (click)="requestSuggestion()">
-                      <span class="material-icons">auto_awesome</span>
+                      <span translate="no" class="material-icons">auto_awesome</span>
                       Analyze where to put this
                     </button>
                   </div>
@@ -182,7 +182,7 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                     [disabled]="filing() || !currentSuggestion() || !!currentSuggestion()!.error"
                     (click)="fileWithSuggestion()"
                   >
-                    <span class="material-icons">check</span>
+                    <span translate="no" class="material-icons">check</span>
                     {{ filing() ? 'Filing...' : 'File here' }}
                   </button>
 
@@ -192,12 +192,12 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                     (click)="showDontAskDialog.set(true)"
                     title="Save a routing rule and file"
                   >
-                    <span class="material-icons">rule</span>
+                    <span translate="no" class="material-icons">rule</span>
                     Don't ask next time
                   </button>
 
                   <button class="btn btn-ghost" [disabled]="filing()" (click)="dismiss()">
-                    <span class="material-icons">close</span>
+                    <span translate="no" class="material-icons">close</span>
                     Dismiss
                   </button>
                 </div>
@@ -212,12 +212,12 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
         <div class="filed-list">
           @if (loading()) {
             <div class="empty-state">
-              <span class="material-icons spinning">refresh</span>
+              <span translate="no" class="material-icons spinning">refresh</span>
               Loading...
             </div>
           } @else if (filedNotes().length === 0) {
             <div class="empty-state">
-              <span class="material-icons">inbox</span>
+              <span translate="no" class="material-icons">inbox</span>
               <p>No filed notes yet.</p>
             </div>
           } @else {
@@ -234,17 +234,17 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                   <div class="filed-preview" [innerHTML]="note.content | slice:0:300"></div>
                   <div class="filed-meta">
                     <span class="filed-destination">
-                      <span class="material-icons">subdirectory_arrow_right</span>
+                      <span translate="no" class="material-icons">subdirectory_arrow_right</span>
                       {{ note.filedToDocumentPath }}
                     </span>
                     @if (note.autoFiled) {
                       <span class="filed-by auto">
-                        <span class="material-icons">auto_awesome</span>
+                        <span translate="no" class="material-icons">auto_awesome</span>
                         Auto-filed by rule
                       </span>
                     } @else if (note.filedByName) {
                       <span class="filed-by">
-                        <span class="material-icons">person</span>
+                        <span translate="no" class="material-icons">person</span>
                         Filed by {{ note.filedByName }}
                         @if (note.filedAt) {
                           · {{ note.filedAt | date:'HH:mm' }}

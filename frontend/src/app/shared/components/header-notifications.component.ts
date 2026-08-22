@@ -21,7 +21,7 @@ interface SpaceGroup {
   template: `
     <div class="notifications">
       <button class="icon-btn" title="Notifications" (click)="toggle()">
-        <span class="material-icons">notifications</span>
+        <span translate="no" class="material-icons">notifications</span>
         @if (unseenCount() > 0) {
           <span class="badge">{{ unseenCount() > 99 ? '99+' : unseenCount() }}</span>
         }
@@ -38,12 +38,12 @@ interface SpaceGroup {
 
           @if (loading()) {
             <div class="feed-status">
-              <span class="material-icons spin">sync</span>
+              <span translate="no" class="material-icons spin">sync</span>
               Loading...
             </div>
           } @else if (groups().length === 0) {
             <div class="feed-status">
-              <span class="material-icons">notifications_none</span>
+              <span translate="no" class="material-icons">notifications_none</span>
               No recent changes
             </div>
           } @else {
@@ -56,7 +56,7 @@ interface SpaceGroup {
                   </div>
                   @for (item of group.items; track item.id) {
                     <button class="feed-item" [class.unseen]="item.unseen" (click)="openItem(item)">
-                      <span class="material-icons change-icon" [class]="'change-' + item.changeType.toLowerCase()">
+                      <span translate="no" class="material-icons change-icon" [class]="'change-' + item.changeType.toLowerCase()">
                         {{ changeIcon(item.changeType) }}
                       </span>
                       <span class="item-body">

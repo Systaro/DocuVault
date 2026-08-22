@@ -205,7 +205,7 @@ interface SpaceTokenDto {
 
             @if (space()?.parentId) {
               <p class="text-sm text-gray-500 mb-4">
-                <span class="material-icons text-sm align-middle">info</span>
+                <span translate="no" class="material-icons text-sm align-middle">info</span>
                 Permissions are inherited from the parent group. Add permissions here to override.
               </p>
             }
@@ -283,7 +283,7 @@ interface SpaceTokenDto {
                 @for (perm of teamPermissions(); track perm.spaceId + perm.teamId) {
                   <div class="flex items-center justify-between py-3">
                     <div class="flex items-center gap-2">
-                      <span class="material-icons text-gray-400">groups</span>
+                      <span translate="no" class="material-icons text-gray-400">groups</span>
                       <span class="font-medium text-gray-900">{{ perm.teamName }}</span>
                     </div>
                     <div class="flex items-center gap-4">
@@ -368,7 +368,7 @@ interface SpaceTokenDto {
                           Auto-file
                         </label>
                         <button class="icon-btn" (click)="deleteRule(rule.id)" title="Delete rule">
-                          <span class="material-icons" style="font-size:16px">delete_outline</span>
+                          <span translate="no" class="material-icons" style="font-size:16px">delete_outline</span>
                         </button>
                       </div>
                     </div>
@@ -428,7 +428,7 @@ interface SpaceTokenDto {
               <div class="flex items-center gap-2 mb-1">
                 <h2 class="font-semibold text-gray-900">State Script</h2>
                 <button class="state-help-btn" (click)="stateHelpOpen.set(!stateHelpOpen())" title="How to use State">
-                  <span class="material-icons" style="font-size:18px">help_outline</span>
+                  <span translate="no" class="material-icons" style="font-size:18px">help_outline</span>
                 </button>
               </div>
 
@@ -437,7 +437,7 @@ interface SpaceTokenDto {
                   <div class="flex items-center justify-between mb-3">
                     <span class="state-help-title">How to use DocuVault State</span>
                     <button class="state-help-close" (click)="stateHelpOpen.set(false)">
-                      <span class="material-icons" style="font-size:16px">close</span>
+                      <span translate="no" class="material-icons" style="font-size:16px">close</span>
                     </button>
                   </div>
 
@@ -575,7 +575,7 @@ await state.save();</pre>
                         </div>
                         @if (!t.revokedAt) {
                           <button class="icon-btn" (click)="revokeToken(t.id)" title="Revoke token">
-                            <span class="material-icons" style="font-size:16px">delete_outline</span>
+                            <span translate="no" class="material-icons" style="font-size:16px">delete_outline</span>
                           </button>
                         }
                       </div>
@@ -605,7 +605,7 @@ await state.save();</pre>
 
               <p class="text-xs text-gray-400 mt-3">
                 State is stored in the database — no Git commits on every save.
-                Click the <span class="material-icons" style="font-size:14px;vertical-align:middle">help_outline</span> icon above for full usage documentation.
+                Click the <span translate="no" class="material-icons" style="font-size:14px;vertical-align:middle">help_outline</span> icon above for full usage documentation.
               </p>
             </div>
           }

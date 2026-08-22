@@ -15,7 +15,7 @@ import { GroupComponent } from './group.component';
     @if (loading()) {
       <app-layout>
         <div class="loading-container">
-          <span class="material-icons animate-spin">sync</span>
+          <span translate="no" class="material-icons animate-spin">sync</span>
           <p>Loading...</p>
         </div>
       </app-layout>
@@ -34,11 +34,11 @@ import { GroupComponent } from './group.component';
     } @else {
       <app-layout>
         <div class="error-container">
-          <span class="material-icons">error_outline</span>
+          <span translate="no" class="material-icons">error_outline</span>
           <h2>Not Found</h2>
           <p>The requested workspace could not be found.</p>
           <button class="btn btn-primary" (click)="goToDashboard()">
-            <span class="material-icons">home</span>
+            <span translate="no" class="material-icons">home</span>
             Go to Dashboard
           </button>
         </div>

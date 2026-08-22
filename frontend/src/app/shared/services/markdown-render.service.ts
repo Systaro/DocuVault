@@ -50,15 +50,7 @@ export class MarkdownRenderService {
     renderer.heading = (text: string, level: number, raw: string) => {
       return `<h${level} id="${this.headingId(raw)}">${text}</h${level}>\n`;
     };
-    // Mermaid: emit a placeholder that runMermaid() can find.
-    // marked HTML-escapes code content, so the source survives intact in
-    // the text node — mermaid reads textContent, which un-escapes for us.
-    renderer.code = (code: string, lang: string | undefined) => {
-      if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
-        return `<pre class="mermaid">${this.escape(code)}</pre>`;
-      }
-      return this.renderCodeBlock(code, lang);
-    };
+    this.applyCodeRules(renderer);
 
     let html = marked.parse(content, { renderer }) as string;
 
@@ -113,12 +105,7 @@ export class MarkdownRenderService {
    */
   renderToHtml(content: string): string {
     const renderer = new Renderer();
-    renderer.code = (code: string, lang: string | undefined) => {
-      if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
-        return `<pre class="mermaid">${this.escape(code)}</pre>`;
-      }
-      return this.renderCodeBlock(code, lang);
-    };
+    this.applyCodeRules(renderer);
     return marked.parse(content, { renderer }) as string;
   }
 
@@ -260,7 +247,7 @@ export class MarkdownRenderService {
     btn.type = 'button';
     btn.className = 'dv-mermaid-expand';
     btn.title = 'Expand (fullscreen with zoom & pan)';
-    btn.innerHTML = '<span class="material-icons">open_in_full</span>';
+    btn.innerHTML = '<span translate="no" class="material-icons">open_in_full</span>';
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -354,7 +341,7 @@ export class MarkdownRenderService {
 
     const zoomOut = document.createElement('button');
     zoomOut.title = 'Zoom out';
-    zoomOut.innerHTML = '<span class="material-icons">remove</span>';
+    zoomOut.innerHTML = '<span translate="no" class="material-icons">remove</span>';
     zoomOut.addEventListener('click', () => { scale = Math.max(0.25, scale - 0.25); apply(); });
 
     const zoomLabel = document.createElement('span');
@@ -363,17 +350,17 @@ export class MarkdownRenderService {
 
     const zoomIn = document.createElement('button');
     zoomIn.title = 'Zoom in';
-    zoomIn.innerHTML = '<span class="material-icons">add</span>';
+    zoomIn.innerHTML = '<span translate="no" class="material-icons">add</span>';
     zoomIn.addEventListener('click', () => { scale = Math.min(8, scale + 0.25); apply(); });
 
     const reset = document.createElement('button');
     reset.title = 'Reset';
-    reset.innerHTML = '<span class="material-icons">filter_center_focus</span>';
+    reset.innerHTML = '<span translate="no" class="material-icons">filter_center_focus</span>';
     reset.addEventListener('click', () => { scale = 1; tx = 0; ty = 0; apply(); });
 
     const close = document.createElement('button');
     close.title = 'Close (Esc)';
-    close.innerHTML = '<span class="material-icons">close</span>';
+    close.innerHTML = '<span translate="no" class="material-icons">close</span>';
     const teardown = () => {
       document.removeEventListener('keydown', onKey);
       overlay.remove();
@@ -434,6 +421,26 @@ export class MarkdownRenderService {
       .trim();
   }
 
+  /**
+   * Code is not prose. Chrome's "Translate this page" rewrites any text it can
+   * reach, which turns a shell command or an identifier into nonsense, so every
+   * code node opts out with `translate="no"`. Mermaid blocks must opt out too —
+   * runMermaid() parses their textContent back out of the DOM.
+   *
+   * Mermaid placeholders keep their raw source in the text node: marked
+   * HTML-escapes code content, and mermaid reads textContent, which un-escapes.
+   */
+  private applyCodeRules(renderer: Renderer): void {
+    renderer.code = (code: string, lang: string | undefined) => {
+      if ((lang ?? '').trim().toLowerCase() === 'mermaid') {
+        return `<pre translate="no" class="mermaid">${this.escape(code)}</pre>`;
+      }
+      return this.renderCodeBlock(code, lang);
+    };
+    // marked hands codespan() text that is already escaped.
+    renderer.codespan = (code: string) => `<code translate="no">${code}</code>`;
+  }
+
   private escape(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -443,21 +450,21 @@ export class MarkdownRenderService {
     if (language && hljs.getLanguage(language)) {
       try {
         const { value } = hljs.highlight(code, { language, ignoreIllegals: true });
-        return `<pre><code class="hljs language-${language}">${value}</code></pre>\n`;
+        return `<pre translate="no"><code class="hljs language-${language}">${value}</code></pre>\n`;
       } catch {
         // fall through to auto / plain
       }
     }
     if (language) {
-      return `<pre><code class="hljs language-${language}">${this.escape(code)}</code></pre>\n`;
+      return `<pre translate="no"><code class="hljs language-${language}">${this.escape(code)}</code></pre>\n`;
     }
     // No explicit language — try to auto-detect, but only commit if the
     // highlighter is reasonably confident, to avoid mangling tree-shaped
     // ASCII art and other prose-y blocks.
     const auto = hljs.highlightAuto(code);
     if (auto.relevance >= 5 && auto.language) {
-      return `<pre><code class="hljs language-${auto.language}">${auto.value}</code></pre>\n`;
+      return `<pre translate="no"><code class="hljs language-${auto.language}">${auto.value}</code></pre>\n`;
     }
-    return `<pre><code class="hljs">${this.escape(code)}</code></pre>\n`;
+    return `<pre translate="no"><code class="hljs">${this.escape(code)}</code></pre>\n`;
   }
 }

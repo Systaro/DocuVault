@@ -25,7 +25,7 @@ import {
           <p class="subtitle">Manage team members and their permissions</p>
         </div>
         <button (click)="showInviteModal.set(true)" class="btn btn-primary">
-          <span class="material-icons">person_add</span>
+          <span translate="no" class="material-icons">person_add</span>
           Invite User
         </button>
       </div>
@@ -34,21 +34,21 @@ import {
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-card-icon">
-            <span class="material-icons">group</span>
+            <span translate="no" class="material-icons">group</span>
           </div>
           <div class="stat-value">{{ users().length }}</div>
           <div class="stat-label">Total Users</div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon active">
-            <span class="material-icons">how_to_reg</span>
+            <span translate="no" class="material-icons">how_to_reg</span>
           </div>
           <div class="stat-value">{{ getAdminCount() }}</div>
           <div class="stat-label">Administrators</div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon pending">
-            <span class="material-icons">pending</span>
+            <span translate="no" class="material-icons">pending</span>
           </div>
           <div class="stat-value">{{ invitations().length }}</div>
           <div class="stat-label">Pending Invites</div>
@@ -67,7 +67,7 @@ import {
               [searchable]="false"
             />
             <div class="search-box">
-              <span class="material-icons">search</span>
+              <span translate="no" class="material-icons">search</span>
               <input
                 type="text"
                 [(ngModel)]="searchTerm"
@@ -129,20 +129,20 @@ import {
                 <div class="table-cell actions-col">
                   @if (authService.user()?.role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN' && user.enabled !== false) {
                     <button class="icon-btn" (click)="impersonateUser(user)" title="Impersonate">
-                      <span class="material-icons">swap_horiz</span>
+                      <span translate="no" class="material-icons">swap_horiz</span>
                     </button>
                   }
                   <button class="icon-btn" (click)="editUser(user)" title="Edit & manage permissions">
-                    <span class="material-icons">edit</span>
+                    <span translate="no" class="material-icons">edit</span>
                   </button>
                   <button class="icon-btn" (click)="deleteUser(user)" title="Delete">
-                    <span class="material-icons">delete</span>
+                    <span translate="no" class="material-icons">delete</span>
                   </button>
                 </div>
               </div>
             } @empty {
               <div class="table-empty">
-                <span class="material-icons">group</span>
+                <span translate="no" class="material-icons">group</span>
                 <p>No users found</p>
               </div>
             }
@@ -179,12 +179,12 @@ import {
                   <div class="table-cell status-col">
                     @if (inv.accepted) {
                       <span class="status-badge accepted">
-                        <span class="material-icons">check_circle</span>
+                        <span translate="no" class="material-icons">check_circle</span>
                         Accepted
                       </span>
                     } @else {
                       <span class="status-badge pending">
-                        <span class="material-icons">schedule</span>
+                        <span translate="no" class="material-icons">schedule</span>
                         Pending
                       </span>
                     }
@@ -193,20 +193,20 @@ import {
                     @if (!inv.accepted) {
                       <button class="icon-btn" (click)="copyInviteLink(inv)" [title]="copiedId() === inv.id ? 'Copied!' : 'Copy invite link'">
                         @if (copiedId() === inv.id) {
-                          <span class="material-icons" style="color: #388e3c">check</span>
+                          <span translate="no" class="material-icons" style="color: #388e3c">check</span>
                         } @else {
-                          <span class="material-icons">content_copy</span>
+                          <span translate="no" class="material-icons">content_copy</span>
                         }
                       </button>
                       <button class="icon-btn" (click)="resendInvitation(inv)" title="Resend invitation email" [disabled]="resendingId() === inv.id">
                         @if (resendingId() === inv.id) {
-                          <span class="material-icons animate-spin">sync</span>
+                          <span translate="no" class="material-icons animate-spin">sync</span>
                         } @else {
-                          <span class="material-icons">forward_to_inbox</span>
+                          <span translate="no" class="material-icons">forward_to_inbox</span>
                         }
                       </button>
                       <button class="icon-btn" (click)="deleteInvitation(inv)" title="Delete invitation">
-                        <span class="material-icons">delete</span>
+                        <span translate="no" class="material-icons">delete</span>
                       </button>
                     }
                   </div>
@@ -225,11 +225,11 @@ import {
               <!-- Success state: show invite link -->
               <div class="modal-header">
                 <h2>
-                  <span class="material-icons" style="color: #388e3c">check_circle</span>
+                  <span translate="no" class="material-icons" style="color: #388e3c">check_circle</span>
                   Invitation Created
                 </h2>
                 <button class="icon-btn" (click)="closeInviteModal()">
-                  <span class="material-icons">close</span>
+                  <span translate="no" class="material-icons">close</span>
                 </button>
               </div>
               <div class="modal-body">
@@ -238,10 +238,10 @@ import {
                   <code class="invite-link-text">{{ getInviteUrl(createdInvitation()!.token) }}</code>
                   <button class="btn btn-sm btn-primary" (click)="copyInviteLink(createdInvitation()!)">
                     @if (copiedId() === createdInvitation()!.id) {
-                      <span class="material-icons">check</span>
+                      <span translate="no" class="material-icons">check</span>
                       Copied!
                     } @else {
-                      <span class="material-icons">content_copy</span>
+                      <span translate="no" class="material-icons">content_copy</span>
                       Copy Link
                     }
                   </button>
@@ -256,11 +256,11 @@ import {
               <!-- Form state -->
               <div class="modal-header">
                 <h2>
-                  <span class="material-icons">person_add</span>
+                  <span translate="no" class="material-icons">person_add</span>
                   Invite User
                 </h2>
                 <button class="icon-btn" (click)="closeInviteModal()">
-                  <span class="material-icons">close</span>
+                  <span translate="no" class="material-icons">close</span>
                 </button>
               </div>
 
@@ -268,7 +268,7 @@ import {
                 <div class="form-group">
                   <label class="form-label">Email address</label>
                   <div class="input-icon">
-                    <span class="material-icons">mail</span>
+                    <span translate="no" class="material-icons">mail</span>
                     <input
                       type="email"
                       [(ngModel)]="inviteEmail"
@@ -296,10 +296,10 @@ import {
                   </button>
                   <button type="submit" [disabled]="sending()" class="btn btn-primary">
                     @if (sending()) {
-                      <span class="material-icons animate-spin">sync</span>
+                      <span translate="no" class="material-icons animate-spin">sync</span>
                       Sending...
                     } @else {
-                      <span class="material-icons">send</span>
+                      <span translate="no" class="material-icons">send</span>
                       Send Invitation
                     }
                   </button>
@@ -316,14 +316,14 @@ import {
           <div class="modal modal-wide" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>
-                <span class="material-icons">edit</span>
+                <span translate="no" class="material-icons">edit</span>
                 Edit User
                 @if (editingUser()!.enabled === false) {
                   <span class="pending-tag">Invited</span>
                 }
               </h2>
               <button class="icon-btn" (click)="closeEditModal()">
-                <span class="material-icons">close</span>
+                <span translate="no" class="material-icons">close</span>
               </button>
             </div>
 
@@ -334,7 +334,7 @@ import {
                   <div class="form-group">
                     <label class="form-label">Name</label>
                     <div class="input-icon">
-                      <span class="material-icons">person</span>
+                      <span translate="no" class="material-icons">person</span>
                       <input
                         type="text"
                         [(ngModel)]="editForm.name"
@@ -357,7 +357,7 @@ import {
               <!-- Teams section -->
               <div class="edit-section">
                 <h3 class="section-title">
-                  <span class="material-icons">groups</span>
+                  <span translate="no" class="material-icons">groups</span>
                   Teams
                 </h3>
                 <p class="section-hint">
@@ -379,7 +379,7 @@ import {
                         <span class="chip-dot" [style.background]="team.color || 'var(--primary)'"></span>
                         <span class="chip-name">{{ team.name }}</span>
                         <button type="button" class="chip-remove" (click)="removeTeam(team.id)" [attr.aria-label]="'Remove from ' + team.name">
-                          <span class="material-icons">close</span>
+                          <span translate="no" class="material-icons">close</span>
                         </button>
                       </span>
                     }
@@ -392,7 +392,7 @@ import {
               <!-- Permissions section -->
               <div class="edit-section">
                 <h3 class="section-title">
-                  <span class="material-icons">security</span>
+                  <span translate="no" class="material-icons">security</span>
                   Space Permissions
                 </h3>
                 <p class="section-hint">
@@ -414,10 +414,10 @@ import {
                 </button>
                 <button type="button" (click)="saveUser()" [disabled]="savingUser()" class="btn btn-primary">
                   @if (savingUser()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                     Saving...
                   } @else {
-                    <span class="material-icons">save</span>
+                    <span translate="no" class="material-icons">save</span>
                     Save Changes
                   }
                 </button>

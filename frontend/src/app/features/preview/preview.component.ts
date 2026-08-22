@@ -28,13 +28,13 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
       <!-- Header -->
       <header class="preview-header">
         <button class="header-icon-btn" (click)="sidebarOpen.set(!sidebarOpen())" title="Toggle file browser">
-          <span class="material-icons">{{ sidebarOpen() ? 'menu_open' : 'menu' }}</span>
+          <span translate="no" class="material-icons">{{ sidebarOpen() ? 'menu_open' : 'menu' }}</span>
         </button>
         <button class="header-icon-btn" (click)="goBack()" title="Back to editor">
-          <span class="material-icons">arrow_back</span>
+          <span translate="no" class="material-icons">arrow_back</span>
         </button>
         <div class="header-brand">
-          <span class="brand-icon material-icons">menu_book</span>
+          <span translate="no" class="brand-icon material-icons">menu_book</span>
           <span class="brand-name">DocuVault</span>
         </div>
         @if (breadcrumbSegments().length) {
@@ -42,18 +42,18 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
             @for (segment of breadcrumbSegments(); track segment.label; let last = $last) {
               <span class="breadcrumb-segment" [class.breadcrumb-current]="last">{{ segment.label }}</span>
               @if (!last) {
-                <span class="breadcrumb-separator material-icons">chevron_right</span>
+                <span translate="no" class="breadcrumb-separator material-icons">chevron_right</span>
               }
             }
           </nav>
         }
         @if (currentPath()) {
           <button class="header-icon-btn header-action-end" (click)="showShareDialog.set(true)" title="Share">
-            <span class="material-icons">share</span>
+            <span translate="no" class="material-icons">share</span>
           </button>
           @if (canAiEdit()) {
             <button class="header-icon-btn" (click)="showAiEditDialog.set(true)" title="Edit via AI">
-              <span class="material-icons">auto_awesome</span>
+              <span translate="no" class="material-icons">auto_awesome</span>
             </button>
           }
         }
@@ -63,13 +63,13 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
         <!-- Collapsible sidebar -->
         <aside class="preview-sidebar" [class.open]="sidebarOpen()">
           <div class="sidebar-header">
-            <span class="material-icons">folder_special</span>
+            <span translate="no" class="material-icons">folder_special</span>
             <span class="sidebar-title">{{ space()?.name }}</span>
           </div>
           <div class="folder-tree">
             @if (fileTree().length === 0 && !treeLoading()) {
               <div class="tree-empty">
-                <span class="material-icons">folder_off</span>
+                <span translate="no" class="material-icons">folder_off</span>
                 <p>No files</p>
               </div>
             } @else if (treeLoading()) {
@@ -111,13 +111,13 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
             </div>
           } @else if (error()) {
             <div class="error-state">
-              <span class="material-icons error-icon">error_outline</span>
+              <span translate="no" class="material-icons error-icon">error_outline</span>
               <h2>Preview Unavailable</h2>
               <p>{{ error() }}</p>
             </div>
           } @else if (!currentPath()) {
             <div class="folder-welcome">
-              <span class="material-icons welcome-icon">folder_open</span>
+              <span translate="no" class="material-icons welcome-icon">folder_open</span>
               <h2>{{ space()?.name }}</h2>
               <p>Select a file from the sidebar to view its contents.</p>
             </div>
@@ -186,10 +186,10 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
-              <span class="material-icons download-icon">insert_drive_file</span>
+              <span translate="no" class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ currentFileName() }}</h2>
               <a [href]="rawUrl() + '?download=true'" download class="btn btn-primary">
-                <span class="material-icons">download</span>
+                <span translate="no" class="material-icons">download</span>
                 Download File
               </a>
             </div>
@@ -220,8 +220,8 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
       @for (node of nodes; track node.path) {
         @if (node.isDirectory) {
           <div class="tree-folder" [style.paddingLeft.px]="level * 16 + 12" (click)="toggleFolder(node.path)">
-            <span class="material-icons tree-icon">{{ isExpanded(node.path) ? 'expand_more' : 'chevron_right' }}</span>
-            <span class="material-icons tree-icon folder-icon">{{ isExpanded(node.path) ? 'folder_open' : 'folder' }}</span>
+            <span translate="no" class="material-icons tree-icon">{{ isExpanded(node.path) ? 'expand_more' : 'chevron_right' }}</span>
+            <span translate="no" class="material-icons tree-icon folder-icon">{{ isExpanded(node.path) ? 'folder_open' : 'folder' }}</span>
             <span class="tree-name">{{ node.name }}</span>
           </div>
           @if (isExpanded(node.path) && node.children) {

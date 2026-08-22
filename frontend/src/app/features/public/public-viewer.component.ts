@@ -22,7 +22,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       <!-- Header -->
       <header class="viewer-header">
         <div class="header-brand">
-          <span class="brand-icon material-icons">menu_book</span>
+          <span translate="no" class="brand-icon material-icons">menu_book</span>
           <span class="brand-name">DocuVault</span>
         </div>
         @if (breadcrumbSegments().length) {
@@ -30,7 +30,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
             @for (segment of breadcrumbSegments(); track segment.label; let last = $last) {
               <span class="breadcrumb-segment" [class.breadcrumb-current]="last">{{ segment.label }}</span>
               @if (!last) {
-                <span class="breadcrumb-separator material-icons">chevron_right</span>
+                <span translate="no" class="breadcrumb-separator material-icons">chevron_right</span>
               }
             }
           </nav>
@@ -42,7 +42,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
         <main class="viewer-content">
           <div class="password-gate">
             <div class="password-card">
-              <span class="material-icons lock-icon">lock</span>
+              <span translate="no" class="material-icons lock-icon">lock</span>
               <h2>This link is password protected</h2>
               <p>Enter the password to access this shared content.</p>
               <form (submit)="submitPassword($event)">
@@ -60,10 +60,10 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
                 }
                 <button type="submit" class="btn btn-unlock" [disabled]="verifyingPassword() || !passwordInput">
                   @if (verifyingPassword()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                     Verifying...
                   } @else {
-                    <span class="material-icons">lock_open</span>
+                    <span translate="no" class="material-icons">lock_open</span>
                     Unlock
                   }
                 </button>
@@ -84,11 +84,11 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       } @else if (maintenanceMode()) {
         <main class="viewer-content">
           <div class="error-state">
-            <span class="material-icons error-icon">build_circle</span>
+            <span translate="no" class="material-icons error-icon">build_circle</span>
             <h2>Wartungsmodus</h2>
             <p>Die Seite befindet sich gerade im Wartungsmodus. Bitte versuche es in wenigen Minuten erneut.</p>
             <button type="button" class="btn btn-primary" (click)="retryLoad()">
-              <span class="material-icons">refresh</span>
+              <span translate="no" class="material-icons">refresh</span>
               Erneut versuchen
             </button>
           </div>
@@ -96,7 +96,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       } @else if (error()) {
         <main class="viewer-content">
           <div class="error-state">
-            <span class="material-icons error-icon">link_off</span>
+            <span translate="no" class="material-icons error-icon">link_off</span>
             <h2>Link Not Available</h2>
             <p>{{ error() }}</p>
           </div>
@@ -105,7 +105,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
         <!-- Folder browser layout -->
         <aside class="folder-sidebar" [style.width.px]="sidebarWidth()">
           <div class="sidebar-header">
-            <span class="material-icons">folder_special</span>
+            <span translate="no" class="material-icons">folder_special</span>
             <span class="sidebar-title">{{ metadata()?.fileName || metadata()?.spaceName }}</span>
           </div>
           <div class="folder-tree">
@@ -130,13 +130,13 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
                 </nav>
               }
               <h2 class="folder-browser-title">
-                <span class="material-icons">folder_open</span>
+                <span translate="no" class="material-icons">folder_open</span>
                 {{ folderBrowserTitle() }}
               </h2>
               <div class="folder-browser-listing">
                 @if (currentFolderPath()) {
                   <a class="folder-browser-row folder-browser-row--up" (click)="setCurrentFolder(parentFolderPath())">
-                    <span class="material-icons">arrow_upward</span>
+                    <span translate="no" class="material-icons">arrow_upward</span>
                     <span class="folder-browser-name">Up to {{ parentFolderLabel() }}</span>
                   </a>
                 }
@@ -146,7 +146,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
                 @for (item of currentFolderItems(); track item.path) {
                   @if (item.isDirectory) {
                     <a class="folder-browser-row folder-browser-row--folder" (click)="setCurrentFolder(item.path)">
-                      <span class="material-icons folder-icon">folder</span>
+                      <span translate="no" class="material-icons folder-icon">folder</span>
                       <span class="folder-browser-name">{{ item.name }}</span>
                     </a>
                   } @else {
@@ -232,10 +232,10 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
-              <span class="material-icons download-icon">insert_drive_file</span>
+              <span translate="no" class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ currentFileName() }}</h2>
               <a [href]="rawUrl()" download class="btn btn-primary">
-                <span class="material-icons">download</span>
+                <span translate="no" class="material-icons">download</span>
                 Download File
               </a>
             </div>
@@ -310,10 +310,10 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
             </div>
           } @else if (renderMode() === 'download') {
             <div class="download-state">
-              <span class="material-icons download-icon">insert_drive_file</span>
+              <span translate="no" class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ metadata()?.fileName }}</h2>
               <a [href]="rawUrl()" download class="btn btn-primary">
-                <span class="material-icons">download</span>
+                <span translate="no" class="material-icons">download</span>
                 Download File
               </a>
             </div>
@@ -327,8 +327,8 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       @for (node of nodes; track node.path) {
         @if (node.isDirectory) {
           <div class="tree-folder" [style.paddingLeft.px]="level * 16 + 12" (click)="toggleFolder(node.path)">
-            <span class="material-icons tree-icon">{{ isExpanded(node.path) ? 'expand_more' : 'chevron_right' }}</span>
-            <span class="material-icons tree-icon folder-icon">{{ isExpanded(node.path) ? 'folder_open' : 'folder' }}</span>
+            <span translate="no" class="material-icons tree-icon">{{ isExpanded(node.path) ? 'expand_more' : 'chevron_right' }}</span>
+            <span translate="no" class="material-icons tree-icon folder-icon">{{ isExpanded(node.path) ? 'folder_open' : 'folder' }}</span>
             <span class="tree-name">{{ node.name }}</span>
           </div>
           @if (isExpanded(node.path) && node.children) {

@@ -26,13 +26,13 @@ import { CommonModule } from '@angular/common';
         <div class="logo-preview">
           <img [src]="previewUrl() || currentLogoUrl" alt="Logo" />
           <div class="logo-overlay">
-            <span class="material-icons">edit</span>
+            <span translate="no" class="material-icons">edit</span>
             <span>Change logo</span>
           </div>
         </div>
       } @else {
         <div class="upload-placeholder">
-          <span class="material-icons">add_photo_alternate</span>
+          <span translate="no" class="material-icons">add_photo_alternate</span>
           <span class="upload-text">Upload logo</span>
           <span class="upload-hint">PNG, JPG, SVG, WebP (max 2MB)</span>
         </div>
@@ -40,7 +40,7 @@ import { CommonModule } from '@angular/common';
 
       @if (uploading()) {
         <div class="upload-progress">
-          <span class="material-icons animate-spin">sync</span>
+          <span translate="no" class="material-icons animate-spin">sync</span>
         </div>
       }
     </div>
@@ -51,7 +51,7 @@ import { CommonModule } from '@angular/common';
         class="remove-btn"
         (click)="removeLogo($event)"
       >
-        <span class="material-icons">delete_outline</span>
+        <span translate="no" class="material-icons">delete_outline</span>
         Remove logo
       </button>
     }

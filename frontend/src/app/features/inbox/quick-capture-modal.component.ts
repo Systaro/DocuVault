@@ -16,12 +16,12 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- Header -->
         <div class="capture-header">
           <div class="capture-icon">
-            <span class="material-icons">add</span>
+            <span translate="no" class="material-icons">add</span>
           </div>
           <h2>New Note</h2>
           <span class="shortcut">⌘ K</span>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
@@ -40,21 +40,21 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- Mini toolbar -->
         <div class="capture-toolbar">
           <button class="t-btn" (click)="formatText('bold')" title="Bold">
-            <span class="material-icons">format_bold</span>
+            <span translate="no" class="material-icons">format_bold</span>
           </button>
           <button class="t-btn" (click)="formatText('italic')" title="Italic">
-            <span class="material-icons">format_italic</span>
+            <span translate="no" class="material-icons">format_italic</span>
           </button>
           <div class="t-divider"></div>
           <button class="t-btn" (click)="formatText('insertUnorderedList')" title="Bullet list">
-            <span class="material-icons">format_list_bulleted</span>
+            <span translate="no" class="material-icons">format_list_bulleted</span>
           </button>
           <button class="t-btn" (click)="formatText('insertOrderedList')" title="Numbered list">
-            <span class="material-icons">format_list_numbered</span>
+            <span translate="no" class="material-icons">format_list_numbered</span>
           </button>
           <div class="t-divider"></div>
           <button class="t-btn" (click)="wrapInCode()" title="Inline code">
-            <span class="material-icons">code</span>
+            <span translate="no" class="material-icons">code</span>
           </button>
         </div>
 
@@ -64,6 +64,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             #editor
             class="editor-content"
             contenteditable="true"
+            translate="no"
             [attr.data-placeholder]="'Start typing your note... (Shift+Enter for new line)'"
             (input)="onInput($event)"
             (keydown)="onKeydown($event)"
@@ -73,7 +74,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <!-- Footer -->
         <div class="capture-footer">
           <div class="capture-hint">
-            <span class="material-icons">auto_awesome</span>
+            <span translate="no" class="material-icons">auto_awesome</span>
             AI will suggest where to file this
           </div>
           <div class="capture-actions">
@@ -83,7 +84,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               [disabled]="!canSubmit() || submitting()"
               (click)="submit()"
             >
-              <span class="material-icons">send</span>
+              <span translate="no" class="material-icons">send</span>
               {{ submitting() ? 'Adding...' : 'Add to Inbox' }}
             </button>
           </div>

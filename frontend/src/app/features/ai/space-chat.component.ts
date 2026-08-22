@@ -21,14 +21,14 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         @if (space()) {
           <div class="chat-context">
             <div class="context-header">
-              <span class="material-icons">hub</span>
+              <span translate="no" class="material-icons">hub</span>
               <span>Context</span>
             </div>
             @if (contextRepos().length > 0) {
               <div class="context-list">
                 @for (repo of contextRepos(); track repo.id) {
                   <button class="context-repo" (click)="openContextRepo(repo)" [title]="'Open ' + repo.name">
-                    <span class="material-icons">menu_book</span>
+                    <span translate="no" class="material-icons">menu_book</span>
                     <span class="context-repo-name">{{ repo.name }}</span>
                   </button>
                 }
@@ -42,17 +42,17 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         <div class="history-header">
           <h3>Conversations</h3>
           <button class="history-new-btn" (click)="startNewChat()" title="New conversation">
-            <span class="material-icons">add</span>
+            <span translate="no" class="material-icons">add</span>
           </button>
         </div>
 
         @if (historiesLoading()) {
           <div class="history-loading">
-            <span class="material-icons spin">sync</span>
+            <span translate="no" class="material-icons spin">sync</span>
           </div>
         } @else if (chatHistories().length === 0) {
           <div class="history-empty">
-            <span class="material-icons">forum</span>
+            <span translate="no" class="material-icons">forum</span>
             <p>No conversations yet</p>
           </div>
         } @else {
@@ -72,7 +72,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                   (click)="deleteChat(history, $event)"
                   title="Delete conversation"
                 >
-                  <span class="material-icons">delete_outline</span>
+                  <span translate="no" class="material-icons">delete_outline</span>
                 </button>
               </div>
             }
@@ -84,7 +84,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       <div class="chat-main">
         <!-- Mobile toggle -->
         <button class="history-toggle" (click)="historyOpen.set(!historyOpen())">
-          <span class="material-icons">{{ historyOpen() ? 'close' : 'menu' }}</span>
+          <span translate="no" class="material-icons">{{ historyOpen() ? 'close' : 'menu' }}</span>
         </button>
 
         @if (space(); as sp) {
@@ -92,7 +92,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             @if (sp.logoUrl) {
               <img class="chat-space-logo" [src]="sp.logoUrl" [alt]="sp.name" />
             } @else {
-              <span class="material-icons chat-space-logo-fallback">{{ sp.type === 'GROUP' ? 'folder_special' : 'menu_book' }}</span>
+              <span translate="no" class="material-icons chat-space-logo-fallback">{{ sp.type === 'GROUP' ? 'folder_special' : 'menu_book' }}</span>
             }
             <div class="chat-space-heading">
               <span class="chat-space-name">{{ sp.name }}</span>
@@ -104,11 +104,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         @if (!currentChat()) {
           <!-- Empty State -->
           <div class="chat-empty-state">
-            <span class="material-icons chat-empty-icon">auto_awesome</span>
+            <span translate="no" class="material-icons chat-empty-icon">auto_awesome</span>
             <h2>AI Chat</h2>
             <p>Ask questions about your documentation. The AI will search through your files and provide answers with source references.</p>
             <button class="btn btn-primary" (click)="startNewChat()">
-              <span class="material-icons">add</span>
+              <span translate="no" class="material-icons">add</span>
               Start a conversation
             </button>
           </div>
@@ -117,7 +117,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
           <div class="chat-messages" #messagesContainer>
             @if (currentChat()!.messages.length === 0 && !sending()) {
               <div class="chat-start-hint">
-                <span class="material-icons">lightbulb</span>
+                <span translate="no" class="material-icons">lightbulb</span>
                 <p>Ask anything about the documentation in this space.</p>
               </div>
             }
@@ -125,7 +125,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             @for (msg of currentChat()!.messages; track $index) {
               <div class="chat-message" [class.user]="msg.role === 'user'" [class.assistant]="msg.role === 'assistant'">
                 <div class="message-avatar">
-                  <span class="material-icons">{{ msg.role === 'user' ? 'person' : 'auto_awesome' }}</span>
+                  <span translate="no" class="material-icons">{{ msg.role === 'user' ? 'person' : 'auto_awesome' }}</span>
                 </div>
                 <div class="message-body">
                   @if (msg.role === 'user') {
@@ -138,7 +138,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                       <span class="sources-label">Sources:</span>
                       @for (source of msg.sources; track source) {
                         <a class="source-link" (click)="navigateToSource(source)" title="Open document">
-                          <span class="material-icons">description</span>
+                          <span translate="no" class="material-icons">description</span>
                           {{ formatSourceName(source) }}
                         </a>
                       }
@@ -151,7 +151,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             @if (sending()) {
               <div class="chat-message assistant">
                 <div class="message-avatar">
-                  <span class="material-icons">auto_awesome</span>
+                  <span translate="no" class="material-icons">auto_awesome</span>
                 </div>
                 <div class="message-body">
                   <div class="typing-indicator">
@@ -182,7 +182,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                 [disabled]="!messageInput.trim() || sending()"
                 title="Send message"
               >
-                <span class="material-icons">send</span>
+                <span translate="no" class="material-icons">send</span>
               </button>
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
 } from '../../core/api/annotations.service';
 import { AnnotationMarkerComponent } from './annotation-marker.component';
 import { AnnotationThreadComponent } from './annotation-thread.component';
+import { ContextMenuComponent, ContextMenuItem } from './context-menu.component';
 import { RenderMode } from '../utils/file-utils';
 import { ToastService } from '../services/toast.service';
 import { anchorRecord, describePoint, describeRange, Anchored, AnchorState } from '../annotations/anchoring/anchoring';
@@ -38,6 +39,12 @@ interface NewAnnotationDraft {
   dotUnit: '%' | 'px';
 }
 
+/** A few words of the selection, for the menu's right-hand hint. */
+function shortQuote(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > 24 ? `“${clean.slice(0, 24)}…”` : `“${clean}”`;
+}
+
 /** The first rect a range actually paints into, ignoring zero-size fragments. */
 function firstVisibleRect(range: Range): DOMRect | null {
   const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
@@ -49,7 +56,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
 @Component({
   selector: 'app-annotation-overlay',
   standalone: true,
-  imports: [CommonModule, FormsModule, AnnotationMarkerComponent, AnnotationThreadComponent],
+  imports: [CommonModule, FormsModule, AnnotationMarkerComponent, AnnotationThreadComponent, ContextMenuComponent],
   template: `
     <!-- Image mode: click + marker layer sized to the image so positions follow scroll & zoom -->
     @if (renderMode() === 'image') {
@@ -123,7 +130,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
         @if (canComment()) {
           <button class="fab-btn" [class.active]="annotationMode()"
                   (click)="toggleAnnotationMode()" [title]="annotationMode() ? 'Exit comment mode (Esc)' : 'Add comment'">
-            <span class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
+            <span translate="no" class="material-icons">{{ annotationMode() ? 'close' : 'add_comment' }}</span>
             @if (annotationMode()) {
               <span class="fab-label">Click to place comment</span>
             }
@@ -133,7 +140,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="fab-divider"></div>
           <button class="fab-btn" [class.active]="showList()"
                   (click)="showList.set(!showList())" title="View all comments">
-            <span class="material-icons">chat_bubble_outline</span>
+            <span translate="no" class="material-icons">chat_bubble_outline</span>
             <span class="fab-badge">{{ annotations().length }}</span>
           </button>
         }
@@ -174,7 +181,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <input class="annotation-name-input" [(ngModel)]="authorNameInput" placeholder="Your name..."
                  (keydown.enter)="confirmName()" autofocus />
           <button class="annotation-name-btn" [disabled]="!authorNameInput.trim()" (click)="confirmName()">
-            <span class="material-icons">arrow_forward</span>
+            <span translate="no" class="material-icons">arrow_forward</span>
           </button>
         } @else {
           <textarea class="annotation-input" [(ngModel)]="newAnnotationText" placeholder="Add a comment..."
@@ -184,7 +191,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="new-annotation-actions">
             <button class="btn-cancel" (click)="cancelNewAnnotation()">Cancel</button>
             <button class="btn-submit" [disabled]="!newAnnotationText.trim()" (click)="submitNewAnnotation()">
-              <span class="material-icons">send</span> Comment
+              <span translate="no" class="material-icons">send</span> Comment
             </button>
           </div>
         }
@@ -197,7 +204,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           <div class="list-header">
             <h3>Comments ({{ annotations().length }})</h3>
             <button class="thread-btn" (click)="showList.set(false)">
-              <span class="material-icons">close</span>
+              <span translate="no" class="material-icons">close</span>
             </button>
           </div>
           <!-- Only the comments that still have a pin; the unanchored ones get
@@ -227,7 +234,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
           @if (orphanedAnnotations().length > 0) {
             <div class="orphan-section">
               <div class="orphan-header">
-                <span class="material-icons">link_off</span>
+                <span translate="no" class="material-icons">link_off</span>
                 <span>Unanchored ({{ orphanedAnnotations().length }})</span>
               </div>
               <p class="orphan-explainer">
@@ -247,11 +254,11 @@ function firstVisibleRect(range: Range): DOMRect | null {
                     <div class="orphan-actions">
                       @if (canComment()) {
                         <button type="button" class="orphan-btn" (click)="startReanchor(a)">
-                          <span class="material-icons">my_location</span> Re-anchor
+                          <span translate="no" class="material-icons">my_location</span> Re-anchor
                         </button>
                       }
                       <button type="button" class="orphan-btn" (click)="onResolve(a.id)">
-                        <span class="material-icons">check</span>
+                        <span translate="no" class="material-icons">check</span>
                         {{ a.resolved ? 'Reopen' : 'Resolve' }}
                       </button>
                     </div>
@@ -263,10 +270,22 @@ function firstVisibleRect(range: Range): DOMRect | null {
         </div>
     }
 
+    <!-- Right-click menu. Text anchoring makes "select the words, then comment
+         on them" the natural gesture, and that needs somewhere to put it. -->
+    @if (contextMenu(); as menu) {
+      <app-context-menu
+        [items]="menu.items"
+        [x]="menu.x"
+        [y]="menu.y"
+        (select)="onContextMenuSelect($event)"
+        (dismiss)="closeContextMenu()"
+      />
+    }
+
     <!-- Re-anchor mode banner: the click layer is repurposed, so say so. -->
     @if (reanchoring(); as target) {
       <div class="reanchor-banner">
-        <span class="material-icons">my_location</span>
+        <span translate="no" class="material-icons">my_location</span>
         <span class="reanchor-text">Click where “{{ target.body }}” belongs now</span>
         <button type="button" class="reanchor-cancel" (click)="cancelReanchor()">Cancel</button>
       </div>
@@ -847,7 +866,185 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
     if (this.usesTextAnchoring()) {
       setTimeout(() => this.observeHostResize(), 0);
+      document.addEventListener('contextmenu', this.onHostContextMenu, true);
     }
+  }
+
+  // --- Right-click menu ---
+
+  /** The open context menu: its items and where the pointer was. */
+  contextMenu = signal<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  /** What the menu was opened on, kept so the chosen action knows its target. */
+  private contextTarget: { selection: Range | null; annotation: Annotation | null } = {
+    selection: null,
+    annotation: null
+  };
+
+  /**
+   * Open the right-click menu over the document.
+   *
+   * Bound in the capture phase on the host so it works over the rendered
+   * content and over a pin alike, and so it beats the browser's own menu
+   * without every child having to opt in.
+   */
+  private onHostContextMenu = (event: MouseEvent): void => {
+    const host = this.host;
+    if (!host || !this.usesTextAnchoring()) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target || !host.contains(target)) return;
+    // Leave form fields and our own popovers to the browser's menu — cut,
+    // copy and paste are more useful there than anything offered here.
+    if (target.closest('input, textarea, [contenteditable="true"], .annotation-thread, .annotation-list, .new-annotation-popover')) {
+      return;
+    }
+
+    const annotation = this.annotationUnder(target);
+    const selection = this.selectionInside(host);
+    const items = this.buildContextMenu(selection, annotation);
+    if (items.length === 0) return;
+
+    event.preventDefault();
+    this.contextTarget = { selection, annotation };
+    this.contextMenu.set({ items, x: event.clientX, y: event.clientY });
+  };
+
+  /** The comment whose pin was right-clicked, if any. */
+  private annotationUnder(target: HTMLElement): Annotation | null {
+    const pin = target.closest('app-annotation-marker');
+    if (!pin) return null;
+    // Markers render in the same order as the placed list, so position maps back.
+    const markers = Array.from(this.host?.querySelectorAll('app-annotation-marker') ?? []);
+    const placed = this.placedAnnotations();
+    const at = markers.indexOf(pin);
+    return at >= 0 && at < placed.length ? placed[at] : null;
+  }
+
+  /** The current selection, but only when it lies inside this document. */
+  private selectionInside(host: HTMLElement): Range | null {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+    const range = selection.getRangeAt(0);
+    if (!host.contains(range.commonAncestorContainer)) return null;
+    return range.toString().trim() ? range : null;
+  }
+
+  private buildContextMenu(selection: Range | null, annotation: Annotation | null): ContextMenuItem[] {
+    const items: ContextMenuItem[] = [];
+
+    if (annotation) {
+      items.push({ id: 'open', label: 'Open comment', icon: 'chat_bubble_outline' });
+      if (this.canResolve(annotation)) {
+        items.push({
+          id: 'resolve',
+          label: annotation.resolved ? 'Reopen comment' : 'Resolve comment',
+          icon: annotation.resolved ? 'restart_alt' : 'check_circle_outline'
+        });
+      }
+      if (this.canDelete(annotation)) {
+        items.push({ id: 'delete', label: 'Delete comment', icon: 'delete_outline', danger: true });
+      }
+      return items;
+    }
+
+    if (selection) {
+      items.push({
+        id: 'comment-selection',
+        label: 'Comment on selection',
+        icon: 'add_comment',
+        disabled: !this.canComment(),
+        disabledReason: 'You need comment access on this space',
+        hint: shortQuote(selection.toString())
+      });
+      items.push({ id: 'copy', label: 'Copy', icon: 'content_copy' });
+    } else if (this.canComment()) {
+      items.push({
+        id: 'comment-here',
+        label: 'Comment on this paragraph',
+        icon: 'add_comment'
+      });
+    }
+
+    if (this.annotations().length > 0) {
+      items.push({ id: 'list', label: 'Show all comments', icon: 'forum' });
+    }
+
+    return items;
+  }
+
+  onContextMenuSelect(item: ContextMenuItem): void {
+    const { selection, annotation } = this.contextTarget;
+    const at = this.contextMenu();
+    this.closeContextMenu();
+
+    switch (item.id) {
+      case 'open':
+        if (annotation) this.openThreadFromList(annotation);
+        break;
+      case 'resolve':
+        if (annotation) this.onResolve(annotation.id);
+        break;
+      case 'delete':
+        if (annotation) this.onDelete(annotation.id);
+        break;
+      case 'copy':
+        if (selection) navigator.clipboard?.writeText(selection.toString()).catch(() => {});
+        break;
+      case 'list':
+        this.showList.set(true);
+        break;
+      case 'comment-selection':
+        if (selection && at) this.startCommentOnRange(selection, at.x, at.y);
+        break;
+      case 'comment-here':
+        if (at) this.startCommentAtPoint(at.x, at.y);
+        break;
+    }
+  }
+
+  closeContextMenu(): void {
+    this.contextMenu.set(null);
+  }
+
+  /** Open the comment composer against an explicit selection. */
+  private startCommentOnRange(range: Range, screenX: number, screenY: number): void {
+    const host = this.host;
+    if (!host) return;
+    const described = describeRange(host, range);
+    if (!described) return;
+
+    const box = range.getBoundingClientRect();
+    const hostBox = host.getBoundingClientRect();
+    window.getSelection()?.removeAllRanges();
+
+    this.closeThread();
+    this.newAnnotation.set({
+      anchor: described as unknown as AnnotationAnchor,
+      screenX: screenX + 12,
+      screenY: screenY,
+      dotX: box.left - hostBox.left + host.scrollLeft,
+      dotY: box.top - hostBox.top + host.scrollTop,
+      dotUnit: 'px'
+    });
+  }
+
+  /** Open the composer against whatever block sits under the pointer. */
+  private startCommentAtPoint(clientX: number, clientY: number): void {
+    const host = this.host;
+    if (!host) return;
+    const described = describePoint(host, clientX, clientY);
+    if (!described) return;
+
+    const hostBox = host.getBoundingClientRect();
+    this.closeThread();
+    this.newAnnotation.set({
+      anchor: described as unknown as AnnotationAnchor,
+      screenX: clientX + 12,
+      screenY: clientY,
+      dotX: clientX - hostBox.left + host.scrollLeft,
+      dotY: clientY - hostBox.top + host.scrollTop,
+      dotUnit: 'px'
+    });
   }
 
   // --- Anchor resolution ---
@@ -1031,6 +1228,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     if (this.reflowHandle) clearTimeout(this.reflowHandle);
     window.removeEventListener('message', this.boundMessageHandler);
     document.removeEventListener('mousedown', this.boundDocClick);
+    document.removeEventListener('contextmenu', this.onHostContextMenu, true);
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
@@ -1193,6 +1391,23 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     if (layer) layer.style.pointerEvents = previous;
 
     return (described as unknown as AnnotationAnchor) ?? null;
+  }
+
+  /** Same rules as the thread popover applies to its own buttons. */
+  canResolve(annotation: Annotation): boolean {
+    const p = this.permission();
+    if (p === 'EDIT' || p === 'ADMIN') return true;
+    if (p === 'COMMENT') return annotation.userId === this.currentUserId() || annotation.userId === null;
+    return false;
+  }
+
+  canDelete(annotation: Annotation): boolean {
+    const p = this.permission();
+    if (p === 'ADMIN') return true;
+    if (p === 'EDIT' || p === 'COMMENT') {
+      return annotation.userId === this.currentUserId() || annotation.userId === null;
+    }
+    return false;
   }
 
   canComment(): boolean {

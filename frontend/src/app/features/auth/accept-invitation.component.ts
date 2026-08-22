@@ -21,21 +21,21 @@ import { UsersService } from '../../core/api/users.service';
         <div class="invitation-form">
           @if (invalidToken()) {
             <div class="error-state">
-              <span class="material-icons error-icon">link_off</span>
+              <span translate="no" class="material-icons error-icon">link_off</span>
               <h2>Invalid Invitation</h2>
               <p>This invitation link is invalid or has expired.</p>
               <a routerLink="/login" class="btn btn-primary btn-full">
-                <span class="material-icons">login</span>
+                <span translate="no" class="material-icons">login</span>
                 Go to Login
               </a>
             </div>
           } @else if (success()) {
             <div class="success-state">
-              <span class="material-icons success-icon">check_circle</span>
+              <span translate="no" class="material-icons success-icon">check_circle</span>
               <h2>Account Created</h2>
               <p>Your account has been set up. You can now sign in.</p>
               <a routerLink="/login" class="btn btn-primary btn-full">
-                <span class="material-icons">login</span>
+                <span translate="no" class="material-icons">login</span>
                 Sign In
               </a>
             </div>
@@ -45,7 +45,7 @@ import { UsersService } from '../../core/api/users.service';
 
             @if (error()) {
               <div class="error-message">
-                <span class="material-icons">error_outline</span>
+                <span translate="no" class="material-icons">error_outline</span>
                 <div class="error-text">
                   @for (line of errorLines(); track line) {
                     <span>{{ line }}</span>
@@ -58,7 +58,7 @@ import { UsersService } from '../../core/api/users.service';
               <div class="form-group">
                 <label class="form-label">Full name</label>
                 <div class="input-icon">
-                  <span class="material-icons">person</span>
+                  <span translate="no" class="material-icons">person</span>
                   <input
                     type="text"
                     [(ngModel)]="name"
@@ -75,7 +75,7 @@ import { UsersService } from '../../core/api/users.service';
               <div class="form-group">
                 <label class="form-label">Password</label>
                 <div class="input-icon">
-                  <span class="material-icons">lock</span>
+                  <span translate="no" class="material-icons">lock</span>
                   <input
                     [type]="showPassword() ? 'text' : 'password'"
                     [(ngModel)]="password"
@@ -87,7 +87,7 @@ import { UsersService } from '../../core/api/users.service';
                     required
                     minlength="8"
                   />
-                  <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                     {{ showPassword() ? 'visibility_off' : 'visibility' }}
                   </span>
                 </div>
@@ -96,7 +96,7 @@ import { UsersService } from '../../core/api/users.service';
               <div class="form-group">
                 <label class="form-label">Confirm password</label>
                 <div class="input-icon">
-                  <span class="material-icons">lock</span>
+                  <span translate="no" class="material-icons">lock</span>
                   <input
                     [type]="showPassword() ? 'text' : 'password'"
                     [(ngModel)]="confirmPassword"
@@ -107,7 +107,7 @@ import { UsersService } from '../../core/api/users.service';
                     enterkeyhint="go"
                     required
                   />
-                  <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                     {{ showPassword() ? 'visibility_off' : 'visibility' }}
                   </span>
                 </div>
@@ -115,10 +115,10 @@ import { UsersService } from '../../core/api/users.service';
 
               <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Create Account">
                 @if (loading()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Creating account...
                 } @else {
-                  <span class="material-icons">how_to_reg</span>
+                  <span translate="no" class="material-icons">how_to_reg</span>
                   Create Account
                 }
               </button>

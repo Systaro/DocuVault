@@ -15,13 +15,16 @@ function afterTag(source: string, re: RegExp): number | null {
  * `<base>` so its relative images and stylesheets keep resolving, and a minimum
  * height so an empty page still offers something to click into.
  *
- * Both additions live in `<head>`, which never travels back — only the `<body>`
+ * The additions all live in `<head>`, which never travels back — only the `<body>`
  * markup is spliced into the saved file — so the file on disk stays untouched
  * by the editing chrome. A file that brings its own `<base>` keeps it.
  */
 export function buildFrameDocument(source: string, baseHref: string): string {
   const head =
     (/<base\b/i.test(source) ? '' : `<base href="${baseHref.replace(/"/g, '%22')}">`) +
+    // Only <body> is spliced back into the file on save, so a browser that
+    // translated the page in the iframe would write the translation to disk.
+    '<meta name="google" content="notranslate">' +
     `<style>
       body{min-height:100vh;}
       /* Editing affordances only, scoped to the editable state and dropped with

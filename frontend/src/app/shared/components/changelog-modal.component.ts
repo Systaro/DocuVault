@@ -21,14 +21,14 @@ interface RenderedRelease extends ChangelogRelease {
       <div class="cl-modal" #modal>
         <div class="cl-header">
           <div class="cl-icon">
-            <span class="material-icons">auto_awesome</span>
+            <span translate="no" class="material-icons">auto_awesome</span>
           </div>
           <div class="cl-heading">
             <h2>What's new</h2>
             <p>{{ subtitle }}</p>
           </div>
           <button class="icon-btn" (click)="dismiss.emit()" title="Close">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 

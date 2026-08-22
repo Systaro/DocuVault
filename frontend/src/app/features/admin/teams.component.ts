@@ -27,7 +27,7 @@ const TEAM_COLORS = [
           <p class="subtitle">Group users so access is granted once per team instead of once per person</p>
         </div>
         <button (click)="openCreate()" class="btn btn-primary">
-          <span class="material-icons">group_add</span>
+          <span translate="no" class="material-icons">group_add</span>
           New Team
         </button>
       </div>
@@ -36,21 +36,21 @@ const TEAM_COLORS = [
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-card-icon">
-            <span class="material-icons">groups</span>
+            <span translate="no" class="material-icons">groups</span>
           </div>
           <div class="stat-value">{{ teams().length }}</div>
           <div class="stat-label">Teams</div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon active">
-            <span class="material-icons">person</span>
+            <span translate="no" class="material-icons">person</span>
           </div>
           <div class="stat-value">{{ usersInTeams() }}</div>
           <div class="stat-label">Users in a Team</div>
         </div>
         <div class="stat-card">
           <div class="stat-card-icon pending">
-            <span class="material-icons">folder_shared</span>
+            <span translate="no" class="material-icons">folder_shared</span>
           </div>
           <div class="stat-value">{{ totalGrants() }}</div>
           <div class="stat-label">Space Grants</div>
@@ -62,7 +62,7 @@ const TEAM_COLORS = [
         <div class="table-header">
           <h2>All Teams</h2>
           <div class="search-box">
-            <span class="material-icons">search</span>
+            <span translate="no" class="material-icons">search</span>
             <input type="text" [(ngModel)]="searchTerm" placeholder="Search teams..." />
           </div>
         </div>
@@ -81,7 +81,7 @@ const TEAM_COLORS = [
               <div class="table-row">
                 <div class="table-cell team-col">
                   <div class="team-swatch" [style.background]="team.color || 'var(--primary)'">
-                    <span class="material-icons">groups</span>
+                    <span translate="no" class="material-icons">groups</span>
                   </div>
                   <div class="team-details">
                     <span class="team-name">{{ team.name }}</span>
@@ -94,28 +94,28 @@ const TEAM_COLORS = [
                 </div>
                 <div class="table-cell count-col">
                   <span class="count-pill">
-                    <span class="material-icons">person</span>
+                    <span translate="no" class="material-icons">person</span>
                     {{ team.memberCount }}
                   </span>
                 </div>
                 <div class="table-cell count-col">
                   <span class="count-pill">
-                    <span class="material-icons">folder</span>
+                    <span translate="no" class="material-icons">folder</span>
                     {{ team.spaceCount }}
                   </span>
                 </div>
                 <div class="table-cell actions-col">
                   <button class="icon-btn" (click)="openEdit(team)" title="Edit team">
-                    <span class="material-icons">edit</span>
+                    <span translate="no" class="material-icons">edit</span>
                   </button>
                   <button class="icon-btn" (click)="confirmDelete.set(team)" title="Delete team">
-                    <span class="material-icons">delete</span>
+                    <span translate="no" class="material-icons">delete</span>
                   </button>
                 </div>
               </div>
             } @empty {
               <div class="table-empty">
-                <span class="material-icons">groups</span>
+                <span translate="no" class="material-icons">groups</span>
                 <p>No teams yet — create one to grant access in bulk</p>
               </div>
             }
@@ -129,11 +129,11 @@ const TEAM_COLORS = [
           <div class="modal modal-wide" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>
-                <span class="material-icons">{{ editingTeam() ? 'edit' : 'group_add' }}</span>
+                <span translate="no" class="material-icons">{{ editingTeam() ? 'edit' : 'group_add' }}</span>
                 {{ editingTeam() ? 'Edit Team' : 'New Team' }}
               </h2>
               <button class="icon-btn" (click)="closeModal()">
-                <span class="material-icons">close</span>
+                <span translate="no" class="material-icons">close</span>
               </button>
             </div>
 
@@ -142,7 +142,7 @@ const TEAM_COLORS = [
                 <div class="form-group">
                   <label class="form-label">Team name</label>
                   <div class="input-icon">
-                    <span class="material-icons">groups</span>
+                    <span translate="no" class="material-icons">groups</span>
                     <input type="text" [(ngModel)]="form.name" class="input" placeholder="e.g. Engineering" />
                   </div>
                 </div>
@@ -163,7 +163,7 @@ const TEAM_COLORS = [
                               [attr.aria-label]="'Select color ' + color"
                               (click)="form.color = color">
                         @if (form.color === color) {
-                          <span class="material-icons">check</span>
+                          <span translate="no" class="material-icons">check</span>
                         }
                       </button>
                     }
@@ -174,7 +174,7 @@ const TEAM_COLORS = [
               <!-- Members -->
               <div class="edit-section">
                 <h3 class="section-title">
-                  <span class="material-icons">person_add</span>
+                  <span translate="no" class="material-icons">person_add</span>
                   Members
                 </h3>
                 <p class="section-hint">Everyone here inherits every space grant below.</p>
@@ -194,7 +194,7 @@ const TEAM_COLORS = [
                         <span class="chip-avatar">{{ getInitials(member.name) }}</span>
                         <span class="chip-name">{{ member.name }}</span>
                         <button type="button" class="chip-remove" (click)="removeMember(member.id)" [attr.aria-label]="'Remove ' + member.name">
-                          <span class="material-icons">close</span>
+                          <span translate="no" class="material-icons">close</span>
                         </button>
                       </span>
                     }
@@ -207,7 +207,7 @@ const TEAM_COLORS = [
               <!-- Space permissions -->
               <div class="edit-section">
                 <h3 class="section-title">
-                  <span class="material-icons">security</span>
+                  <span translate="no" class="material-icons">security</span>
                   Space Permissions
                 </h3>
                 <p class="section-hint">
@@ -225,10 +225,10 @@ const TEAM_COLORS = [
                 <button type="button" (click)="closeModal()" class="btn btn-secondary">Cancel</button>
                 <button type="button" (click)="save()" [disabled]="saving() || !form.name.trim()" class="btn btn-primary">
                   @if (saving()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                     Saving...
                   } @else {
-                    <span class="material-icons">save</span>
+                    <span translate="no" class="material-icons">save</span>
                     {{ editingTeam() ? 'Save Changes' : 'Create Team' }}
                   }
                 </button>
@@ -244,11 +244,11 @@ const TEAM_COLORS = [
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>
-                <span class="material-icons danger-icon">warning</span>
+                <span translate="no" class="material-icons danger-icon">warning</span>
                 Delete Team
               </h2>
               <button class="icon-btn" (click)="confirmDelete.set(null)">
-                <span class="material-icons">close</span>
+                <span translate="no" class="material-icons">close</span>
               </button>
             </div>
             <div class="modal-body">
@@ -261,10 +261,10 @@ const TEAM_COLORS = [
                 <button type="button" (click)="confirmDelete.set(null)" class="btn btn-secondary">Cancel</button>
                 <button type="button" (click)="deleteTeam(team)" [disabled]="deleting()" class="btn btn-danger">
                   @if (deleting()) {
-                    <span class="material-icons animate-spin">sync</span>
+                    <span translate="no" class="material-icons animate-spin">sync</span>
                     Deleting...
                   } @else {
-                    <span class="material-icons">delete</span>
+                    <span translate="no" class="material-icons">delete</span>
                     Delete Team
                   }
                 </button>

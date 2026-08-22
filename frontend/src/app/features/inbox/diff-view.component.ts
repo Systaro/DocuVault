@@ -17,17 +17,17 @@ interface DiffLine {
         <!-- Header -->
         <div class="diff-header">
           <div class="diff-header-icon">
-            <span class="material-icons">article</span>
+            <span translate="no" class="material-icons">article</span>
           </div>
           <div class="diff-header-text">
             <h2>{{ documentPath }}</h2>
             <div class="diff-header-sub">
-              <span class="material-icons">auto_awesome</span>
+              <span translate="no" class="material-icons">auto_awesome</span>
               AI merge preview
             </div>
           </div>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
@@ -53,18 +53,18 @@ interface DiffLine {
         <div class="diff-footer">
           <div class="diff-stats">
             <span class="stat additions">
-              <span class="material-icons">add</span>
+              <span translate="no" class="material-icons">add</span>
               {{ addCount() }} additions
             </span>
             <span class="stat deletions">
-              <span class="material-icons">remove</span>
+              <span translate="no" class="material-icons">remove</span>
               {{ removeCount() }} deletions
             </span>
           </div>
           <div class="diff-actions">
             <button class="btn btn-secondary" (click)="close.emit()">Cancel</button>
             <button class="btn btn-primary" (click)="accept.emit()">
-              <span class="material-icons">check</span>
+              <span translate="no" class="material-icons">check</span>
               Accept changes
             </button>
           </div>

@@ -16,7 +16,7 @@ interface EmailModeOption {
   template: `
     <div class="card">
       <div class="card-header">
-        <span class="material-icons card-icon">notifications</span>
+        <span translate="no" class="material-icons card-icon">notifications</span>
         <div>
           <h2>Notifications</h2>
           <p>Choose how often you hear about document changes, and mute spaces you don't follow</p>
@@ -25,7 +25,7 @@ interface EmailModeOption {
       <div class="card-body">
         @if (loading()) {
           <div class="loading-state">
-            <span class="material-icons animate-spin">sync</span>
+            <span translate="no" class="material-icons animate-spin">sync</span>
             Loading preferences...
           </div>
         } @else if (prefs()) {
@@ -62,7 +62,7 @@ interface EmailModeOption {
 
           @if (allOff()) {
             <div class="info-banner">
-              <span class="material-icons">info</span>
+              <span translate="no" class="material-icons">info</span>
               All notifications are off. You won't receive emails or push for any space.
             </div>
           }
@@ -78,7 +78,7 @@ interface EmailModeOption {
               <div class="space-list">
                 @for (space of prefs()!.spaces; track space.spaceId) {
                   <div class="space-row" [style.--depth]="depthOf(space)">
-                    <span class="material-icons space-icon">{{ space.type === 'GROUP' ? 'folder' : 'description' }}</span>
+                    <span translate="no" class="material-icons space-icon">{{ space.type === 'GROUP' ? 'folder' : 'description' }}</span>
                     <span class="space-name">{{ space.name }}</span>
                     @if (space.override !== null) {
                       <button type="button" class="reset-link" (click)="resetSpace(space)" [disabled]="saving()">reset</button>

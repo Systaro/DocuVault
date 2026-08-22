@@ -25,10 +25,10 @@ interface BreadcrumbItem {
         <div class="breadcrumb-bar">
           <div class="breadcrumb">
             <a routerLink="/dashboard" class="breadcrumb-item">
-              <span class="material-icons">home</span>
+              <span translate="no" class="material-icons">home</span>
             </a>
             @for (crumb of breadcrumbs(); track crumb.path; let last = $last) {
-              <span class="material-icons breadcrumb-sep">chevron_right</span>
+              <span translate="no" class="material-icons breadcrumb-sep">chevron_right</span>
               @if (last) {
                 <span class="breadcrumb-item active">{{ crumb.name }}</span>
               } @else {
@@ -40,7 +40,7 @@ interface BreadcrumbItem {
 
         @if (loading()) {
           <div class="loading-state">
-            <span class="material-icons animate-spin">sync</span>
+            <span translate="no" class="material-icons animate-spin">sync</span>
             <p>Loading group...</p>
           </div>
         } @else if (group()) {
@@ -52,7 +52,7 @@ interface BreadcrumbItem {
                 </div>
               } @else {
                 <div class="group-icon">
-                  <span class="material-icons">folder</span>
+                  <span translate="no" class="material-icons">folder</span>
                 </div>
               }
               <div>
@@ -63,7 +63,7 @@ interface BreadcrumbItem {
             @if (authService.isAdmin()) {
               <div class="header-actions">
                 <button (click)="openSettings()" class="btn btn-secondary">
-                  <span class="material-icons">settings</span>
+                  <span translate="no" class="material-icons">settings</span>
                   Settings
                 </button>
               </div>
@@ -77,12 +77,12 @@ interface BreadcrumbItem {
                 <div class="section-actions">
                   @if (!group()!.parentId) {
                     <button class="btn btn-secondary btn-sm" (click)="createSubgroup()">
-                      <span class="material-icons">create_new_folder</span>
+                      <span translate="no" class="material-icons">create_new_folder</span>
                       New Subgroup
                     </button>
                   }
                   <button class="btn btn-primary btn-sm" (click)="createRepository()">
-                    <span class="material-icons">source</span>
+                    <span translate="no" class="material-icons">source</span>
                     New Repository
                   </button>
                 </div>
@@ -91,7 +91,7 @@ interface BreadcrumbItem {
 
             @if (children().length === 0) {
               <div class="empty-state">
-                <span class="material-icons">inventory_2</span>
+                <span translate="no" class="material-icons">inventory_2</span>
                 <h3>No items yet</h3>
                 <p>This group is empty. Add subgroups or repositories to organize your documentation.</p>
               </div>
@@ -101,16 +101,16 @@ interface BreadcrumbItem {
                   @if (child.type === 'GROUP') {
                     <a [routerLink]="child.fullPath | spaceRoute" class="child-card group-card">
                       <div class="child-icon group">
-                        <span class="material-icons">folder</span>
+                        <span translate="no" class="material-icons">folder</span>
                       </div>
                       <div class="child-info">
                         <div class="child-name">{{ child.name }}</div>
                         <div class="child-meta">
-                          <span class="material-icons">inventory_2</span>
+                          <span translate="no" class="material-icons">inventory_2</span>
                           {{ child.childCount ?? 0 }} items
                         </div>
                       </div>
-                      <span class="material-icons child-arrow">chevron_right</span>
+                      <span translate="no" class="material-icons child-arrow">chevron_right</span>
                     </a>
                   } @else {
                     <a [routerLink]="child.fullPath | spaceRoute" class="child-card repo-card">
@@ -126,16 +126,16 @@ interface BreadcrumbItem {
                       <div class="child-info">
                         <div class="child-name">{{ child.name }}</div>
                         <div class="child-meta">
-                          <span class="material-icons">article</span>
+                          <span translate="no" class="material-icons">article</span>
                           {{ child.documentCount ?? 0 }} docs
                           @if (child.gitlabUrl) {
                             <span class="separator">•</span>
-                            <span class="material-icons">cloud_sync</span>
+                            <span translate="no" class="material-icons">cloud_sync</span>
                             Git
                           }
                         </div>
                       </div>
-                      <span class="material-icons child-arrow">chevron_right</span>
+                      <span translate="no" class="material-icons child-arrow">chevron_right</span>
                     </a>
                   }
                 }

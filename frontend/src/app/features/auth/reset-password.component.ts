@@ -22,21 +22,21 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
         <div class="reset-form">
           @if (invalidToken()) {
             <div class="error-state">
-              <span class="material-icons error-icon">link_off</span>
+              <span translate="no" class="material-icons error-icon">link_off</span>
               <h2>Invalid Reset Link</h2>
               <p>This password reset link is invalid or has expired.</p>
               <a routerLink="/forgot-password" class="btn btn-primary btn-full">
-                <span class="material-icons">refresh</span>
+                <span translate="no" class="material-icons">refresh</span>
                 Request New Link
               </a>
             </div>
           } @else if (success()) {
             <div class="success-state">
-              <span class="material-icons success-icon">check_circle</span>
+              <span translate="no" class="material-icons success-icon">check_circle</span>
               <h2>Password Reset</h2>
               <p>Your password has been updated successfully. You can now sign in.</p>
               <a routerLink="/login" class="btn btn-primary btn-full">
-                <span class="material-icons">login</span>
+                <span translate="no" class="material-icons">login</span>
                 Sign In
               </a>
             </div>
@@ -46,7 +46,7 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
 
             @if (error()) {
               <div class="error-message">
-                <span class="material-icons">error_outline</span>
+                <span translate="no" class="material-icons">error_outline</span>
                 {{ error() }}
               </div>
             }
@@ -55,7 +55,7 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
               <div class="form-group">
                 <label class="form-label">New password</label>
                 <div class="input-icon">
-                  <span class="material-icons">lock</span>
+                  <span translate="no" class="material-icons">lock</span>
                   <input
                     [type]="showPassword() ? 'text' : 'password'"
                     [(ngModel)]="password"
@@ -66,7 +66,7 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
                     enterkeyhint="next"
                     required
                   />
-                  <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                     {{ showPassword() ? 'visibility_off' : 'visibility' }}
                   </span>
                 </div>
@@ -76,7 +76,7 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
               <div class="form-group">
                 <label class="form-label">Confirm password</label>
                 <div class="input-icon">
-                  <span class="material-icons">lock</span>
+                  <span translate="no" class="material-icons">lock</span>
                   <input
                     [type]="showPassword() ? 'text' : 'password'"
                     [(ngModel)]="confirmPassword"
@@ -87,7 +87,7 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
                     enterkeyhint="go"
                     required
                   />
-                  <span class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
+                  <span translate="no" class="material-icons toggle-password" (click)="showPassword.set(!showPassword())">
                     {{ showPassword() ? 'visibility_off' : 'visibility' }}
                   </span>
                 </div>
@@ -95,10 +95,10 @@ import { validatePasswordPolicy } from '../../shared/utils/password-policy';
 
               <button type="submit" [disabled]="loading()" class="btn btn-primary btn-full" aria-label="Reset Password">
                 @if (loading()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Resetting...
                 } @else {
-                  <span class="material-icons">lock_reset</span>
+                  <span translate="no" class="material-icons">lock_reset</span>
                   Reset Password
                 }
               </button>

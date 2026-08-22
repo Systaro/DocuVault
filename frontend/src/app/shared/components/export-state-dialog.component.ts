@@ -15,11 +15,11 @@ import { CommonModule } from '@angular/common';
       <div class="modal export-state-dialog" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h2>
-            <span class="material-icons">download</span>
+            <span translate="no" class="material-icons">download</span>
             Export {{ fileName() }}
           </h2>
           <button class="icon-btn" (click)="closed.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
         <div class="modal-body">
@@ -28,7 +28,7 @@ import { CommonModule } from '@angular/common';
             current saved state so the exported file works on its own.
           </p>
           <button class="export-option" (click)="chosen.emit(true)">
-            <span class="material-icons option-icon">ac_unit</span>
+            <span translate="no" class="material-icons option-icon">ac_unit</span>
             <span class="option-text">
               <span class="option-title">With frozen state</span>
               <span class="option-hint">
@@ -38,7 +38,7 @@ import { CommonModule } from '@angular/common';
             </span>
           </button>
           <button class="export-option" (click)="chosen.emit(false)">
-            <span class="material-icons option-icon">code</span>
+            <span translate="no" class="material-icons option-icon">code</span>
             <span class="option-text">
               <span class="option-title">Without state</span>
               <span class="option-hint">

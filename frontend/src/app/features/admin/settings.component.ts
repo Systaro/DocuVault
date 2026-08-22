@@ -17,12 +17,12 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
       @if (loading()) {
         <div class="loading-state">
-          <span class="material-icons animate-spin">sync</span>
+          <span translate="no" class="material-icons animate-spin">sync</span>
           Loading settings...
         </div>
       } @else if (error()) {
         <div class="error-state">
-          <span class="material-icons">error</span>
+          <span translate="no" class="material-icons">error</span>
           {{ error() }}
         </div>
       } @else {
@@ -30,7 +30,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <div class="settings-card" id="git">
           <div class="settings-card-header">
             <div class="settings-card-icon git">
-              <span class="material-icons">cloud_sync</span>
+              <span translate="no" class="material-icons">cloud_sync</span>
             </div>
             <div>
               <h2>GitLab Connection</h2>
@@ -73,7 +73,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
             @if (gitlabTestResult()) {
               <div class="test-result" [class.success]="gitlabTestResult()?.success" [class.error]="!gitlabTestResult()?.success">
-                <span class="material-icons">{{ gitlabTestResult()?.success ? 'check_circle' : 'error' }}</span>
+                <span translate="no" class="material-icons">{{ gitlabTestResult()?.success ? 'check_circle' : 'error' }}</span>
                 {{ gitlabTestResult()?.message }}
               </div>
             }
@@ -85,10 +85,10 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 class="btn btn-secondary"
               >
                 @if (testingGitlab()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Testing...
                 } @else {
-                  <span class="material-icons">wifi_tethering</span>
+                  <span translate="no" class="material-icons">wifi_tethering</span>
                   Test Connection
                 }
               </button>
@@ -98,10 +98,10 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 class="btn btn-primary"
               >
                 @if (savingGitlab()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Saving...
                 } @else {
-                  <span class="material-icons">save</span>
+                  <span translate="no" class="material-icons">save</span>
                   Save GitLab Settings
                 }
               </button>
@@ -113,7 +113,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <div class="settings-card" id="ai">
           <div class="settings-card-header">
             <div class="settings-card-icon ai">
-              <span class="material-icons">auto_awesome</span>
+              <span translate="no" class="material-icons">auto_awesome</span>
             </div>
             <div>
               <h2>AI Features</h2>
@@ -167,7 +167,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
             @if (openaiTestResult()) {
               <div class="test-result" [class.success]="openaiTestResult()?.success" [class.error]="!openaiTestResult()?.success">
-                <span class="material-icons">{{ openaiTestResult()?.success ? 'check_circle' : 'error' }}</span>
+                <span translate="no" class="material-icons">{{ openaiTestResult()?.success ? 'check_circle' : 'error' }}</span>
                 {{ openaiTestResult()?.message }}
               </div>
             }
@@ -179,10 +179,10 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 class="btn btn-secondary"
               >
                 @if (testingOpenai()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Testing...
                 } @else {
-                  <span class="material-icons">wifi_tethering</span>
+                  <span translate="no" class="material-icons">wifi_tethering</span>
                   Test Connection
                 }
               </button>
@@ -192,10 +192,10 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                 class="btn btn-primary"
               >
                 @if (savingOpenai()) {
-                  <span class="material-icons animate-spin">sync</span>
+                  <span translate="no" class="material-icons animate-spin">sync</span>
                   Saving...
                 } @else {
-                  <span class="material-icons">save</span>
+                  <span translate="no" class="material-icons">save</span>
                   Save AI Settings
                 }
               </button>
@@ -203,21 +203,21 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
             <div class="feature-list">
               <div class="feature-item">
-                <span class="material-icons">search</span>
+                <span translate="no" class="material-icons">search</span>
                 <div>
                   <strong>Semantic Search</strong>
                   <p>Find documents by meaning, not just keywords</p>
                 </div>
               </div>
               <div class="feature-item">
-                <span class="material-icons">chat</span>
+                <span translate="no" class="material-icons">chat</span>
                 <div>
                   <strong>AI Chat</strong>
                   <p>Ask questions about your documentation</p>
                 </div>
               </div>
               <div class="feature-item">
-                <span class="material-icons">edit_note</span>
+                <span translate="no" class="material-icons">edit_note</span>
                 <div>
                   <strong>Writing Assistant</strong>
                   <p>Get AI suggestions while writing</p>
@@ -231,7 +231,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <div class="settings-card" id="email">
           <div class="settings-card-header">
             <div class="settings-card-icon">
-              <span class="material-icons">mail</span>
+              <span translate="no" class="material-icons">mail</span>
             </div>
             <div>
               <h2>Email (SMTP)</h2>
@@ -305,7 +305,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
             @if (emailTestResult()) {
               <div class="test-result" [class.success]="emailTestResult()?.success" [class.error]="!emailTestResult()?.success">
-                <span class="material-icons">{{ emailTestResult()?.success ? 'check_circle' : 'error' }}</span>
+                <span translate="no" class="material-icons">{{ emailTestResult()?.success ? 'check_circle' : 'error' }}</span>
                 {{ emailTestResult()?.message }}
               </div>
             }
@@ -314,17 +314,17 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               <button (click)="testEmail()" [disabled]="testingEmail() || !testEmailTo"
                       class="btn btn-secondary">
                 @if (testingEmail()) {
-                  <span class="material-icons animate-spin">sync</span> Sending…
+                  <span translate="no" class="material-icons animate-spin">sync</span> Sending…
                 } @else {
-                  <span class="material-icons">send</span> Send test email
+                  <span translate="no" class="material-icons">send</span> Send test email
                 }
               </button>
               <button (click)="saveEmail()" [disabled]="savingEmail()"
                       class="btn btn-primary">
                 @if (savingEmail()) {
-                  <span class="material-icons animate-spin">sync</span> Saving…
+                  <span translate="no" class="material-icons animate-spin">sync</span> Saving…
                 } @else {
-                  <span class="material-icons">save</span> Save email settings
+                  <span translate="no" class="material-icons">save</span> Save email settings
                 }
               </button>
             </div>
@@ -335,7 +335,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
         <div class="settings-card">
           <div class="settings-card-header">
             <div class="settings-card-icon info">
-              <span class="material-icons">info</span>
+              <span translate="no" class="material-icons">info</span>
             </div>
             <div>
               <h2>About DocuVault</h2>

@@ -46,12 +46,12 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                   [attr.aria-label]="mobileSidebarOpen() ? 'Close menu' : 'Open menu'"
                   (click)="toggleMobileSidebar($event)"
                 >
-                  <span class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
+                  <span translate="no" class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
                 </button>
                 @if (headerLogo(); as logo) {
                   <img class="space-context-logo" [src]="logo" [alt]="spaceSignal()?.name" />
                 } @else {
-                  <span class="material-icons">folder_special</span>
+                  <span translate="no" class="material-icons">folder_special</span>
                 }
                 <div class="space-context">
                   @if (groupPath(); as gPath) {
@@ -60,18 +60,18 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                   <span class="space-context-name" [title]="spaceSignal()?.name">{{ spaceSignal()?.name }}</span>
                 </div>
                 @if (sharedFilePaths().has('')) {
-                  <span class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
+                  <span translate="no" class="material-icons shared-indicator" title="Repository is publicly shared">lock_open</span>
                 }
                 <button
                   class="sidebar-share-btn"
                   title="Share entire repository"
                   (click)="openShareDialog('', true)"
                 >
-                  <span class="material-icons">share</span>
+                  <span translate="no" class="material-icons">share</span>
                 </button>
               </div>
               <div class="sidebar-search">
-                <span class="material-icons">search</span>
+                <span translate="no" class="material-icons">search</span>
                 <input
                   type="text"
                   placeholder="Search files…"
@@ -80,13 +80,13 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                 />
                 @if (fileTreeFilterQuery()) {
                   <button class="search-clear" (click)="clearFileTreeFilter()" title="Clear">
-                    <span class="material-icons">close</span>
+                    <span translate="no" class="material-icons">close</span>
                   </button>
                 }
               </div>
               @if (creatingFolderUnder() === '') {
                 <div class="tree-new-folder-row" [style.padding-left.px]="12">
-                  <span class="material-icons folder-icon">folder</span>
+                  <span translate="no" class="material-icons folder-icon">folder</span>
                   <input
                     class="new-folder-input"
                     [(ngModel)]="newFolderName"
@@ -106,7 +106,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                   routerLinkActive="active"
                   class="nav-item"
                 >
-                  <span class="material-icons">home</span>
+                  <span translate="no" class="material-icons">home</span>
                   Overview
                 </a>
                 @if (caps.aiChat()) {
@@ -115,7 +115,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     routerLinkActive="active"
                     class="nav-item"
                   >
-                    <span class="material-icons">auto_awesome</span>
+                    <span translate="no" class="material-icons">auto_awesome</span>
                     AI Chat
                   </a>
                 }
@@ -125,7 +125,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     routerLinkActive="active"
                     class="nav-item"
                   >
-                    <span class="material-icons">move_to_inbox</span>
+                    <span translate="no" class="material-icons">move_to_inbox</span>
                     Inbox
                     @if (unsortedCount() > 0) {
                       <span class="inbox-badge">{{ unsortedCount() }}</span>
@@ -138,7 +138,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     routerLinkActive="active"
                     class="nav-item"
                   >
-                    <span class="material-icons">settings</span>
+                    <span translate="no" class="material-icons">settings</span>
                     Settings
                   </a>
                 }
@@ -215,12 +215,12 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                    (drop)="onTreeDrop($event)">
                 @if (fileTree().length === 0) {
                   <div class="tree-empty">
-                    <span class="material-icons">folder_off</span>
+                    <span translate="no" class="material-icons">folder_off</span>
                     <p>No files yet</p>
                   </div>
                 } @else if (visibleFileTree().length === 0) {
                   <div class="tree-empty">
-                    <span class="material-icons">search_off</span>
+                    <span translate="no" class="material-icons">search_off</span>
                     <p>No files match "{{ fileTreeFilterQuery() }}"</p>
                   </div>
                 } @else {
@@ -231,7 +231,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
               <!-- Pretty names toggle -->
               <div class="sidebar-footer">
                 <label class="pretty-toggle">
-                  <span class="material-icons">{{ prefs.prettyNames() ? 'auto_fix_high' : 'text_fields' }}</span>
+                  <span translate="no" class="material-icons">{{ prefs.prettyNames() ? 'auto_fix_high' : 'text_fields' }}</span>
                   <span class="pretty-toggle-label">Pretty names</span>
                   <input type="checkbox" [checked]="prefs.prettyNames()" (change)="prefs.toggle()" />
                   <span class="pretty-toggle-switch" [class.on]="prefs.prettyNames()">
@@ -283,7 +283,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                 <p>Are you sure you want to delete <strong>{{ node.name }}</strong>?</p>
                 @if (node.isDirectory) {
                   <p class="modal-warning">
-                    <span class="material-icons">warning_amber</span>
+                    <span translate="no" class="material-icons">warning_amber</span>
                     <span>
                       Everything inside is deleted with it{{ deleteFileCount() > 0 ? ' — ' + deleteFileCount() + ' file' + (deleteFileCount() === 1 ? '' : 's') + ', including any subfolders' : '' }}.
                     </span>
@@ -341,8 +341,8 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                   (dragend)="onNodeDragEnd()"
                   [style.padding-left.px]="12 + level * 16"
                 >
-                  <span class="material-icons expand-icon">chevron_right</span>
-                  <span class="material-icons folder-icon">
+                  <span translate="no" class="material-icons expand-icon">chevron_right</span>
+                  <span translate="no" class="material-icons folder-icon">
                     {{ isTreeExpanded(node.path) ? 'folder_open' : 'folder' }}
                   </span>
                   @if (renamingPath() === node.path) {
@@ -357,7 +357,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                   } @else {
                     <span class="tree-name">{{ prefs.prettify(node.name, true) }}</span>
                     @if (sharedFilePaths().has(node.path)) {
-                      <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                      <span translate="no" class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
                   }
                 </button>
@@ -366,40 +366,40 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     class="tree-menu-btn"
                     (click)="toggleTreeMenu(node.path)"
                   >
-                    <span class="material-icons">more_vert</span>
+                    <span translate="no" class="material-icons">more_vert</span>
                   </button>
                   @if (openMenuPath() === node.path) {
                     <div class="tree-dropdown">
                       <button class="tree-dropdown-item" (click)="startCreateFolder(node.path); openMenuPath.set(null)">
-                        <span class="material-icons">create_new_folder</span>
+                        <span translate="no" class="material-icons">create_new_folder</span>
                         New subfolder
                       </button>
                       <button class="tree-dropdown-item" (click)="requestUpload(node.path, 'files'); openMenuPath.set(null)">
-                        <span class="material-icons">upload_file</span>
+                        <span translate="no" class="material-icons">upload_file</span>
                         Upload files
                       </button>
                       <button class="tree-dropdown-item" (click)="requestUpload(node.path, 'folder'); openMenuPath.set(null)">
-                        <span class="material-icons">drive_folder_upload</span>
+                        <span translate="no" class="material-icons">drive_folder_upload</span>
                         Upload folder
                       </button>
                       <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
-                        <span class="material-icons">drive_file_rename_outline</span>
+                        <span translate="no" class="material-icons">drive_file_rename_outline</span>
                         Rename
                       </button>
                       <button class="tree-dropdown-item" (click)="startMoveFile(node)">
-                        <span class="material-icons">drive_file_move</span>
+                        <span translate="no" class="material-icons">drive_file_move</span>
                         Move or copy
                       </button>
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, true)">
-                        <span class="material-icons">share</span>
+                        <span translate="no" class="material-icons">share</span>
                         Share folder
                       </button>
                       <button class="tree-dropdown-item" (click)="downloadFolder(node); openMenuPath.set(null)">
-                        <span class="material-icons">download</span>
+                        <span translate="no" class="material-icons">download</span>
                         Download folder
                       </button>
                       <button class="tree-dropdown-item danger" (click)="startDeleteFile(node)">
-                        <span class="material-icons">delete</span>
+                        <span translate="no" class="material-icons">delete</span>
                         Delete folder
                       </button>
                     </div>
@@ -410,7 +410,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                 <div class="tree-children">
                   @if (creatingFolderUnder() === node.path) {
                     <div class="tree-new-folder-row" [style.padding-left.px]="12 + (level + 1) * 16">
-                      <span class="material-icons folder-icon">folder</span>
+                      <span translate="no" class="material-icons folder-icon">folder</span>
                       <input
                         class="new-folder-input"
                         [(ngModel)]="newFolderName"
@@ -455,16 +455,16 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                       (mousedown)="$event.preventDefault(); $event.stopPropagation()"
                       (click)="submitRename(node); $event.stopPropagation(); $event.preventDefault()"
                     >
-                      <span class="material-icons">check</span>
+                      <span translate="no" class="material-icons">check</span>
                     </button>
                   } @else {
                     <span class="tree-name">{{ displayName(node) }}</span>
                     @if (sharedFilePaths().has(node.path)) {
-                      <span class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
+                      <span translate="no" class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
                     @if (annotationCounts()[node.path]) {
                       <span class="annotation-badge" [title]="annotationCounts()[node.path] + ' open comment' + (annotationCounts()[node.path] > 1 ? 's' : '')">
-                        <span class="material-icons">chat_bubble</span>{{ annotationCounts()[node.path] }}
+                        <span translate="no" class="material-icons">chat_bubble</span>{{ annotationCounts()[node.path] }}
                       </span>
                     }
                   }
@@ -474,32 +474,32 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     class="tree-menu-btn"
                     (click)="toggleTreeMenu(node.path)"
                   >
-                    <span class="material-icons">more_vert</span>
+                    <span translate="no" class="material-icons">more_vert</span>
                   </button>
                   @if (openMenuPath() === node.path) {
                     <div class="tree-dropdown">
                       <button class="tree-dropdown-item" (click)="openFullscreenPreview(node.path); openMenuPath.set(null)">
-                        <span class="material-icons">fullscreen</span>
+                        <span translate="no" class="material-icons">fullscreen</span>
                         Fullscreen preview
                       </button>
                       <button class="tree-dropdown-item" (click)="startRename(node.path, node.name); openMenuPath.set(null)">
-                        <span class="material-icons">drive_file_rename_outline</span>
+                        <span translate="no" class="material-icons">drive_file_rename_outline</span>
                         Rename
                       </button>
                       <button class="tree-dropdown-item" (click)="startMoveFile(node)">
-                        <span class="material-icons">drive_file_move</span>
+                        <span translate="no" class="material-icons">drive_file_move</span>
                         Move or copy
                       </button>
                       <button class="tree-dropdown-item" (click)="openShareDialog(node.path, false)">
-                        <span class="material-icons">share</span>
+                        <span translate="no" class="material-icons">share</span>
                         Share file
                       </button>
                       <button class="tree-dropdown-item" (click)="downloadFile(node); openMenuPath.set(null)">
-                        <span class="material-icons">download</span>
+                        <span translate="no" class="material-icons">download</span>
                         Download
                       </button>
                       <button class="tree-dropdown-item danger" (click)="startDeleteFile(node)">
-                        <span class="material-icons">delete</span>
+                        <span translate="no" class="material-icons">delete</span>
                         Delete
                       </button>
                     </div>
@@ -516,7 +516,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                       [class.active]="currentDocPath() === node.path && currentLang() === code"
                       [style.padding-left.px]="48 + level * 16"
                     >
-                      <span class="material-icons translation-icon">translate</span>
+                      <span translate="no" class="material-icons translation-icon">translate</span>
                       <span class="tree-name">{{ languageLabel(code) }}</span>
                     </a>
                     <div class="tree-row-menu">
@@ -526,7 +526,7 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                         [title]="'Remove ' + languageLabel(code) + ' translation'"
                         (click)="removeTreeTranslation(node.path, code); $event.stopPropagation(); $event.preventDefault()"
                       >
-                        <span class="material-icons">close</span>
+                        <span translate="no" class="material-icons">close</span>
                       </button>
                     </div>
                   </div>

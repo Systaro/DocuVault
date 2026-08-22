@@ -18,7 +18,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
         <div class="modal-header">
           <h2>New {{ type === 'GROUP' ? 'Group' : 'Space' }}</h2>
           <button class="icon-btn" (click)="close.emit()">
-            <span class="material-icons">close</span>
+            <span translate="no" class="material-icons">close</span>
           </button>
         </div>
 
@@ -26,11 +26,11 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
           @if (type === 'REPOSITORY') {
             <div class="mode-tabs">
               <button type="button" class="mode-tab" [class.active]="spaceMode() === 'standalone'" (click)="setMode('standalone')">
-                <span class="material-icons">folder_open</span>
+                <span translate="no" class="material-icons">folder_open</span>
                 Standalone
               </button>
               <button type="button" class="mode-tab" [class.active]="spaceMode() === 'git'" (click)="setMode('git')">
-                <span class="material-icons">cloud_sync</span>
+                <span translate="no" class="material-icons">cloud_sync</span>
                 Git-backed
               </button>
             </div>
@@ -47,7 +47,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
           <div class="form-group">
             <label class="form-label">Name</label>
             <div class="input-icon">
-              <span class="material-icons">edit</span>
+              <span translate="no" class="material-icons">edit</span>
               <input
                 type="text"
                 [(ngModel)]="newSpace.name"
@@ -63,7 +63,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
           <div class="form-group">
             <label class="form-label">Slug</label>
             <div class="input-icon">
-              <span class="material-icons">link</span>
+              <span translate="no" class="material-icons">link</span>
               <input
                 type="text"
                 [(ngModel)]="newSpace.slug"
@@ -80,7 +80,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
           <div class="form-group">
             <label class="form-label">Description</label>
             <div class="input-icon textarea-icon">
-              <span class="material-icons">description</span>
+              <span translate="no" class="material-icons">description</span>
               <textarea
                 [(ngModel)]="newSpace.description"
                 name="description"
@@ -107,7 +107,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
               <div class="form-group">
                 <label class="form-label">Git Repository URL</label>
                 <div class="input-icon">
-                  <span class="material-icons">link</span>
+                  <span translate="no" class="material-icons">link</span>
                   <input
                     type="url"
                     [(ngModel)]="newSpace.gitlabUrl"
@@ -127,7 +127,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
                 class="checkbox-input"
               />
               <span class="checkbox-custom">
-                <span class="material-icons">{{ newSpace.syncEnabled ? 'check_box' : 'check_box_outline_blank' }}</span>
+                <span translate="no" class="material-icons">{{ newSpace.syncEnabled ? 'check_box' : 'check_box_outline_blank' }}</span>
               </span>
               <span class="checkbox-text">Enable automatic sync</span>
             </label>
@@ -135,7 +135,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
 
           @if (createError()) {
             <div class="error-message">
-              <span class="material-icons">error_outline</span>
+              <span translate="no" class="material-icons">error_outline</span>
               {{ createError() }}
             </div>
           }
@@ -146,10 +146,10 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
             </button>
             <button type="submit" [disabled]="creating()" class="btn btn-primary">
               @if (creating()) {
-                <span class="material-icons animate-spin">sync</span>
+                <span translate="no" class="material-icons animate-spin">sync</span>
                 Creating...
               } @else {
-                <span class="material-icons">{{ type === 'GROUP' ? 'create_new_folder' : 'add' }}</span>
+                <span translate="no" class="material-icons">{{ type === 'GROUP' ? 'create_new_folder' : 'add' }}</span>
                 Create {{ type === 'GROUP' ? 'Group' : 'Space' }}
               }
             </button>
