@@ -16,6 +16,9 @@ import { anchorRecord, describePoint, describeRange, Anchored, AnchorState } fro
 import { TextIndex } from '../annotations/anchoring/text-index';
 import { AnchorRecord, ANCHOR_VERSION, TextQuoteSelector, findSelector, toAnchorRecord } from '../annotations/anchoring/selectors';
 
+/** One painted line of a range, in host coordinates. */
+interface Rect { x: number; y: number; w: number; h: number; }
+
 /** Where one comment currently sits, in host-relative pixels. */
 interface Placement {
   state: AnchorState;
@@ -23,6 +26,24 @@ interface Placement {
   currentText?: string;
   x: number;
   y: number;
+  /** Every line the anchored text occupies, for the highlight. */
+  rects: Rect[];
+}
+
+/**
+ * The lines a range paints, relative to the host's own coordinate space rather
+ * than the viewport — so they scroll with the content instead of sliding over
+ * it, exactly like the pins.
+ */
+function rectsOf(range: Range, host: HTMLElement, hostBox: DOMRect): Rect[] {
+  return Array.from(range.getClientRects())
+    .filter(r => r.width > 0 && r.height > 0)
+    .map(r => ({
+      x: r.left - hostBox.left + host.scrollLeft,
+      y: r.top - hostBox.top + host.scrollTop,
+      w: r.width,
+      h: r.height
+    }));
 }
 
 /**
@@ -37,6 +58,8 @@ interface NewAnnotationDraft {
   dotX: number;
   dotY: number;
   dotUnit: '%' | 'px';
+  /** The passage being commented on, kept lit while the comment is written. */
+  rects: Rect[];
 }
 
 /** The first rect a range actually paints into, ignoring zero-size fragments. */
@@ -83,6 +106,37 @@ function firstVisibleRect(range: Range): DOMRect | null {
         <div class="annotation-click-layer" (click)="onLayerClick($event)"></div>
       }
 
+      <!-- Highlights. A pin alone says "there is a comment somewhere near
+           here"; lighting the anchored lines says "this sentence has a
+           comment", which is the whole point of anchoring to text.
+           pointer-events stays off so selecting a commented passage still
+           works — clicks are hit-tested against these rects instead. -->
+      @if (usesTextAnchoring()) {
+        @for (a of placedAnnotations(); track a.id) {
+          @if (placementOf(a.id); as placement) {
+            @for (r of placement.rects; track $index) {
+              <div
+                class="annotation-highlight"
+                [class.resolved]="a.resolved"
+                [class.shifted]="placement.state === 'SHIFTED'"
+                [class.active]="activeAnnotationId() === a.id || hoveredAnnotationId() === a.id"
+                [style.left.px]="r.x"
+                [style.top.px]="r.y"
+                [style.width.px]="r.w"
+                [style.height.px]="r.h"
+              ></div>
+            }
+          }
+        }
+        @if (newAnnotation(); as na) {
+          @for (r of na.rects; track $index) {
+            <div class="annotation-highlight draft"
+                 [style.left.px]="r.x" [style.top.px]="r.y"
+                 [style.width.px]="r.w" [style.height.px]="r.h"></div>
+          }
+        }
+      }
+
       <!-- Markers. Text documents position from a resolved range, measured in
            pixels off the live DOM, so reflow and zoom move the pin with the
            text instead of away from it. Everything else keeps percentages. -->
@@ -98,6 +152,7 @@ function firstVisibleRect(range: Range): DOMRect | null {
               [shifted]="placement.state === 'SHIFTED'"
               [active]="activeAnnotationId() === a.id"
               (markerClick)="openThread(a, $event)"
+              (markerHover)="hoveredAnnotationId.set($event ? a.id : null)"
             />
           }
         }
@@ -620,6 +675,51 @@ function firstVisibleRect(range: Range): DOMRect | null {
       font-size: 14px;
     }
 
+    /* The commented passage itself. Translucent rather than opaque so the text
+       reads through it like a marker pen, and pointer-transparent so selecting
+       a commented sentence still works — clicks are hit-tested in code. */
+    .annotation-highlight {
+      position: absolute;
+      pointer-events: none;
+      z-index: 1;
+      border-radius: 2px;
+      background: rgba(245, 158, 11, 0.26);
+      box-shadow: inset 0 -1px 0 rgba(245, 158, 11, 0.55);
+      transition: background 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    /* Hovering the pin, or having its thread open, lifts the passage so you can
+       see which words a comment belongs to before committing to opening it. */
+    .annotation-highlight.active {
+      background: rgba(245, 158, 11, 0.42);
+      box-shadow: inset 0 -2px 0 rgba(217, 119, 6, 0.85);
+    }
+
+    /* Settled discussion shouldn't keep shouting from the page. */
+    .annotation-highlight.resolved {
+      background: rgba(16, 185, 129, 0.14);
+      box-shadow: inset 0 -1px 0 rgba(16, 185, 129, 0.4);
+    }
+
+    .annotation-highlight.resolved.active {
+      background: rgba(16, 185, 129, 0.26);
+    }
+
+    /* Fuzzy match: dashed underline, matching the amber ring on its pin. */
+    .annotation-highlight.shifted {
+      box-shadow: inset 0 -2px 0 rgba(180, 125, 42, 0.7);
+    }
+
+    /* The passage being written about right now. */
+    .annotation-highlight.draft {
+      background: rgba(245, 158, 11, 0.4);
+      box-shadow: inset 0 -2px 0 rgba(217, 119, 6, 0.9);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .annotation-highlight { transition: none; }
+    }
+
     /* Unanchored comments. Amber rather than red: nothing is broken and nothing
        is lost — the text simply moved on and a person needs to decide. */
     .orphan-section {
@@ -861,7 +961,73 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     if (this.usesTextAnchoring()) {
       setTimeout(() => this.observeHostResize(), 0);
       document.addEventListener('contextmenu', this.onHostContextMenu, true);
+      document.addEventListener('click', this.onHostClick, true);
     }
+  }
+
+  /** Pin currently hovered, so its highlight lifts with it. */
+  hoveredAnnotationId = signal<string | null>(null);
+
+  /**
+   * Open a comment by clicking the text it is attached to.
+   *
+   * The highlights themselves are pointer-transparent — if they weren't, you
+   * could no longer select a commented passage, which is the very gesture that
+   * creates comments. So the click is caught on the host and tested against the
+   * stored rects instead.
+   */
+  private onHostClick = (event: MouseEvent): void => {
+    const host = this.host;
+    if (!host || !this.usesTextAnchoring()) return;
+    if (this.newAnnotation() || this.reanchoring()) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target || !host.contains(target)) return;
+    // A link inside a commented sentence still navigates, and our own chrome
+    // handles its own clicks.
+    if (target.closest('a, button, input, textarea, .annotation-pin, .annotation-thread, .annotation-list, .annotation-fab, .new-annotation-popover')) {
+      return;
+    }
+    // A drag that selected text is not a click — leave the selection alone.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+
+    const hit = this.annotationAtPoint(event.clientX, event.clientY);
+    if (!hit) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.openThread(hit, event);
+  };
+
+  /** The most specific commented passage under a point, if any. */
+  private annotationAtPoint(clientX: number, clientY: number): Annotation | null {
+    const host = this.host;
+    if (!host) return null;
+    const hostBox = host.getBoundingClientRect();
+    const x = clientX - hostBox.left + host.scrollLeft;
+    const y = clientY - hostBox.top + host.scrollTop;
+
+    let best: { annotation: Annotation; area: number } | null = null;
+    for (const annotation of this.placedAnnotations()) {
+      const placement = this.placements().get(annotation.id);
+      if (!placement) continue;
+      for (const r of placement.rects) {
+        if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) continue;
+        // Overlapping comments: the tightest one is the one meant.
+        const area = placement.rects.reduce((sum, rect) => sum + rect.w * rect.h, 0);
+        if (!best || area < best.area) best = { annotation, area };
+        break;
+      }
+    }
+    return best?.annotation ?? null;
+  }
+
+  /** Lines an about-to-be-created anchor covers, for the draft highlight. */
+  private rectsForAnchor(anchor: AnnotationAnchor, host: HTMLElement): Rect[] {
+    const result = anchorRecord(host, toAnchorRecord(anchor));
+    if (!result.range) return [];
+    return rectsOf(result.range, host, host.getBoundingClientRect());
   }
 
   // --- Right-click menu ---
@@ -1014,6 +1180,10 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
     const box = range.getBoundingClientRect();
     const hostBox = host.getBoundingClientRect();
+    // Our own highlight replaces the native selection, which the browser drops
+    // the moment focus moves into the comment box anyway — so without this the
+    // passage goes dark exactly while you are writing about it.
+    const rects = rectsOf(range, host, hostBox);
     window.getSelection()?.removeAllRanges();
 
     this.closeThread();
@@ -1023,7 +1193,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       screenY: screenY,
       dotX: box.left - hostBox.left + host.scrollLeft,
       dotY: box.top - hostBox.top + host.scrollTop,
-      dotUnit: 'px'
+      dotUnit: 'px',
+      rects
     });
   }
 
@@ -1042,7 +1213,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       screenY: clientY,
       dotX: clientX - hostBox.left + host.scrollLeft,
       dotY: clientY - hostBox.top + host.scrollTop,
-      dotUnit: 'px'
+      dotUnit: 'px',
+      rects: []
     });
   }
 
@@ -1096,6 +1268,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
       let x = 0;
       let y = 0;
+      let rects: Rect[] = [];
       if (result.range) {
         const box = firstVisibleRect(result.range);
         if (box) {
@@ -1104,6 +1277,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
           x = box.left - hostBox.left + host.scrollLeft;
           y = box.top - hostBox.top + host.scrollTop;
         }
+        rects = rectsOf(result.range, host, hostBox);
       }
 
       next.set(annotation.id, {
@@ -1111,7 +1285,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         position: result.position,
         currentText: result.currentText,
         x,
-        y
+        y,
+        rects
       });
 
       this.persistPlacement(annotation, result, stored);
@@ -1228,6 +1403,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     window.removeEventListener('message', this.boundMessageHandler);
     document.removeEventListener('mousedown', this.boundDocClick);
     document.removeEventListener('contextmenu', this.onHostContextMenu, true);
+    document.removeEventListener('click', this.onHostClick, true);
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
@@ -1294,7 +1470,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     this.closeThread();
     this.newAnnotation.set({
       anchor, screenX: event.clientX + 16, screenY: event.clientY,
-      dotX: xPercent, dotY: yPercent, dotUnit: '%'
+      dotX: xPercent, dotY: yPercent, dotUnit: '%', rects: []
     });
   }
 
@@ -1347,7 +1523,8 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       dotY: usesPixels
         ? event.clientY - box.top + container.scrollTop
         : ((event.clientY - box.top + container.scrollTop) / container.scrollHeight) * 100,
-      dotUnit: usesPixels ? 'px' : '%'
+      dotUnit: usesPixels ? 'px' : '%',
+      rects: usesPixels ? this.rectsForAnchor(anchor, container) : []
     });
   }
 
@@ -1507,7 +1684,7 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
       }
       this.newAnnotation.set({
         anchor, screenX, screenY,
-        dotX: anchor.xPercent ?? 0, dotY: anchor.yPercent ?? 0, dotUnit: '%'
+        dotX: anchor.xPercent ?? 0, dotY: anchor.yPercent ?? 0, dotUnit: '%', rects: []
       });
     }
   }
