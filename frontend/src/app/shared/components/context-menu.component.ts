@@ -123,16 +123,22 @@ export interface ContextMenuItem {
 
     .context-menu-item.danger .context-menu-icon { color: inherit; }
 
+    /* The label names the action, so it is the last thing that may be cut.
+       Giving it flex:1 with a shrinkable hint beside it did the opposite:
+       a long hint held its width and truncated "Comment on selection" down
+       to "Comment o…", which is the one part of the row nobody can guess. */
     .context-menu-label {
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      flex: 0 0 auto;
       white-space: nowrap;
     }
 
     .context-menu-hint {
-      flex-shrink: 0;
+      flex: 0 1 auto;
+      min-width: 0;
+      margin-left: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 11.5px;
       color: var(--text-muted, #7a9a9d);
     }
