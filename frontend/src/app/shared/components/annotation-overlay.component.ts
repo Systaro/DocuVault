@@ -39,12 +39,6 @@ interface NewAnnotationDraft {
   dotUnit: '%' | 'px';
 }
 
-/** A few words of the selection, for the menu's right-hand hint. */
-function shortQuote(text: string): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
-  return clean.length > 24 ? `“${clean.slice(0, 24)}…”` : `“${clean}”`;
-}
-
 /** The first rect a range actually paints into, ignoring zero-size fragments. */
 function firstVisibleRect(range: Range): DOMRect | null {
   const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
@@ -948,13 +942,16 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     }
 
     if (selection) {
+      // No quote hint here: the selection is highlighted on the page right
+      // behind the menu, so repeating it is noise — and truncated to a couple
+      // of words it doesn't even show where the selection ends, which was the
+      // only thing it could have usefully confirmed.
       items.push({
         id: 'comment-selection',
         label: 'Comment on selection',
         icon: 'add_comment',
         disabled: !this.canComment(),
-        disabledReason: 'You need comment access on this space',
-        hint: shortQuote(selection.toString())
+        disabledReason: 'You need comment access on this space'
       });
       items.push({ id: 'copy', label: 'Copy', icon: 'content_copy' });
     } else if (this.canComment()) {
