@@ -1,5 +1,8 @@
 package com.docuvault.service
 
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
 /**
  * The chrome injected into an HTML document before it is handed to a preview
  * iframe: a `<base>` so its relative assets resolve, a fix for in-page anchor
@@ -30,6 +33,26 @@ object HtmlPreviewInjection {
         // No <head> of its own — the base tag still has to come before anything
         // that might reference a relative URL.
         return baseTag + html + scripts
+    }
+
+    /**
+     * The `<base href>` for a document at [filePath] (relative to the space
+     * repository) served under [filesEndpoint], the endpoint that resolves
+     * paths against the repository root.
+     *
+     * The document's own directory is what relative references hang off, so a
+     * `../assets/styles.css` one folder up resolves to a real repository path
+     * instead of walking off the endpoint. A file at the repository root has no
+     * directory — the base is then the endpoint itself.
+     */
+    fun baseHref(filesEndpoint: String, filePath: String): String {
+        val directory = filePath.replace('\\', '/').substringBeforeLast('/', "")
+        val prefix = filesEndpoint.trimEnd('/')
+        if (directory.isEmpty()) return "$prefix/"
+        val encoded = directory.split('/').joinToString("/") { segment ->
+            URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20")
+        }
+        return "$prefix/$encoded/"
     }
 
     /**

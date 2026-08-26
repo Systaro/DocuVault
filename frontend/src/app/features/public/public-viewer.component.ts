@@ -1287,14 +1287,12 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   private loadMarkdownContent(): void {
     this.sharedLinksService.getSharedFileContent(this.token).subscribe({
       next: (content) => {
-        // Companion assets of a shared file are already resolved against that
-        // file's own directory by the backend, so paths stay document-relative
-        // here. Prefixing the space-absolute directory made the backend resolve
-        // it a second time (…/releases/subprojects/mag/releases/images/x.png),
-        // which is why every embedded image in a shared document 404'd.
+        // Asset URLs are space-absolute (that is the only way an image one
+        // folder up can be addressed at all), so the document's own directory
+        // inside the space is what its relative paths hang off.
         const linkPrefix = this.shareType() === 'FOLDER' ? `/share/${this.token}` : null;
         this.renderedHtml.set(this.markdownService.render(
-          content, '', `/api/shared/${this.token}/files`, linkPrefix
+          content, '', `/api/shared/${this.token}/files`, linkPrefix, this.assetRoot()
         ));
         this.loading.set(false);
       },
@@ -1306,9 +1304,24 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   }
 
   private renderMarkdownForSubPath(content: string, subPath: string): void {
+    // Links stay relative to the shared folder — that is what `/share/<token>/…`
+    // addresses — while assets are addressed from the space root.
     const dir = subPath.substring(0, subPath.lastIndexOf('/') + 1);
     this.renderedHtml.set(this.markdownService.render(
-      content, dir, `/api/shared/${this.token}/files`, `/share/${this.token}`
+      content, dir, `/api/shared/${this.token}/files`, `/share/${this.token}`, this.assetRoot()
     ));
+  }
+
+  /**
+   * The shared item's own directory inside the space, as a prefix: the folder
+   * itself for a folder share, the file's parent for a file share.
+   */
+  private assetRoot(): string {
+    const filePath = this.metadata()?.filePath ?? '';
+    if (!filePath) return '';
+    const dir = this.shareType() === 'FOLDER'
+      ? filePath
+      : filePath.substring(0, filePath.lastIndexOf('/'));
+    return dir ? `${dir}/` : '';
   }
 }

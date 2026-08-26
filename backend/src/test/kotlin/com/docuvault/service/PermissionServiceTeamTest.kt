@@ -12,6 +12,7 @@ import com.docuvault.infrastructure.repository.SpacePermissionRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.TeamMembershipRepository
 import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
+import com.docuvault.infrastructure.repository.UserRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -35,12 +36,14 @@ class PermissionServiceTeamTest {
     private val spaceRepository = mock(SpaceRepository::class.java)
     private val membershipRepository = mock(TeamMembershipRepository::class.java)
     private val teamPermissionRepository = mock(TeamSpacePermissionRepository::class.java)
+    private val userRepository = mock(UserRepository::class.java)
 
     private val service = PermissionService(
         spacePermissionRepository,
         spaceRepository,
         membershipRepository,
-        teamPermissionRepository
+        teamPermissionRepository,
+        userRepository
     )
 
     private val owner = User(id = UUID.randomUUID(), email = "owner@x.io", passwordHash = "h", name = "Owner")

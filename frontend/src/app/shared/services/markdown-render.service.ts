@@ -39,12 +39,18 @@ export class MarkdownRenderService {
    * @param fileUrlPrefix   URL prefix for raw file access (e.g. `/api/spaces/xyz/files`)
    * @param linkPrefix      URL prefix for internal navigation (e.g. `/preview/xyz` or `/share/token`).
    *                        Pass null to skip link rewriting.
+   * @param assetRoot  Repository-relative directory that `docDir` hangs off, for
+   *                   views whose navigation is scoped to a subtree. A share of
+   *                   one folder addresses documents relative to that folder,
+   *                   while its assets are addressed from the space root — the
+   *                   two only differ there, so it defaults to empty.
    */
   render(
     content: string,
     docDir: string,
     fileUrlPrefix: string,
-    linkPrefix: string | null
+    linkPrefix: string | null,
+    assetRoot = ''
   ): SafeHtml {
     const renderer = new Renderer();
     renderer.heading = (text: string, level: number, raw: string) => {
@@ -58,7 +64,7 @@ export class MarkdownRenderService {
     html = html.replace(
       /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
       (_match, pre, src, post) => {
-        const resolved = resolveRelativePath(docDir + src);
+        const resolved = resolveRelativePath(assetRoot + docDir + src);
         return `${pre}${fileUrlPrefix}/${resolved}${post}`;
       }
     );
