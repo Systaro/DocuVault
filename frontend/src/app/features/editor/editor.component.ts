@@ -116,29 +116,7 @@ interface OutlineItem {
             <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           }
         }
-        @if (historyMeta(); as meta) {
-          <div class="editor-doc-meta">
-            @if (meta.created; as created) {
-              <span class="editor-doc-meta-item" [title]="created.authorEmail || ''">
-                Created by {{ created.authorName || 'unknown' }} · {{ created.committedAt | date:'MMM d, y, HH:mm' }}
-              </span>
-            }
-            @if (meta.lastEdited && meta.lastEdited.sha !== meta.created?.sha) {
-              <span class="editor-doc-meta-divider"></span>
-              <span class="editor-doc-meta-item" [title]="meta.lastEdited!.authorEmail || ''">
-                Last edited by {{ meta.lastEdited!.authorName || 'unknown' }} · {{ meta.lastEdited!.committedAt | date:'MMM d, y, HH:mm' }}
-              </span>
-            }
-            @if (!showEditor()) {
-              <button class="editor-doc-meta-history" (click)="openHistory()" title="Open version history">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                History
-              </button>
-            }
-          </div>
-        }
+        <ng-container *ngTemplateOutlet="docMetaStrip"></ng-container>
       </div>
       <div class="editor-toolbar">
         @if (showEditor()) {
@@ -422,7 +400,7 @@ interface OutlineItem {
 
       @if (isPreviewFile()) {
         <!-- Preview topbar — fixed row, not scrollable -->
-        <div class="preview-topbar">
+        <div class="preview-topbar" [class.with-history-panel]="showHistoryPanel()">
           <div class="preview-filename">
             <span translate="no" class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
             @if (space()) {
@@ -439,6 +417,7 @@ interface OutlineItem {
             }
             <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           </div>
+          <ng-container *ngTemplateOutlet="docMetaStrip"></ng-container>
           <div class="preview-topbar-actions">
           @if (canEditHtmlFile()) {
             <button
@@ -505,6 +484,14 @@ interface OutlineItem {
                     {{ gitLinkCopied() ? 'Copied!' : 'Get git link' }}
                   </button>
                 }
+                @if (canViewVersions()) {
+                  <button class="action-menu-item" (click)="openHistory(); showActionMenu.set(false)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Version history
+                  </button>
+                }
                 <div class="action-menu-divider"></div>
                 <button class="action-menu-item action-menu-item--danger" (click)="confirmDeleteDocument(); showActionMenu.set(false)">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -526,12 +513,17 @@ interface OutlineItem {
           />
         } @else {
         <!-- Scrollable preview content -->
-        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()">
           <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
-          @if (previewType() === 'html') {
+          <ng-container *ngTemplateOutlet="timeCapsuleBanner"></ng-container>
+          @if (viewingVersion() && historyViewMode() === 'diff') {
+            <ng-container *ngTemplateOutlet="diffView"></ng-container>
+          } @else if (previewType() === 'html') {
             <div class="html-preview-container annotation-host">
               <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
-              @if (space() && documentPath) {
+              <!-- Comments belong to the live page; a historic version has no
+                   pins to place and its markup no longer matches theirs. -->
+              @if (space() && documentPath && !viewingVersion()) {
                 <app-annotation-overlay
                   [spaceId]="space()!.id"
                   [filePath]="documentPath"
@@ -653,38 +645,7 @@ interface OutlineItem {
 
               @if (!showEditor()) {
                 <!-- Read mode: full markdown pipeline incl. Mermaid + image lightbox -->
-                @if (viewingVersion(); as version) {
-                  <div class="timecapsule-banner">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <span>
-                      Time capsule —
-                      {{ historyViewMode() === 'diff' ? 'changes in the version from' : 'viewing the version from' }}
-                      <strong>{{ version.committedAt | date:'MMM d, y, HH:mm' }}</strong>
-                      @if (version.authorName) { by {{ version.authorName }} }
-                    </span>
-                    <div class="timecapsule-actions">
-                      @if (!isCurrentVersion(version)) {
-                        <button type="button" class="timecapsule-back" (click)="historyViewMode() === 'diff' ? viewVersion(version) : viewDiff(version)">
-                          {{ historyViewMode() === 'diff' ? 'Show document' : 'Show changes' }}
-                        </button>
-                      }
-                      @if (canEdit() && !isCurrentVersion(version)) {
-                        <button type="button" class="timecapsule-restore" [disabled]="restoring()" (click)="restoreVersion(version)">
-                          @if (restoring()) {
-                            <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                            </svg>
-                          }
-                          Restore this version
-                        </button>
-                      }
-                      <button type="button" class="timecapsule-back" (click)="backToCurrent()">Back to current</button>
-                    </div>
-                  </div>
-                }
+                <ng-container *ngTemplateOutlet="timeCapsuleBanner"></ng-container>
                 @if (caps.aiEnabled() && availableLangs().length > 0) {
                   <div class="translation-banner">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -733,18 +694,7 @@ interface OutlineItem {
                   </div>
                 }
                 @if (viewingVersion() && historyViewMode() === 'diff') {
-                  <div class="diff-view">
-                    @for (line of diffLines(); track $index) {
-                      <div
-                        class="diff-line"
-                        [class.diff-add]="line.type === 'add'"
-                        [class.diff-del]="line.type === 'del'"
-                        [class.diff-hunk]="line.type === 'hunk'"
-                      >@if (line.type !== 'hunk') {<span class="diff-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' ' }}</span>}{{ line.text }}</div>
-                    } @empty {
-                      <p class="diff-empty">This version did not change this document.</p>
-                    }
-                  </div>
+                  <ng-container *ngTemplateOutlet="diffView"></ng-container>
                 } @else {
                   <article
                     #readonlyElement
@@ -784,6 +734,86 @@ interface OutlineItem {
         </div>
       }
 
+
+      <!-- Creator + last editor of the file, with the way into its history.
+           Shown above a markdown document and in the preview topbar of a file
+           that is rendered rather than edited — both are git-tracked files, so
+           both have a history to show. -->
+      <ng-template #docMetaStrip>
+        @if (historyMeta(); as meta) {
+          <div class="editor-doc-meta">
+            @if (meta.created; as created) {
+              <span class="editor-doc-meta-item" [title]="created.authorEmail || ''">
+                Created by {{ created.authorName || 'unknown' }} · {{ created.committedAt | date:'MMM d, y, HH:mm' }}
+              </span>
+            }
+            @if (meta.lastEdited && meta.lastEdited.sha !== meta.created?.sha) {
+              <span class="editor-doc-meta-divider"></span>
+              <span class="editor-doc-meta-item" [title]="meta.lastEdited!.authorEmail || ''">
+                Last edited by {{ meta.lastEdited!.authorName || 'unknown' }} · {{ meta.lastEdited!.committedAt | date:'MMM d, y, HH:mm' }}
+              </span>
+            }
+            @if (!showEditor() && canViewVersions()) {
+              <button class="editor-doc-meta-history" (click)="openHistory()" title="Open version history">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                History
+              </button>
+            }
+          </div>
+        }
+      </ng-template>
+
+      <ng-template #timeCapsuleBanner>
+        @if (viewingVersion(); as version) {
+          <div class="timecapsule-banner">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>
+              Time capsule —
+              {{ historyViewMode() === 'diff' ? 'changes in the version from' : 'viewing the version from' }}
+              <strong>{{ version.committedAt | date:'MMM d, y, HH:mm' }}</strong>
+              @if (version.authorName) { by {{ version.authorName }} }
+            </span>
+            <div class="timecapsule-actions">
+              @if (!isCurrentVersion(version)) {
+                <button type="button" class="timecapsule-back" (click)="historyViewMode() === 'diff' ? viewVersion(version) : viewDiff(version)">
+                  {{ historyViewMode() === 'diff' ? 'Show document' : 'Show changes' }}
+                </button>
+              }
+              @if (canEdit() && !isCurrentVersion(version)) {
+                <button type="button" class="timecapsule-restore" [disabled]="restoring()" (click)="restoreVersion(version)">
+                  @if (restoring()) {
+                    <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                  }
+                  Restore this version
+                </button>
+              }
+              <button type="button" class="timecapsule-back" (click)="backToCurrent()">Back to current</button>
+            </div>
+          </div>
+        }
+      </ng-template>
+
+      <ng-template #diffView>
+        <div class="diff-view">
+          @for (line of diffLines(); track $index) {
+            <div
+              class="diff-line"
+              [class.diff-add]="line.type === 'add'"
+              [class.diff-del]="line.type === 'del'"
+              [class.diff-hunk]="line.type === 'hunk'"
+            >@if (line.type !== 'hunk') {<span class="diff-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : ' ' }}</span>}{{ line.text }}</div>
+          } @empty {
+            <p class="diff-empty">This version did not change this document.</p>
+          }
+        </div>
+      </ng-template>
 
       <ng-template #aiUndoBanner>
         <app-ai-edit-step-back
@@ -882,6 +912,19 @@ interface OutlineItem {
       display: block;
       height: 100%;
       position: relative;
+      /* Matches the drawer's own width in version-history-panel.component. */
+      --history-drawer-width: 320px;
+    }
+
+    // The history drawer is an overlay, so a full-width preview would sit
+    // underneath it — including the time-capsule buttons, which are exactly
+    // what you reach for while the drawer is open. Move the pane aside instead.
+    .preview-topbar.with-history-panel {
+      padding-right: calc(var(--history-drawer-width) + 16px);
+    }
+
+    .editor-bg.with-history-panel {
+      padding-right: var(--history-drawer-width);
     }
 
     .editor-bg {
@@ -1049,6 +1092,7 @@ interface OutlineItem {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 16px;
       padding: 0 16px;
       height: 44px;
       flex-shrink: 0;
@@ -1062,10 +1106,38 @@ interface OutlineItem {
       gap: 8px;
     }
 
+    // The bar is a fixed 44px single line, so both the path and the authorship
+    // line have to give way rather than wrap. The authorship line is the longer
+    // of the two and yields first — the file's own name stays readable, and the
+    // created-by half drops out entirely before the last edit does.
+    .preview-topbar .editor-doc-meta {
+      font-size: 12px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .preview-topbar .editor-doc-meta-item {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    // The divider exists only when the file has been edited since it was
+    // created, so it is also the test for "there is a second half to drop".
+    @media (max-width: 1500px) {
+      .preview-topbar .editor-doc-meta:has(.editor-doc-meta-divider) .editor-doc-meta-item:first-child,
+      .preview-topbar .editor-doc-meta-divider {
+        display: none;
+      }
+    }
+
     .preview-filename {
       display: flex;
       align-items: center;
       gap: 6px;
+      min-width: 0;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
       font-size: 0.875rem;
       color: var(--text-secondary);
       font-weight: 500;
@@ -2253,12 +2325,24 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    * otherwise re-serve the response it already has, so it gets a fresh URL.
    */
   onHtmlSaved(): void {
+    this.refreshPreview(true);
+    this.loadHistoryMeta();
+  }
+
+  /**
+   * Point the preview at the live file. [cacheBust] adds a fresh query so a
+   * frame that just saved does not re-serve the response it already has.
+   */
+  private refreshPreview(cacheBust = false): void {
     const space = this.space();
-    if (!space) return;
-    const url = `/api/spaces/${space.id}/files/${this.documentPath}?v=${Date.now()}`;
+    if (!space || !this.documentPath) return;
+    const url = `/api/spaces/${space.id}/files/${this.documentPath}` + (cacheBust ? `?v=${Date.now()}` : '');
+    this.setPreviewUrl(url);
+  }
+
+  private setPreviewUrl(url: string): void {
     this.previewUrl.set(url);
     this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
-    this.loadHistoryMeta();
   }
 
   /**
@@ -2320,6 +2404,21 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
       return;
     }
     if (this.viewingVersion()?.sha === version.sha && this.historyViewMode() === 'doc') return;
+
+    // A rendered file shows its old self in the preview frame rather than
+    // through the markdown pipeline — the backend serves that version with the
+    // same base tag the live file gets, so the page renders as it did.
+    if (this.isPreviewFile()) {
+      if (!this.canViewVersions()) return;
+      this.setPreviewUrl(
+        `/api/spaces/${space.id}/document-history/raw` +
+        `?path=${encodeURIComponent(this.documentPath)}&sha=${encodeURIComponent(version.sha)}`
+      );
+      this.viewingVersion.set(version);
+      this.historyViewMode.set('doc');
+      return;
+    }
+
     this.versionLoadingSha.set(version.sha);
     this.documentHistoryService.getVersionContent(space.id, this.documentPath, version.sha)
       .pipe(takeUntil(this.destroy$))
@@ -2369,6 +2468,10 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.viewingVersion.set(null);
     this.historyViewMode.set('doc');
     this.diffLines.set([]);
+    if (this.isPreviewFile()) {
+      this.refreshPreview();
+      return;
+    }
     this.renderReadView(this.markdownContent());
   }
 
@@ -2404,8 +2507,15 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         next: () => {
           this.restoring.set(false);
           this.viewingVersion.set(null);
+          this.historyViewMode.set('doc');
+          this.diffLines.set([]);
           this.toastService.success('Version restored', 'The document was restored — the previous state stays available in the history.');
-          this.loadDocument();
+          if (this.isPreviewFile()) {
+            this.refreshPreview(true);
+            this.loadHistoryMeta();
+          } else {
+            this.loadDocument();
+          }
           this.loadHistory();
         },
         error: () => {
@@ -2413,6 +2523,16 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           this.toastService.error('Restore failed', 'Could not restore this version. Please try again.');
         }
       });
+  }
+
+  /**
+   * Whether a past version can be shown in place. A markdown document renders
+   * through its own pipeline; among the files that are previewed rather than
+   * edited, only HTML can be rendered back — an image or PDF version is a
+   * binary the time capsule has no way to display.
+   */
+  canViewVersions(): boolean {
+    return !this.isPreviewFile() || this.previewType() === 'html';
   }
 
   /** Same leading-H1 strip rule as loadDocument, for rendering historical content. */
@@ -2689,6 +2809,18 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
             this.showOriginal();
           }
         }
+        // A previewed file never goes through loadDocument(), so who created and
+        // last edited it has to be fetched on this path.
+        if (this.isPreviewFile()) {
+          if (pathChanged) {
+            this.viewingVersion.set(null);
+            this.historyViewMode.set('doc');
+            this.diffLines.set([]);
+            this.historyMeta.set(null);
+            this.showHistoryPanel.set(false);
+          }
+          this.loadHistoryMeta();
+        }
       } else {
         // New document — remember the folder the user created it from so it
         // lands there instead of the default docs/ directory.
@@ -2729,6 +2861,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
               this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
             }
           }
+          this.loadHistoryMeta();
         } else if (this.documentPath) {
           this.loadDocument();
         }
