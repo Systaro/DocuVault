@@ -4,6 +4,7 @@ import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.DocumentPersistService
+import com.docuvault.service.HtmlPreviewInjection
 import com.docuvault.service.PermissionService
 import com.docuvault.service.git.FileHistoryMeta
 import com.docuvault.service.git.FileVersion
@@ -12,7 +13,9 @@ import com.docuvault.service.git.GitService
 import com.docuvault.service.requireSpaceWritable
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
@@ -106,6 +109,49 @@ class DocumentHistoryController(
             ?: return ResponseEntity.notFound().build()
 
         return ResponseEntity.ok(VersionContentDto(path = path, sha = sha, content = content))
+    }
+
+    /**
+     * The document at [sha], served for the preview pane rather than as data:
+     * an HTML page gets the same `<base>` and preview chrome the live file
+     * gets, so a historic version displays like the current one instead of as
+     * source text. Its assets are the ones in the working tree — the page is
+     * historic, the stylesheet and images beside it are not.
+     */
+    @GetMapping("/raw")
+    fun getVersionRaw(
+        @PathVariable spaceId: UUID,
+        @RequestParam path: String,
+        @RequestParam sha: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<ByteArray> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val content = gitDiffService.fileAtCommit(space, sha, path)
+            ?: return ResponseEntity.notFound().build()
+
+        val isHtml = path.substringAfterLast('.', "").lowercase() in setOf("html", "htm")
+        val body = if (isHtml) {
+            HtmlPreviewInjection.inject(
+                content,
+                HtmlPreviewInjection.baseHref("/api/spaces/$spaceId/files", path)
+            )
+        } else {
+            content
+        }
+
+        return ResponseEntity.ok()
+            .contentType(if (isHtml) MediaType.TEXT_HTML else MediaType.TEXT_PLAIN)
+            .cacheControl(CacheControl.noCache())
+            .body(body.toByteArray(Charsets.UTF_8))
     }
 
     @GetMapping("/diff")
