@@ -153,6 +153,22 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             </div>
 
             <div class="form-group">
+              <label for="editModel">Document Edit Model</label>
+              <app-searchable-select
+                id="editModel"
+                [options]="editModelOptions"
+                [(ngModel)]="editModel"
+              />
+              <p class="form-hint">
+                Used when the AI edits a document. Editing has to reproduce a file's
+                structure exactly, which rewards a stronger model than chat does.
+              </p>
+              <span class="source-badge" [class.database]="settings()?.['openai.edit-model']?.source === 'database'">
+                {{ settings()?.['openai.edit-model']?.source === 'database' ? 'From database' : 'From environment' }}
+              </span>
+            </div>
+
+            <div class="form-group">
               <label for="embeddingModel">Embedding Model</label>
               <app-searchable-select
                 id="embeddingModel"
@@ -474,6 +490,13 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       }
     }
 
+    .form-hint {
+      margin: var(--spacing-xs) 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+
     .form-input {
       width: 100%;
       padding: 10px 12px;
@@ -674,6 +697,7 @@ export class SettingsComponent implements OnInit {
   // OpenAI form
   openaiApiKey = '';
   chatModel = 'gpt-4o';
+  editModel = '';
   embeddingModel = 'text-embedding-3-small';
 
   readonly chatModelOptions: SelectOption[] = [
@@ -687,6 +711,15 @@ export class SettingsComponent implements OnInit {
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { value: 'o4-mini', label: 'o4-mini (Reasoning)' },
     { value: 'o3', label: 'o3 (Reasoning)' }
+  ];
+
+  readonly editModelOptions: SelectOption[] = [
+    { value: '', label: 'Same as chat model' },
+    { value: 'gpt-5.5', label: 'GPT-5.5 (Recommended)' },
+    { value: 'gpt-5.4', label: 'GPT-5.4' },
+    { value: 'gpt-5.1', label: 'GPT-5.1' },
+    { value: 'gpt-5', label: 'GPT-5' },
+    { value: 'gpt-5-nano', label: 'GPT-5 Nano (Budget)' }
   ];
 
   readonly embeddingModelOptions: SelectOption[] = [
@@ -726,6 +759,7 @@ export class SettingsComponent implements OnInit {
         this.settings.set(settings);
         this.gitlabUrl = settings['gitlab.url']?.value || '';
         this.chatModel = settings['openai.chat-model']?.value || 'gpt-4o';
+        this.editModel = settings['openai.edit-model']?.value || '';
         this.embeddingModel = settings['openai.embedding-model']?.value || 'text-embedding-3-small';
         this.mailHost = settings['mail.host']?.value || '';
         this.mailPort = parseInt(settings['mail.port']?.value || '25', 10) || 25;
@@ -807,6 +841,7 @@ export class SettingsComponent implements OnInit {
     this.settingsService.updateSettings({
       openaiApiKey: this.openaiApiKey || undefined,
       openaiChatModel: this.chatModel,
+      openaiEditModel: this.editModel,
       openaiEmbeddingModel: this.embeddingModel
     }).subscribe({
       next: () => {

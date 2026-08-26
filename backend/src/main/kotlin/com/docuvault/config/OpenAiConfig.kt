@@ -35,6 +35,16 @@ class OpenAIProvider(
         return settingsService.getChatModel()
     }
 
+    /**
+     * The model used for whole-document edits. Editing has to follow a file's
+     * structure far more exactly than chatting about it does, so an install can
+     * point it at a stronger model than the one answering questions; left
+     * unset, it is the chat model.
+     */
+    fun getEditModel(): String {
+        return settingsService.getEditModel().ifBlank { settingsService.getChatModel() }
+    }
+
     fun getEmbeddingModel(): String {
         return settingsService.getEmbeddingModel()
     }

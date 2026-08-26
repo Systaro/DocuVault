@@ -5,11 +5,14 @@ import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.AnnotationService
+import com.docuvault.service.DocumentPatchService
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.DocumentTransferService
+import com.docuvault.service.PatchOperation
 import com.docuvault.service.PermissionService
 import com.docuvault.service.TransferMode
 import com.docuvault.service.TransferResult
+import com.docuvault.service.ai.DocumentEditResult
 import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.requireSpaceWritable
@@ -44,7 +47,8 @@ class DocumentController(
     private val writingAssistantService: WritingAssistantService,
     private val documentPersistService: DocumentPersistService,
     private val documentTransferService: DocumentTransferService,
-    private val annotationService: AnnotationService
+    private val annotationService: AnnotationService,
+    private val documentPatchService: DocumentPatchService
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
     private fun hashContent(content: String) = documentPersistService.hashContent(content)
@@ -415,12 +419,24 @@ class DocumentController(
                 .body(mapOf("error" to "AI editing is not available for binary files."))
         }
 
-        val editedContent = writingAssistantService.editDocument(
+        val edit = writingAssistantService.editDocument(
             fileName = documentPath.substringAfterLast('/'),
             content = previousContent,
             instruction = request.instruction
-        ) ?: return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-            .body(mapOf("error" to "AI edit failed. Check that an AI API key is configured."))
+        )
+
+        // Each failure says what actually went wrong. The old catch-all blamed a
+        // missing API key for everything, including the timeouts that were the
+        // usual cause — which sent people to the settings page for no reason.
+        val editedContent = when (edit) {
+            is DocumentEditResult.Success -> edit.content
+            is DocumentEditResult.NotConfigured ->
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(mapOf("error" to "AI edit failed. Check that an AI API key is configured."))
+            is DocumentEditResult.Failed ->
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(mapOf("error" to edit.message))
+        }
 
         val commitMessage = "AI edit: ${request.instruction.replace('\n', ' ').take(72)}"
         persistDocument(
@@ -437,7 +453,8 @@ class DocumentController(
             AiEditDocumentResponse(
                 path = documentPath,
                 content = editedContent,
-                previousContent = previousContent
+                previousContent = previousContent,
+                strategy = (edit as DocumentEditResult.Success).strategy.name
             )
         )
     }
@@ -483,111 +500,18 @@ class DocumentController(
             }
         }
 
-        // Validate operations
-        if (request.operations.isEmpty()) {
+        val patched = documentPatchService.apply(currentContent, request.operations)
+        if (patched is DocumentPatchService.Result.Failed) {
             return ResponseEntity.badRequest().body(
-                mapOf("error" to "INVALID_REQUEST", "message" to "At least one operation is required")
+                buildMap {
+                    put("error", patched.error)
+                    put("message", patched.message)
+                    patched.operationIndex?.let { put("operationIndex", it) }
+                    patched.occurrences?.let { put("occurrences", it) }
+                }
             )
         }
-
-        if (request.operations.size > 20) {
-            return ResponseEntity.badRequest().body(
-                mapOf("error" to "INVALID_REQUEST", "message" to "Maximum 20 operations per request")
-            )
-        }
-
-        // Apply operations sequentially
-        var content = currentContent
-        for ((index, op) in request.operations.withIndex()) {
-            when (op.op) {
-                "replace" -> {
-                    if (op.oldText == null || op.newText == null) {
-                        return ResponseEntity.badRequest().body(
-                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'replace' requires 'oldText' and 'newText'")
-                        )
-                    }
-                    if (op.oldText == op.newText) {
-                        return ResponseEntity.badRequest().body(
-                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'oldText' and 'newText' must be different")
-                        )
-                    }
-                    val occurrences = countOccurrences(content, op.oldText)
-                    if (occurrences == 0) {
-                        return ResponseEntity.badRequest().body(
-                            mapOf(
-                                "error" to "TEXT_NOT_FOUND",
-                                "message" to "Operation $index: exact text not found in document",
-                                "operationIndex" to index
-                            )
-                        )
-                    }
-                    if (occurrences > 1 && op.replaceAll != true) {
-                        return ResponseEntity.badRequest().body(
-                            mapOf(
-                                "error" to "AMBIGUOUS_MATCH",
-                                "message" to "Operation $index: text appears $occurrences times. Provide more context to make it unique, or set replaceAll: true.",
-                                "operationIndex" to index,
-                                "occurrences" to occurrences
-                            )
-                        )
-                    }
-                    content = if (op.replaceAll == true) {
-                        content.replace(op.oldText, op.newText)
-                    } else {
-                        content.replaceFirst(op.oldText, op.newText)
-                    }
-                }
-
-                "insert" -> {
-                    if (op.content == null) {
-                        return ResponseEntity.badRequest().body(
-                            mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: 'insert' requires 'content'")
-                        )
-                    }
-                    when {
-                        op.after == "START" -> {
-                            content = op.content + content
-                        }
-                        op.after == "END" || (op.after == null && op.before == null) -> {
-                            content = content + op.content
-                        }
-                        op.after != null -> {
-                            val pos = content.indexOf(op.after)
-                            if (pos == -1) {
-                                return ResponseEntity.badRequest().body(
-                                    mapOf(
-                                        "error" to "TEXT_NOT_FOUND",
-                                        "message" to "Operation $index: anchor text for 'after' not found",
-                                        "operationIndex" to index
-                                    )
-                                )
-                            }
-                            val insertPos = pos + op.after.length
-                            content = content.substring(0, insertPos) + op.content + content.substring(insertPos)
-                        }
-                        op.before != null -> {
-                            val pos = content.indexOf(op.before)
-                            if (pos == -1) {
-                                return ResponseEntity.badRequest().body(
-                                    mapOf(
-                                        "error" to "TEXT_NOT_FOUND",
-                                        "message" to "Operation $index: anchor text for 'before' not found",
-                                        "operationIndex" to index
-                                    )
-                                )
-                            }
-                            content = content.substring(0, pos) + op.content + content.substring(pos)
-                        }
-                    }
-                }
-
-                else -> {
-                    return ResponseEntity.badRequest().body(
-                        mapOf("error" to "INVALID_OPERATION", "message" to "Operation $index: unknown operation '${op.op}'. Supported: 'replace', 'insert'")
-                    )
-                }
-            }
-        }
+        val content = (patched as DocumentPatchService.Result.Applied).content
 
         // Write the patched content
         if (!gitService.writeFile(space, documentPath, content)) {
@@ -634,18 +558,6 @@ class DocumentController(
                 lastSyncedAt = saved.lastSyncedAt
             )
         )
-    }
-
-    private fun countOccurrences(text: String, search: String): Int {
-        var count = 0
-        var startIndex = 0
-        while (true) {
-            val index = text.indexOf(search, startIndex)
-            if (index == -1) break
-            count++
-            startIndex = index + 1
-        }
-        return count
     }
 
     @DeleteMapping("/**")
@@ -901,7 +813,9 @@ data class AiEditDocumentRequest(
 data class AiEditDocumentResponse(
     val path: String,
     val content: String,
-    val previousContent: String
+    val previousContent: String,
+    /** PATCH when the model named the passages to change, REWRITE when it returned the whole file. */
+    val strategy: String
 )
 
 data class CreateDocumentRequest(
@@ -948,16 +862,6 @@ data class PatchDocumentRequest(
     val contentHash: String? = null,
     val autoCommit: Boolean? = false,
     val commitMessage: String? = null
-)
-
-data class PatchOperation(
-    val op: String,
-    val oldText: String? = null,
-    val newText: String? = null,
-    val content: String? = null,
-    val after: String? = null,
-    val before: String? = null,
-    val replaceAll: Boolean? = false
 )
 
 data class UploadedFileDto(
