@@ -44,6 +44,9 @@ class SettingsController(
         request.openaiChatModel?.let {
             settingsService.set(SettingsService.OPENAI_CHAT_MODEL, it)
         }
+        request.openaiEditModel?.let {
+            settingsService.set(SettingsService.OPENAI_EDIT_MODEL, it)
+        }
         request.openaiEmbeddingModel?.let {
             settingsService.set(SettingsService.OPENAI_EMBEDDING_MODEL, it)
         }
@@ -185,6 +188,7 @@ data class UpdateSettingsRequest(
     val gitlabToken: String? = null,
     val openaiApiKey: String? = null,
     val openaiChatModel: String? = null,
+    val openaiEditModel: String? = null,
     val openaiEmbeddingModel: String? = null,
     val mailHost: String? = null,
     val mailPort: Int? = null,

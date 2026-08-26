@@ -18,6 +18,7 @@ class SettingsService(
     @Value("\${gitlab.token}") private val defaultGitlabToken: String,
     @Value("\${openai.api-key}") private val defaultOpenaiApiKey: String,
     @Value("\${openai.chat-model}") private val defaultChatModel: String,
+    @Value("\${openai.edit-model:}") private val defaultEditModel: String,
     @Value("\${openai.embedding-model}") private val defaultEmbeddingModel: String,
     @Value("\${spring.mail.host:}") private val defaultMailHost: String,
     @Value("\${spring.mail.port:25}") private val defaultMailPort: String,
@@ -61,6 +62,7 @@ class SettingsService(
         const val GITLAB_TOKEN = "gitlab.token"
         const val OPENAI_API_KEY = "openai.api-key"
         const val OPENAI_CHAT_MODEL = "openai.chat-model"
+        const val OPENAI_EDIT_MODEL = "openai.edit-model"
         const val OPENAI_EMBEDDING_MODEL = "openai.embedding-model"
         const val MAIL_HOST = "mail.host"
         const val MAIL_PORT = "mail.port"
@@ -113,6 +115,11 @@ class SettingsService(
         return getOrDefault(OPENAI_CHAT_MODEL, defaultChatModel)
     }
 
+    /** Blank means "use the chat model" — see OpenAIProvider.getEditModel(). */
+    fun getEditModel(): String {
+        return getOrDefault(OPENAI_EDIT_MODEL, defaultEditModel)
+    }
+
     fun getEmbeddingModel(): String {
         return getOrDefault(OPENAI_EMBEDDING_MODEL, defaultEmbeddingModel)
     }
@@ -151,6 +158,11 @@ class SettingsService(
             OPENAI_CHAT_MODEL to SettingValue(
                 value = dbSettings[OPENAI_CHAT_MODEL]?.takeIf { it.isNotBlank() } ?: defaultChatModel,
                 source = if (dbSettings[OPENAI_CHAT_MODEL]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            OPENAI_EDIT_MODEL to SettingValue(
+                value = dbSettings[OPENAI_EDIT_MODEL]?.takeIf { it.isNotBlank() } ?: defaultEditModel,
+                source = if (dbSettings[OPENAI_EDIT_MODEL]?.isNotBlank() == true) "database" else "environment",
                 masked = false
             ),
             OPENAI_EMBEDDING_MODEL to SettingValue(

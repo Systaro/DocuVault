@@ -14,6 +14,7 @@ export interface AppSettings {
   'gitlab.token': SettingValue;
   'openai.api-key': SettingValue;
   'openai.chat-model': SettingValue;
+  'openai.edit-model'?: SettingValue;
   'openai.embedding-model': SettingValue;
   'mail.host'?: SettingValue;
   'mail.port'?: SettingValue;
@@ -29,6 +30,7 @@ export interface UpdateSettingsRequest {
   gitlabToken?: string;
   openaiApiKey?: string;
   openaiChatModel?: string;
+  openaiEditModel?: string;
   openaiEmbeddingModel?: string;
   mailHost?: string;
   mailPort?: number;
