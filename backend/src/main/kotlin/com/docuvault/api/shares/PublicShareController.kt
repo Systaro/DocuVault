@@ -9,6 +9,7 @@ import com.docuvault.domain.space.ShareType
 import com.docuvault.domain.space.SharedLink
 import com.docuvault.service.AnnotationService
 import com.docuvault.service.ShareAccessTokenService
+import com.docuvault.service.ShareAssetResolver
 import com.docuvault.service.SharedLinkService
 import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.GitService
@@ -38,7 +39,8 @@ class PublicShareController(
     private val sharedLinkService: SharedLinkService,
     private val gitService: GitService,
     private val shareAccessTokenService: ShareAccessTokenService,
-    private val annotationService: AnnotationService
+    private val annotationService: AnnotationService,
+    private val shareAssetResolver: ShareAssetResolver
 ) {
     @GetMapping("/{token}")
     fun getMetadata(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<SharedFileMetadataDto> {
@@ -192,9 +194,8 @@ class PublicShareController(
         }
 
         if (isHtml) {
-            val baseHref = "/api/shared/${link.token}/files/"
             val html = Files.readString(resolved)
-            val injected = injectBaseTag(html, baseHref)
+            val injected = injectBaseTag(html, assetBaseHref(link.token, link.filePath))
             return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
                 .cacheControl(cachePolicy)
@@ -228,30 +229,34 @@ class PublicShareController(
         }
         val relativePath = URLDecoder.decode(rawPath, StandardCharsets.UTF_8)
 
-        val repoPath = gitService.getRepoPath(link.space.id!!)
-
-        val fileDir = if (link.shareType == ShareType.FOLDER) {
-            val folderRoot = if (link.filePath.isBlank()) repoPath else repoPath.resolve(link.filePath).normalize()
-            folderRoot
-        } else {
-            repoPath.resolve(link.filePath).parent ?: repoPath
-        }
-        val resolved = fileDir.resolve(relativePath).normalize()
+        // Paths here are relative to the space repository, the same convention
+        // the signed-in `/api/spaces/{id}/files/**` endpoint uses. That is what
+        // lets a document reference an asset above its own folder at all — a
+        // path relative to the share would have no way to express it, since the
+        // browser collapses `..` out of the URL before the request is sent.
+        val repoPath = gitService.getRepoPath(link.space.id!!).normalize()
+        val resolved = repoPath.resolve(relativePath).normalize()
 
         // Path traversal protection: must stay within the repo
-        if (!resolved.startsWith(repoPath.normalize())) {
+        if (!resolved.startsWith(repoPath)) {
             return ResponseEntity.badRequest().build()
         }
 
-        // For folder shares, restrict to the shared folder subtree.
-        // For file shares, restrict to the same directory as the shared file —
-        // companion assets (JS, CSS, images) inherit access but parent/sibling dirs don't.
+        // For folder shares, the shared folder subtree is served outright; for
+        // file shares, the shared file's own directory, so its companion assets
+        // (JS, CSS, images) inherit access.
         val allowedRoot = if (link.shareType == ShareType.FOLDER) {
-            if (link.filePath.isNotBlank()) repoPath.resolve(link.filePath).normalize() else repoPath.normalize()
+            if (link.filePath.isNotBlank()) repoPath.resolve(link.filePath).normalize() else repoPath
         } else {
             (repoPath.resolve(link.filePath).parent ?: repoPath).normalize()
         }
-        if (!resolved.startsWith(allowedRoot)) {
+        val sharedFile = if (link.shareType == ShareType.FILE) repoPath.resolve(link.filePath).normalize() else null
+        // Outside that scope, only static assets the shared content actually
+        // references are served — a stylesheet or logo kept in a sibling
+        // `assets/` folder, not everything else in the space.
+        if (!resolved.startsWith(allowedRoot) &&
+            !shareAssetResolver.allowsOutsideAsset(link.token, repoPath, allowedRoot, sharedFile, resolved)
+        ) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -353,12 +358,12 @@ class PublicShareController(
         }
 
         val cleanSubPath = subPath.trimStart('/')
-        val repoPath = gitService.getRepoPath(link.space.id!!)
+        val repoPath = gitService.getRepoPath(link.space.id!!).normalize()
         val folderRoot = if (link.filePath.isBlank()) repoPath else repoPath.resolve(link.filePath).normalize()
         val resolved = folderRoot.resolve(cleanSubPath).normalize()
 
         // Path traversal protection
-        if (!resolved.startsWith(folderRoot) || !resolved.startsWith(repoPath.normalize())) {
+        if (!resolved.startsWith(folderRoot) || !resolved.startsWith(repoPath)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
@@ -367,7 +372,8 @@ class PublicShareController(
         }
 
         val contentType = probeContentType(resolved)
-        val bytes = Files.readAllBytes(resolved)
+        val extension = resolved.fileName.toString().substringAfterLast('.', "").lowercase()
+        val isHtml = contentType.startsWith("text/html") || extension == "html" || extension == "htm"
 
         val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
             CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
@@ -375,6 +381,19 @@ class PublicShareController(
             CacheControl.noCache()
         }
 
+        // Same preview chrome a shared single file gets: without the injected
+        // base the page's relative assets would resolve against this endpoint,
+        // which only reaches inside the shared folder.
+        if (isHtml) {
+            val html = Files.readString(resolved)
+            val injected = injectBaseTag(html, assetBaseHref(link.token, repoPath.relativize(resolved).toString()))
+            return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .cacheControl(cachePolicy)
+                .body(injected.toByteArray(Charsets.UTF_8))
+        }
+
+        val bytes = Files.readAllBytes(resolved)
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(contentType))
             .cacheControl(cachePolicy)
@@ -671,6 +690,10 @@ class PublicShareController(
 
     private fun injectBaseTag(html: String, baseHref: String): String =
         HtmlPreviewInjection.inject(html, baseHref)
+
+    /** Where a shared document's relative references resolve to. */
+    private fun assetBaseHref(token: String, repoRelativePath: String): String =
+        HtmlPreviewInjection.baseHref("/api/shared/$token/files", repoRelativePath)
 
     private fun getContentType(extension: String): String = when (extension.lowercase()) {
         "md" -> "text/markdown"

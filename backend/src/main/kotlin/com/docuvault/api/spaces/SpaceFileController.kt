@@ -105,7 +105,10 @@ class SpaceFileController(
         // For HTML files, inject the annotation bridge script (not when downloading the raw file)
         if (isHtml && !wantsDownload) {
             val html = Files.readString(resolved)
-            val injected = HtmlPreviewInjection.inject(html, "/api/spaces/$spaceId/files/${filePath.substringBeforeLast('/')}/")
+            val injected = HtmlPreviewInjection.inject(
+                html,
+                HtmlPreviewInjection.baseHref("/api/spaces/$spaceId/files", filePath)
+            )
             return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
                 .cacheControl(CacheControl.noCache())

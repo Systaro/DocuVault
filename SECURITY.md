@@ -32,6 +32,14 @@ A few behaviours look like bugs to an automated scanner but are intentional:
   extensions. We rely on the share link's secret token (and optional password)
   as the access control — not on sandboxing the content. If you need an
   untrusted-author model, do not enable public shares.
+- **A share link serves the assets its content references, even from outside
+  the shared folder.** A shared page whose stylesheet, script, logo or font
+  lives in a sibling `assets/` directory would otherwise render unstyled, so
+  `/api/shared/<token>/files/**` follows the references in the shared content
+  (through HTML, CSS and JS) and serves the static assets it finds. Only files
+  the content actually asks for are reachable, and only asset types — a
+  referenced `.html` or `.md` outside the share is still refused, so the token
+  never widens into read access to neighbouring documents or to the space.
 - **The `prep-public` and `main` branches are public; secrets and customer
   data must not be committed.** `.gitignore` excludes `.env*` (except the
   example file) and `*.pem`/`*.key`/etc.; CI does not have access to commit on
