@@ -162,9 +162,25 @@ export class ContextMenuComponent implements OnInit, OnDestroy {
   left = signal(0);
   top = signal(0);
 
+  /**
+   * When this menu appeared, on the same clock as `event.timeStamp`.
+   *
+   * Right-click reaches `contextmenu` from a different event depending on the
+   * platform: after the mouse button is released on macOS and Windows, but
+   * from within the press itself on Linux. On Linux the press that opened the
+   * menu was therefore still travelling through the document when the
+   * dismiss-on-outside-click listener below was attached — so the menu closed
+   * itself in the same gesture that opened it, and right-click looked dead.
+   *
+   * A press that started before the menu existed cannot be a press at the
+   * menu, whichever platform it came from.
+   */
+  private openedAt = 0;
+
   constructor(private elRef: ElementRef<HTMLElement>) {}
 
   ngOnInit(): void {
+    this.openedAt = performance.now();
     document.body.appendChild(this.elRef.nativeElement);
     this.left.set(this.x());
     this.top.set(this.y());
@@ -199,6 +215,12 @@ export class ContextMenuComponent implements OnInit, OnDestroy {
   // right-click menu, and cheaper than a backdrop that would swallow the click.
   @HostListener('document:mousedown', ['$event'])
   onDocumentMouseDown(event: MouseEvent): void {
+    if (event.timeStamp < this.openedAt) return;
+    // A right-click is never a dismissal: it raises `contextmenu`, and whoever
+    // opened this menu answers that by opening one at the new spot. Ignoring
+    // the press here also covers the platforms that raise `contextmenu` from
+    // inside the press rather than after it.
+    if (event.button === 2) return;
     if (this.elRef.nativeElement.contains(event.target as Node)) return;
     this.dismiss.emit();
   }

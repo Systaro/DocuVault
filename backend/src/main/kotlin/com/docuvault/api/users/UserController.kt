@@ -499,6 +499,19 @@ class UserController(
             }
         }
 
+        // Teams are assigned to the placeholder account, exactly as the space
+        // grant above is: by the time the person accepts, the access their teams
+        // carry is already theirs, and the invitee shows up in the team's member
+        // list while the invitation is still pending — which is what the admin
+        // who picked the team was saying should happen.
+        //
+        // Naming no team leaves memberships alone rather than clearing them, so
+        // re-sending an invitation does not quietly drop the teams someone was
+        // already put into.
+        if (request.teamIds.isNotEmpty()) {
+            teamService.setTeamsForUser(placeholderUser.id!!, request.teamIds)
+        }
+
         val invitation = Invitation(
             email = request.email,
             space = space,
@@ -734,7 +747,9 @@ data class InviteUserRequest(
     @field:Email(message = "Invalid email format")
     val email: String,
     val spaceId: UUID? = null,
-    val role: String? = "VIEWER"
+    val role: String? = "VIEWER",
+    /** Teams the person joins right away — see inviteUser for why that works. */
+    val teamIds: List<UUID> = emptyList()
 )
 
 data class AcceptInvitationRequest(

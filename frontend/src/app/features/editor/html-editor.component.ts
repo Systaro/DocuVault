@@ -8,7 +8,13 @@ import { DocumentsService } from '../../core/api/documents.service';
 import { DocumentHistoryService, DocumentVersion } from '../../core/api/document-history.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
-import { buildFrameDocument, spliceBodyHtml } from '../../shared/utils/html-document';
+import {
+  buildFrameDocument,
+  prepareInteractiveRegions,
+  Region,
+  restoreInteractiveRegions,
+  spliceBodyHtml
+} from '../../shared/utils/html-document';
 import { HtmlEditSession } from './html-edit/html-edit-session';
 import { HtmlEditToolbarComponent } from './html-edit/html-edit-toolbar.component';
 
@@ -32,6 +38,13 @@ interface ConfirmState {
  * body), so the file's own CSS decides what the user sees. Scripts are off
  * while editing — a page that rewrites its own DOM would otherwise fight the
  * caret and land its generated markup in the saved file.
+ *
+ * A page can opt out of that per region with `data-dv-interactive`: those
+ * subtrees stay live so a tab row or an accordion still works under the caret,
+ * and they are written back to the file exactly as they came off disk, so
+ * whatever their scripts did on screen is not what gets saved. Scripts run for
+ * the whole frame once any region asks for them — the same terms the preview
+ * already runs an author's page on (see SECURITY.md).
  *
  * Round-tripping markup through `contenteditable` is lossy by nature: the
  * browser reserialises whatever it parsed. That is why nothing is written until
@@ -69,9 +82,15 @@ interface ConfirmState {
         </div>
 
         @if (mode() === 'visual' && !viewingVersion()) {
-          <span class="html-editor-hint" title="The page's own JavaScript is paused while you edit, so it cannot rewrite what you are typing into.">
-            Scripts paused while editing
-          </span>
+          @if (hasInteractive()) {
+            <span class="html-editor-hint" title="This page marks parts of itself as interactive with data-dv-interactive, so its scripts run while you edit. Those parts are saved exactly as they are in the file, whatever their scripts do on screen.">
+              Interactive parts stay live
+            </span>
+          } @else {
+            <span class="html-editor-hint" title="The page's own JavaScript is paused while you edit, so it cannot rewrite what you are typing into.">
+              Scripts paused while editing
+            </span>
+          }
         }
 
         <span class="html-editor-status">
@@ -171,7 +190,9 @@ interface ConfirmState {
         } @else if (mode() === 'visual') {
           <!-- allow-same-origin (and nothing else) on purpose: the parent needs
                contentDocument to make the body editable, while the page's own
-               scripts stay off for the duration of the edit. -->
+               scripts stay off for the duration of the edit. renderFrame() adds
+               allow-scripts for a page with interactive regions, before it hands
+               over the document the setting applies to. -->
           <iframe
             #frame
             class="html-edit-frame"
@@ -499,6 +520,10 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
   session = signal<HtmlEditSession | null>(null);
 
   private frameEl: HTMLIFrameElement | null = null;
+  /** The frame's interactive regions as they stand on disk, by region id. */
+  private interactiveRegions = new Map<string, Region>();
+  /** Whether the document being edited runs any of itself while under the caret. */
+  hasInteractive = signal(false);
   private codeEl: HTMLTextAreaElement | null = null;
   /** A route guard waiting for the user to answer the leave dialog. */
   private leaveAnswer: Subject<boolean> | null = null;
@@ -595,7 +620,16 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
   private renderFrame(): void {
     if (!this.frameEl) return;
     this.detachFrame();
-    this.frameEl.srcdoc = buildFrameDocument(this.displaySource(), this.baseHref());
+    const prepared = prepareInteractiveRegions(this.displaySource());
+    this.interactiveRegions = prepared.regions;
+    this.hasInteractive.set(prepared.regions.size > 0);
+    // Set before the document it governs: a sandbox change does not reach a
+    // document that is already loaded.
+    this.frameEl.setAttribute(
+      'sandbox',
+      prepared.regions.size > 0 ? 'allow-same-origin allow-scripts' : 'allow-same-origin'
+    );
+    this.frameEl.srcdoc = buildFrameDocument(prepared.source, this.baseHref());
   }
 
   /** Directory the file sits in, as the API serves it — the iframe's `<base>`. */
@@ -662,7 +696,11 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
     if (this.viewingVersion()) return this.versionSource();
     if (this.mode() === 'code') return this.codeEl?.value ?? this.working();
     const body = this.frameEl?.contentDocument?.body;
-    return body ? spliceBodyHtml(this.working(), body.innerHTML) : this.working();
+    if (!body) return this.working();
+    return spliceBodyHtml(
+      this.working(),
+      restoreInteractiveRegions(body.innerHTML, this.interactiveRegions)
+    );
   }
 
   setMode(mode: EditorMode): void {

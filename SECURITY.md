@@ -31,7 +31,10 @@ A few behaviours look like bugs to an automated scanner but are intentional:
   that authors can embed interactive snippets, diagrams, and rich markdown
   extensions. We rely on the share link's secret token (and optional password)
   as the access control — not on sandboxing the content. If you need an
-  untrusted-author model, do not enable public shares.
+  untrusted-author model, do not enable public shares. The visual HTML editor
+  keeps scripts off while editing, and runs them only for a document that asks
+  for it with `data-dv-interactive` (see `docs/interactive-html-regions.md`) —
+  on the same terms the preview already runs that document on.
 - **A share link serves the assets its content references, even from outside
   the shared folder.** A shared page whose stylesheet, script, logo or font
   lives in a sibling `assets/` directory would otherwise render unstyled, so
