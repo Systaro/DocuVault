@@ -951,7 +951,9 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
         label: 'Comment on selection',
         icon: 'add_comment',
         disabled: !this.canComment(),
-        disabledReason: 'You need comment access on this space'
+        disabledReason: this.shareToken()
+          ? 'This share link is view-only'
+          : 'You need comment access on this space'
       });
       items.push({ id: 'copy', label: 'Copy', icon: 'content_copy' });
     } else if (this.canComment()) {
