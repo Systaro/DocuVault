@@ -95,11 +95,16 @@ export class UsersService {
     return this.http.post<User>(`/api/users/${id}/impersonate`, {});
   }
 
-  inviteUser(email: string, spaceId?: string, role?: string): Observable<Invitation> {
+  /**
+   * [teamIds] take effect immediately: the invite creates a disabled placeholder
+   * account, so the person's team grants are already in place when they sign up.
+   */
+  inviteUser(email: string, spaceId?: string, role?: string, teamIds: string[] = []): Observable<Invitation> {
     return this.http.post<Invitation>('/api/users/invite', {
       email,
       spaceId,
-      role
+      role,
+      teamIds
     });
   }
 

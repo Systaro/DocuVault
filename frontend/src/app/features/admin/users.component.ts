@@ -8,6 +8,8 @@ import { TeamsService, Team, TeamBadge, UserTeam } from '../../core/api/teams.se
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { AuthService, User } from '../../core/auth/auth.service';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
+import { TeamPickerComponent, teamTint } from '../../shared/components/team-picker.component';
+import { ToastService } from '../../shared/services/toast.service';
 import {
   SpacePermissionPickerComponent,
   InheritedGrant
@@ -16,7 +18,7 @@ import {
 @Component({
   selector: 'app-users',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent, SpacePermissionPickerComponent],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent, SpacePermissionPickerComponent, TeamPickerComponent],
   template: `
     <div class="users-management">
       <div class="management-header">
@@ -290,6 +292,18 @@ import {
                   />
                 </div>
 
+                <div class="form-group">
+                  <label class="form-label">Teams</label>
+                  <p class="section-hint">
+                    Applied straight away, so the team's space access is waiting when they sign up.
+                  </p>
+                  <app-team-picker
+                    [teams]="teams()"
+                    [(selected)]="inviteTeamIds"
+                    emptyHint="No team — you can add one later."
+                  />
+                </div>
+
                 <div class="modal-footer">
                   <button type="button" (click)="closeInviteModal()" class="btn btn-secondary">
                     Cancel
@@ -364,29 +378,11 @@ import {
                   Membership grants every space the team has access to, on top of the permissions below.
                 </p>
 
-                <app-searchable-select
-                  [options]="availableTeamOptions()"
-                  [ngModel]="''"
-                  (ngModelChange)="addTeam($event)"
-                  placeholder="Add to a team..."
-                  searchPlaceholder="Search teams..."
+                <app-team-picker
+                  [teams]="teams()"
+                  [(selected)]="editTeamIds"
+                  (added)="loadTeamGrants($event)"
                 />
-
-                @if (editTeamIds().length > 0) {
-                  <div class="team-chips">
-                    @for (team of selectedTeams(); track team.id) {
-                      <span class="team-chip" [style.background]="teamTint(team.color)">
-                        <span class="chip-dot" [style.background]="team.color || 'var(--primary)'"></span>
-                        <span class="chip-name">{{ team.name }}</span>
-                        <button type="button" class="chip-remove" (click)="removeTeam(team.id)" [attr.aria-label]="'Remove from ' + team.name">
-                          <span translate="no" class="material-icons">close</span>
-                        </button>
-                      </span>
-                    }
-                  </div>
-                } @else {
-                  <p class="empty-hint">Not a member of any team.</p>
-                }
               </div>
 
               <!-- Permissions section -->
@@ -1025,6 +1021,8 @@ export class UsersComponent implements OnInit {
 
   /** Teams the edited user belongs to, live while the modal is open. */
   editTeamIds = signal<string[]>([]);
+  /** Teams the invited person joins the moment the invitation goes out. */
+  inviteTeamIds = signal<string[]>([]);
   /** teamId -> the spaces that team grants, cached as teams get selected. */
   private teamGrants: Record<string, Record<string, string>> = {};
 
@@ -1057,6 +1055,7 @@ export class UsersComponent implements OnInit {
     private teamsService: TeamsService,
     private spacesService: SpacesService,
     public authService: AuthService,
+    private toastService: ToastService,
     private router: Router
   ) {}
 
@@ -1105,44 +1104,21 @@ export class UsersComponent implements OnInit {
   }
 
   /** Soft tint of the team color for badge backgrounds. */
-  teamTint(color?: string): string {
-    if (!color) return 'rgba(111, 179, 184, 0.12)';
-    return `color-mix(in srgb, ${color} 14%, transparent)`;
-  }
+  readonly teamTint = teamTint;
 
-  availableTeamOptions(): SelectOption[] {
-    const taken = new Set(this.editTeamIds());
-    return this.teams()
-      .filter(t => !taken.has(t.id))
-      .map(t => ({ value: t.id, label: t.name, sublabel: `${t.spaceCount} space grant(s)` }));
-  }
-
-  selectedTeams(): TeamBadge[] {
-    const byId = new Map(this.teams().map(t => [t.id, t]));
-    return this.editTeamIds()
-      .map(id => byId.get(id))
-      .filter((t): t is Team => !!t)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  addTeam(teamId: string): void {
-    if (!teamId || this.editTeamIds().includes(teamId)) return;
-    this.editTeamIds.update(ids => [...ids, teamId]);
-
-    // Grants of a freshly picked team aren't known yet — fetch once, then cache.
-    if (!this.teamGrants[teamId]) {
-      this.teamsService.getTeam(teamId).subscribe({
-        next: (detail) => {
-          const grants: Record<string, string> = {};
-          detail.permissions.forEach(p => { grants[p.spaceId] = p.permissionLevel; });
-          this.teamGrants = { ...this.teamGrants, [teamId]: grants };
-        }
-      });
-    }
-  }
-
-  removeTeam(teamId: string): void {
-    this.editTeamIds.update(ids => ids.filter(id => id !== teamId));
+  /**
+   * Grants of a freshly picked team aren't known yet — fetch once, then cache,
+   * so the permission rows below can mark what the team already covers.
+   */
+  loadTeamGrants(teamId: string): void {
+    if (this.teamGrants[teamId]) return;
+    this.teamsService.getTeam(teamId).subscribe({
+      next: (detail) => {
+        const grants: Record<string, string> = {};
+        detail.permissions.forEach(p => { grants[p.spaceId] = p.permissionLevel; });
+        this.teamGrants = { ...this.teamGrants, [teamId]: grants };
+      }
+    });
   }
 
   /** spaceId -> the grants the selected teams already provide. */
@@ -1179,27 +1155,33 @@ export class UsersComponent implements OnInit {
     if (!this.inviteEmail) return;
 
     this.sending.set(true);
-    this.usersService.inviteUser(this.inviteEmail, undefined, this.inviteRole).subscribe({
-      next: (invitation) => {
-        this.sending.set(false);
-        this.createdInvitation.set(invitation);
-        this.inviteEmail = '';
-        this.inviteRole = 'VIEWER';
-        this.loadInvitations();
-        this.loadUsers();
-      },
-      error: (err) => {
-        this.sending.set(false);
-        if (err.status === 409) {
-          alert('A user or pending invitation with this email already exists.');
+    this.usersService.inviteUser(this.inviteEmail, undefined, this.inviteRole, this.inviteTeamIds())
+      .subscribe({
+        next: (invitation) => {
+          this.sending.set(false);
+          this.createdInvitation.set(invitation);
+          this.inviteEmail = '';
+          this.inviteRole = 'VIEWER';
+          this.inviteTeamIds.set([]);
+          this.loadInvitations();
+          this.loadUsers();
+        },
+        error: (err) => {
+          this.sending.set(false);
+          this.toastService.error(
+            'Invitation not sent',
+            err.status === 409
+              ? 'A user or pending invitation with this email already exists.'
+              : 'Could not send the invitation. Please try again.'
+          );
         }
-      }
-    });
+      });
   }
 
   closeInviteModal(): void {
     this.showInviteModal.set(false);
     this.createdInvitation.set(null);
+    this.inviteTeamIds.set([]);
   }
 
   getInviteUrl(token: string): string {
