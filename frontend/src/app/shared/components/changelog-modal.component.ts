@@ -3,10 +3,26 @@ import { CommonModule } from '@angular/common';
 import { SafeHtml } from '@angular/platform-browser';
 import { ChangelogRelease } from '../../core/api/changelog.service';
 import { MarkdownRenderService } from '../services/markdown-render.service';
+import { ChangelogDemoComponent } from './changelog-demo.component';
+
+/**
+ * A release note is prose with pictures in it, and a picture is either a still
+ * (plain markdown, `![alt](assets/…png)`) or an animated demo the app draws
+ * itself (`![alt](demo:name)`). The demo is a component rather than markup in
+ * the note, so its CSS is scoped and its animation can answer to the reader's
+ * motion settings — which is why a note is rendered as a list of parts instead
+ * of one block of HTML.
+ */
+type ReleasePart =
+  | { kind: 'markdown'; html: SafeHtml }
+  | { kind: 'demo'; name: string; label: string };
 
 interface RenderedRelease extends ChangelogRelease {
-  html: SafeHtml;
+  parts: ReleasePart[];
 }
+
+/** `![alt](demo:name)` on a line of its own. */
+const DEMO_MARKER = /^[ \t]*!\[([^\]]*)\]\(demo:([a-z0-9-]+)\)[ \t]*$/gim;
 
 /**
  * What's-new dialog. Purely presentational — the caller decides which releases
@@ -15,7 +31,7 @@ interface RenderedRelease extends ChangelogRelease {
 @Component({
   selector: 'app-changelog-modal',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ChangelogDemoComponent],
   template: `
     <div class="cl-overlay" (click)="closeIfOutside($event)">
       <div class="cl-modal" #modal>
@@ -40,7 +56,13 @@ interface RenderedRelease extends ChangelogRelease {
                 <span class="cl-date">{{ release.date }}</span>
               </div>
               <h3 class="cl-title">{{ release.title }}</h3>
-              <div class="markdown-readonly cl-notes" [innerHTML]="release.html"></div>
+              @for (part of release.parts; track $index) {
+                @if (part.kind === 'demo') {
+                  <app-changelog-demo [name]="part.name" [label]="part.label" />
+                } @else {
+                  <div class="markdown-readonly cl-notes" [innerHTML]="part.html"></div>
+                }
+              }
             </section>
           }
         </div>
@@ -177,8 +199,33 @@ export class ChangelogModalComponent {
   @Input() set releases(value: ChangelogRelease[]) {
     this.renderedReleases = (value ?? []).map(release => ({
       ...release,
-      html: this.markdown.renderInline(release.body)
+      parts: this.toParts(release.body)
     }));
+  }
+
+  /**
+   * Splits a note into prose and demos. The marker only counts on a line of its
+   * own — the same place a still picture sits — so a split can never land inside
+   * a list or a paragraph and leave half-parsed markdown behind.
+   */
+  private toParts(body: string): ReleasePart[] {
+    const parts: ReleasePart[] = [];
+    let cursor = 0;
+
+    for (const match of body.matchAll(DEMO_MARKER)) {
+      const at = match.index ?? 0;
+      this.pushMarkdown(parts, body.slice(cursor, at));
+      parts.push({ kind: 'demo', label: match[1], name: match[2] });
+      cursor = at + match[0].length;
+    }
+    this.pushMarkdown(parts, body.slice(cursor));
+
+    return parts;
+  }
+
+  private pushMarkdown(parts: ReleasePart[], markdown: string): void {
+    if (!markdown.trim()) return;
+    parts.push({ kind: 'markdown', html: this.markdown.renderInline(markdown) });
   }
 
   @Output() dismiss = new EventEmitter<void>();
