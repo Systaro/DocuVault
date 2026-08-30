@@ -76,24 +76,45 @@ object HtmlPreviewInjection {
   var style=document.createElement('style');
   style.textContent='.dv-mark{position:absolute;border-radius:2px;background:rgba(245,158,11,.26);box-shadow:inset 0 -1px 0 rgba(245,158,11,.55);pointer-events:auto;cursor:pointer;z-index:9997}.dv-mark.resolved{background:rgba(16,185,129,.20);box-shadow:inset 0 -1px 0 rgba(16,185,129,.5)}.dv-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;transform:translate(-50%,-100%) rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}.dv-pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15)}.dv-pin.resolved{background:#10b981}.dv-pin.shifted{box-shadow:0 2px 8px rgba(0,0,0,.2),0 0 0 3px rgba(180,125,42,.55)}.dv-pin-num{transform:rotate(45deg);font-size:12px;font-weight:600;color:#fff;user-select:none;font-family:system-ui}.dv-placement-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);transform:translate(-50%,-50%);z-index:9998;pointer-events:none;animation:dvpulse 1.5s ease-in-out infinite}@keyframes dvpulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 6px rgba(245,158,11,0)}}';
   document.head.appendChild(style);
-  // Text of the whole document, whitespace-collapsed — the same normalisation
-  // the parent's anchoring uses, so a quote recorded there is findable here.
-  function docText(){return (document.body?document.body.innerText:'').replace(/\s+/g,' ').trim()}
-  function findQuote(quote){
-    if(!quote)return null;
-    var text=docText();var at=text.indexOf(quote);
-    if(at<0)return null;
-    var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
-    var seen=0,node;
+  // The document's readable text with a map back to (node, offset) for every
+  // character, so a quote found in it becomes a Range over exactly those
+  // characters. Built from the text nodes themselves rather than innerText:
+  // the two collapse whitespace differently, and a few characters of drift
+  // put the mark on the wrong words.
+  var WS=/\s/,SKIP=/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)${'$'}/;
+  function textIndex(){
+    var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+      var p=n.parentElement;
+      if(!p||SKIP.test(p.tagName))return NodeFilter.FILTER_REJECT;
+      // Our own pins and marks are not part of the document's text.
+      if(p.closest('.dv-pin,.dv-mark'))return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+    var text='',nodes=[],offsets=[],node,lastSpace=true;
     while(node=walker.nextNode()){
-      var chunk=node.data.replace(/\s+/g,' ');
-      if(seen+chunk.length>=at){
-        var r=document.createRange();
-        try{r.setStart(node,Math.max(0,Math.min(at-seen,node.data.length)));r.setEnd(node,node.data.length);return r}catch(e){return null}
+      var data=node.data;
+      for(var i=0;i<data.length;i++){
+        var ch=data.charAt(i),space=WS.test(ch);
+        if(space){if(lastSpace)continue;ch=' '}
+        lastSpace=space;
+        text+=ch;nodes.push(node);offsets.push(i);
       }
-      seen+=chunk.length;
     }
-    return null;
+    return {text:text,nodes:nodes,offsets:offsets};
+  }
+  function findQuote(quote,index){
+    var needle=(quote||'').replace(/\s+/g,' ').trim();
+    if(!needle||!index)return null;
+    var at=index.text.indexOf(needle);
+    if(at<0)return null;
+    var end=at+needle.length-1;
+    if(end>=index.nodes.length)return null;
+    try{
+      var r=document.createRange();
+      r.setStart(index.nodes[at],index.offsets[at]);
+      r.setEnd(index.nodes[end],index.offsets[end]+1);
+      return r;
+    }catch(e){return null}
   }
   // The parent cannot see into this document, so the selection is reported to
   // it: that is what lets the comment button follow a selection here the same
@@ -133,6 +154,7 @@ object HtmlPreviewInjection {
       Object.values(markers).forEach(function(m){m.remove()});markers={};
       Array.prototype.slice.call(document.querySelectorAll('.dv-mark')).forEach(function(m){m.remove()});
       var d=document.getElementById('__dv_placement');if(d)d.remove();
+      var index=textIndex();
       (e.data.annotations||[]).forEach(function(a){
         var el=null,rect=null;
         if(a.elementId){el=document.getElementById(a.elementId)}
@@ -140,13 +162,18 @@ object HtmlPreviewInjection {
         // Quote before selector path: a nth-of-type path matches whatever now
         // occupies that slot, which is how comments end up on the wrong text.
         var quoteRange=null;
-        if(!el&&a.quote){quoteRange=findQuote(a.quote);if(quoteRange){var qb=quoteRange.getBoundingClientRect();if(qb.width||qb.height)rect=qb}}
+        if(!el&&a.quote){quoteRange=findQuote(a.quote,index);if(quoteRange){var qb=quoteRange.getBoundingClientRect();if(qb.width||qb.height)rect=qb}}
         // A pin says "there is a comment near here"; marking the words says
         // which words, which is the whole point of anchoring to a quote.
         // Clicking a mark opens its thread, exactly as clicking the pin does.
         if(quoteRange){
+          var seenRects={};
           Array.prototype.slice.call(quoteRange.getClientRects()).forEach(function(r){
             if(!r.width&&!r.height)return;
+            // A quote crossing an inline element yields that box twice; two
+            // translucent marks stacked read as a darker blotch.
+            var key=Math.round(r.left)+':'+Math.round(r.top)+':'+Math.round(r.width);
+            if(seenRects[key])return;seenRects[key]=1;
             var mark=document.createElement('div');
             mark.className='dv-mark'+(a.resolved?' resolved':'');
             mark.style.left=(r.left+window.scrollX)+'px';
