@@ -1244,9 +1244,15 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
   };
 
   private onSelectionChanged = (): void => {
+    // A selection inside the preview frame is reported by the frame itself;
+    // the parent's own selection is empty then and must not clear the offer.
+    if (this.framedSelection) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) this.clearSelectionOffer();
   };
+
+  /** Quote reported by the preview frame, for a selection made inside it. */
+  private framedSelection: { quote: string; xPercent: number; yPercent: number } | null = null;
 
   private refreshSelectionOffer(): void {
     const host = this.host;
@@ -1274,15 +1280,55 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
 
   private clearSelectionOffer(): void {
     this.offeredRange = null;
+    this.framedSelection = null;
     if (this.selectionOffer()) this.selectionOffer.set(null);
   }
 
   /** Opens the composer on the selection the button belongs to. */
   commentOnOfferedSelection(): void {
     const range = this.offeredRange;
+    const framed = this.framedSelection;
     const at = this.selectionOffer();
     this.clearSelectionOffer();
-    if (range && at) this.startCommentOnRange(range, at.x, at.y);
+    if (!at) return;
+
+    if (framed) {
+      this.startCommentOnFramedSelection(framed, at.x, at.y);
+      return;
+    }
+    if (range) this.startCommentOnRange(range, at.x, at.y);
+  }
+
+  /**
+   * A selection made inside the preview frame. The frame reported the words and
+   * where they sit; the comment is anchored to the quote, so it survives the
+   * page being re-rendered around it exactly as a markdown one does.
+   */
+  private startCommentOnFramedSelection(
+    framed: { quote: string; xPercent: number; yPercent: number },
+    screenX: number,
+    screenY: number
+  ): void {
+    this.closeThread();
+    this.newAnnotation.set({
+      anchor: {
+        type: 'html',
+        v: ANCHOR_VERSION,
+        xPercent: framed.xPercent,
+        yPercent: framed.yPercent,
+        snippet: framed.quote,
+        selectors: [{ type: 'TextQuote', exact: framed.quote }]
+      },
+      screenX,
+      screenY,
+      dotX: framed.xPercent,
+      dotY: framed.yPercent,
+      dotUnit: '%',
+      // The passage lives in the frame, so the frame lights it — nothing to
+      // paint out here.
+      rects: []
+    });
+    this.newAnnotationText = '';
   }
 
   /** Open the comment composer against an explicit selection. */
@@ -1751,6 +1797,31 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
           this.threadPosY.set(Math.max(20, window.innerHeight * 0.3));
         }
       }
+    }
+
+    // A selection inside the preview frame: the same offer as in a markdown
+    // document, positioned over the frame at the coordinates it reported.
+    if (data.type === 'selection' && this.canComment() && !this.newAnnotation() && !this.activeAnnotationId()) {
+      const iframe = this.getIframeElement();
+      const frame = iframe?.getBoundingClientRect();
+      if (frame && data.rect) {
+        this.framedSelection = {
+          quote: data.quote,
+          xPercent: data.xPercent,
+          yPercent: data.yPercent
+        };
+        this.selectionOffer.set({
+          x: Math.min(frame.left + data.rect.right + 8, window.innerWidth - 38),
+          y: Math.min(
+            Math.max(6, frame.top + data.rect.top + (data.rect.height - 30) / 2),
+            window.innerHeight - 38
+          )
+        });
+      }
+    }
+
+    if (data.type === 'selection-cleared') {
+      this.clearSelectionOffer();
     }
 
     if (data.type === 'click-position' && this.annotationMode() && this.canComment()) {

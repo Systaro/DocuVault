@@ -74,7 +74,7 @@ object HtmlPreviewInjection {
   var PARENT_ORIGIN=window.location.origin;
   function post(message){try{window.parent.postMessage(message,PARENT_ORIGIN)}catch(e){}}
   var style=document.createElement('style');
-  style.textContent='.dv-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;transform:translate(-50%,-100%) rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}.dv-pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15)}.dv-pin.resolved{background:#10b981}.dv-pin.shifted{box-shadow:0 2px 8px rgba(0,0,0,.2),0 0 0 3px rgba(180,125,42,.55)}.dv-pin-num{transform:rotate(45deg);font-size:12px;font-weight:600;color:#fff;user-select:none;font-family:system-ui}.dv-placement-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);transform:translate(-50%,-50%);z-index:9998;pointer-events:none;animation:dvpulse 1.5s ease-in-out infinite}@keyframes dvpulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 6px rgba(245,158,11,0)}}';
+  style.textContent='.dv-mark{position:absolute;border-radius:2px;background:rgba(245,158,11,.26);box-shadow:inset 0 -1px 0 rgba(245,158,11,.55);pointer-events:auto;cursor:pointer;z-index:9997}.dv-mark.resolved{background:rgba(16,185,129,.20);box-shadow:inset 0 -1px 0 rgba(16,185,129,.5)}.dv-pin{position:absolute;width:28px;height:28px;border-radius:50% 50% 50% 0;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:9999;transform:translate(-50%,-100%) rotate(-45deg);transition:transform .15s,background .15s;pointer-events:auto}.dv-pin:hover{transform:translate(-50%,-100%) rotate(-45deg) scale(1.15)}.dv-pin.resolved{background:#10b981}.dv-pin.shifted{box-shadow:0 2px 8px rgba(0,0,0,.2),0 0 0 3px rgba(180,125,42,.55)}.dv-pin-num{transform:rotate(45deg);font-size:12px;font-weight:600;color:#fff;user-select:none;font-family:system-ui}.dv-placement-dot{position:absolute;width:14px;height:14px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);transform:translate(-50%,-50%);z-index:9998;pointer-events:none;animation:dvpulse 1.5s ease-in-out infinite}@keyframes dvpulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 2px 8px rgba(0,0,0,.25),0 0 0 6px rgba(245,158,11,0)}}';
   document.head.appendChild(style);
   // Text of the whole document, whitespace-collapsed — the same normalisation
   // the parent's anchoring uses, so a quote recorded there is findable here.
@@ -95,11 +95,43 @@ object HtmlPreviewInjection {
     }
     return null;
   }
+  // The parent cannot see into this document, so the selection is reported to
+  // it: that is what lets the comment button follow a selection here the same
+  // way it does in a markdown document.
+  function selectionReport(){
+    var sel=document.getSelection();
+    if(!sel||sel.isCollapsed||!sel.rangeCount)return null;
+    var range=sel.getRangeAt(0);
+    var quote=(range.toString()||'').replace(/\s+/g,' ').trim();
+    if(!quote)return null;
+    var rects=range.getClientRects();var last=rects[rects.length-1];
+    if(!last)return null;
+    var sw=document.documentElement.scrollWidth,sh=document.documentElement.scrollHeight;
+    return {source:'docuvault-annotations',type:'selection',quote:quote.slice(0,300),
+      rect:{left:last.left,top:last.top,right:last.right,bottom:last.bottom,height:last.height},
+      xPercent:((last.right+window.scrollX)/sw)*100,
+      yPercent:((last.top+window.scrollY)/sh)*100};
+  }
+  function reportSelection(){
+    // After the event, not during it: the selection is not final until then.
+    setTimeout(function(){
+      var report=selectionReport();
+      post(report||{source:'docuvault-annotations',type:'selection-cleared'});
+    },0);
+  }
+  document.addEventListener('mouseup',reportSelection);
+  document.addEventListener('keyup',reportSelection);
+  document.addEventListener('selectionchange',function(){
+    var sel=document.getSelection();
+    if(!sel||sel.isCollapsed)post({source:'docuvault-annotations',type:'selection-cleared'});
+  });
+
   window.addEventListener('message',function(e){
     if(e.origin!==PARENT_ORIGIN)return;
     if(!e.data||e.data.source!=='docuvault-annotations')return;
     if(e.data.type==='render-markers'){
       Object.values(markers).forEach(function(m){m.remove()});markers={};
+      Array.prototype.slice.call(document.querySelectorAll('.dv-mark')).forEach(function(m){m.remove()});
       var d=document.getElementById('__dv_placement');if(d)d.remove();
       (e.data.annotations||[]).forEach(function(a){
         var el=null,rect=null;
@@ -107,7 +139,25 @@ object HtmlPreviewInjection {
         if(!el&&a.selector){try{el=document.querySelector(a.selector)}catch(ex){}}
         // Quote before selector path: a nth-of-type path matches whatever now
         // occupies that slot, which is how comments end up on the wrong text.
-        if(!el&&a.quote){var qr=findQuote(a.quote);if(qr){var qb=qr.getBoundingClientRect();if(qb.width||qb.height)rect=qb}}
+        var quoteRange=null;
+        if(!el&&a.quote){quoteRange=findQuote(a.quote);if(quoteRange){var qb=quoteRange.getBoundingClientRect();if(qb.width||qb.height)rect=qb}}
+        // A pin says "there is a comment near here"; marking the words says
+        // which words, which is the whole point of anchoring to a quote.
+        // Clicking a mark opens its thread, exactly as clicking the pin does.
+        if(quoteRange){
+          Array.prototype.slice.call(quoteRange.getClientRects()).forEach(function(r){
+            if(!r.width&&!r.height)return;
+            var mark=document.createElement('div');
+            mark.className='dv-mark'+(a.resolved?' resolved':'');
+            mark.style.left=(r.left+window.scrollX)+'px';
+            mark.style.top=(r.top+window.scrollY)+'px';
+            mark.style.width=r.width+'px';
+            mark.style.height=r.height+'px';
+            mark.addEventListener('click',function(ev){ev.stopPropagation();
+              post({source:'docuvault-annotations',type:'marker-click',id:a.id})});
+            document.body.appendChild(mark);
+          });
+        }
         var pin=document.createElement('div');pin.className='dv-pin'+(a.resolved?' resolved':'')+(a.shifted?' shifted':'');
         if(!rect&&el)rect=el.getBoundingClientRect();
         if(rect){
