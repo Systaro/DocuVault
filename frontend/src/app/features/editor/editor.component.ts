@@ -513,7 +513,7 @@ interface OutlineItem {
           />
         } @else {
         <!-- Scrollable preview content -->
-        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()" [class.pane-fill]="showsSheetPane()">
           <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
           <ng-container *ngTemplateOutlet="timeCapsuleBanner"></ng-container>
           @if (viewingVersion() && historyViewMode() === 'diff') {
@@ -560,7 +560,25 @@ interface OutlineItem {
               } @else if (spreadsheetError()) {
                 <p class="spreadsheet-error">{{ spreadsheetError() }}</p>
               } @else {
-                <div class="markdown-readonly" [innerHTML]="spreadsheetHtml()"></div>
+                <!-- One tab per sheet, like the workbook's own tab strip. Stacking
+                     the sheets instead hid every sheet but the first behind a
+                     few thousand rows of the one above it. -->
+                @if (sheets().length > 1) {
+                  <div class="sheet-tabs" role="tablist">
+                    @for (sheet of sheets(); track $index; let i = $index) {
+                      <button
+                        type="button"
+                        role="tab"
+                        class="sheet-tab"
+                        [class.active]="i === activeSheetIndex()"
+                        [attr.aria-selected]="i === activeSheetIndex()"
+                        [title]="sheet.name"
+                        (click)="activeSheetIndex.set(i)"
+                      >{{ sheet.name }}</button>
+                    }
+                  </div>
+                }
+                <div class="sheet-scroll" [innerHTML]="activeSheetHtml()"></div>
               }
             </div>
           } @else {
@@ -1265,13 +1283,79 @@ interface OutlineItem {
       min-height: 100%;
     }
 
+    // A spreadsheet does its own scrolling: the pane fills the viewport and the
+    // sheet scrolls inside it, so the tab strip and the header row stay put and
+    // the pane's background follows a sideways scroll. Letting the page scroll
+    // instead left the background (and every fixed chrome element) behind at the
+    // viewport edge.
+    .editor-bg.pane-fill {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+
+      // Only the sheet pane takes the leftover height; a time-capsule or AI-undo
+      // banner above it keeps its own.
+      > *:not(.spreadsheet-preview-container) {
+        flex: none;
+      }
+    }
+
     // Spreadsheet (xlsx/xls) preview: full-width, no paper column, so wide
-    // sheets use the available space instead of being squeezed + side-scrolled.
+    // sheets use the available space instead of being squeezed.
     .spreadsheet-preview-container {
       flex: 1;
-      min-height: 100%;
-      padding: 24px 32px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
       background: var(--surface);
+    }
+
+    .sheet-tabs {
+      flex: none;
+      display: flex;
+      gap: 2px;
+      padding: 8px 16px 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      overflow-x: auto;
+    }
+
+    .sheet-tab {
+      flex: none;
+      padding: 6px 14px;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      background: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--background-darker);
+        color: var(--text-primary);
+      }
+
+      &.active {
+        background: var(--background-darker);
+        border-color: var(--border);
+        color: var(--primary-dark);
+        font-weight: 600;
+      }
+    }
+
+    // No padding at the top: the sticky header row sticks to the scrollport
+    // edge, and rows would otherwise show through the gap above it.
+    .sheet-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 24px 24px;
     }
 
     .spreadsheet-error {
@@ -1980,9 +2064,20 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
   previewUrl = signal('');
-  // Parsed-and-rendered HTML for a spreadsheet (xlsx/xls) preview.
-  spreadsheetHtml = signal<SafeHtml>('');
+  // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order,
+  // each holding the rendered table for that sheet.
+  sheets = signal<{ name: string; html: string }[]>([]);
+  activeSheetIndex = signal(0);
+  activeSheetHtml = computed<SafeHtml>(() => {
+    const sheet = this.sheets()[this.activeSheetIndex()];
+    return sheet ? this.sanitizer.bypassSecurityTrustHtml(sheet.html) : '';
+  });
   spreadsheetError = signal<string | null>(null);
+  /** The sheet pane is on screen — a diff of an old version takes precedence. */
+  showsSheetPane = computed(() =>
+    this.previewType() === 'spreadsheet' &&
+    !(this.viewingVersion() && this.historyViewMode() === 'diff')
+  );
   safePreviewUrl = signal<SafeResourceUrl>('');
   imageZoom = signal(1);
   isDraggingImage = signal(false);
@@ -2787,7 +2882,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         } else if (EditorComponent.SPREADSHEET_EXTENSIONS.has(ext)) {
           this.isPreviewFile.set(true);
           this.previewType.set('spreadsheet');
-          this.spreadsheetHtml.set('');
+          this.sheets.set([]);
+          this.activeSheetIndex.set(0);
           this.spreadsheetError.set(null);
           if (this.space()) {
             this.loadSpreadsheet();
@@ -3071,22 +3167,19 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     ])
       .then(([buffer, XLSX]) => {
         const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
-        const showSheetNames = wb.SheetNames.length > 1;
-        const html = wb.SheetNames.map((name: string) => {
+        const sheets = wb.SheetNames.map((name: string) => {
           const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], {
             header: 1, blankrows: false, defval: '', raw: false
           });
           const stringRows = rows.map(r =>
             (r ?? []).map((c: any) => (c === null || c === undefined) ? '' : String(c))
           );
-          const table = this.dataFileService.renderTable(stringRows);
-          return showSheetNames
-            ? `<h2 class="data-sheet-title">${this.escapeHtml(name)}</h2>${table}`
-            : table;
-        }).join('\n');
+          return { name, html: this.dataFileService.renderTable(stringRows) };
+        });
         // Guard against a race where the user navigated to another file mid-fetch.
         if (this.documentPath !== path) return;
-        this.spreadsheetHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+        this.sheets.set(sheets);
+        this.activeSheetIndex.set(0);
         this.loading.set(false);
       })
       .catch(() => {
