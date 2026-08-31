@@ -1185,7 +1185,6 @@ body {
     z-index: 1;
     background: var(--background);
     font-weight: 600;
-    white-space: nowrap;
   }
 
   tbody tr:nth-child(even) td {
@@ -1193,20 +1192,38 @@ body {
   }
 }
 
-.data-sheet-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 24px 0 8px;
-
-  &:first-child {
-    margin-top: 0;
-  }
-}
-
 .data-empty {
   color: var(--text-muted);
   font-style: italic;
+}
+
+// A spreadsheet sheet scrolls inside its own pane (`.sheet-scroll` in the
+// editor component) rather than pushing the page sideways: columns take the
+// width their content needs instead of being squeezed into the viewport, the
+// header row stays put, and the pane's background follows the scroll instead
+// of ending at the viewport edge. These rules live here rather than in the
+// component because the table arrives through [innerHTML], where the
+// component's scoped styles don't reach.
+.sheet-scroll {
+  // `width: max-content` and no overflow of its own: `.sheet-scroll` must stay
+  // the only scrollport, or the header row stops sticking to the pane.
+  .data-table-wrap {
+    margin: 0;
+    width: max-content;
+  }
+
+  .data-table {
+    width: max-content;
+  }
+
+  // Caps how wide a single value may push its column. Without it a cell holding
+  // a whole paragraph — or a one-line SQL statement, which is what a "SQL"
+  // sheet usually is — sizes its column to the full length of that text, and
+  // the sheet scrolls thousands of pixels into empty space.
+  .data-cell {
+    display: inline-block;
+    max-width: 420px;
+  }
 }
 
 // ============================================

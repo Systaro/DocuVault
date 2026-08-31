@@ -7,8 +7,9 @@ import hljs from 'highlight.js/lib/common';
  * blob through the markdown pipeline. JSON is pretty-printed and syntax
  * highlighted, delimited files become tables, SQL gets syntax highlighting.
  *
- * All output is designed to wrap rather than side-scroll — see the `.data-*`
- * rules in styles.scss.
+ * Text output wraps rather than side-scrolls; tables cap how wide a single
+ * value may push its column and leave the scrolling to whatever pane they are
+ * dropped into — see the `.data-*` rules in styles.scss.
  */
 @Injectable({ providedIn: 'root' })
 export class DataFileRenderService {
@@ -79,7 +80,13 @@ export class DataFileRenderService {
       return '<p class="data-empty">This file is empty.</p>';
     }
     const cols = rows.reduce((max, r) => Math.max(max, r.length), 0);
-    const cell = (r: string[], i: number) => this.escape(i < r.length ? r[i] : '');
+    // The inner span is the only handle a stylesheet has on a column's width:
+    // `max-width` on a table cell is ignored by the auto table layout, while an
+    // inline-block caps its max-content contribution and wraps instead. The
+    // spreadsheet pane uses it to stop one essay-long value from stretching its
+    // column across thousands of pixels — see `.sheet-scroll .data-cell`.
+    const cell = (r: string[], i: number) =>
+      `<span class="data-cell">${this.escape(i < r.length ? r[i] : '')}</span>`;
 
     const [header, ...body] = rows;
     const headHtml = Array.from({ length: cols }, (_, i) => `<th>${cell(header, i)}</th>`).join('');
