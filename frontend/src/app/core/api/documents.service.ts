@@ -177,11 +177,12 @@ export class DocumentsService {
   }
 
   /**
-   * Where a document that used to live at `path` is now. 404s when the path was
-   * never moved away from, so callers treat an error as "really gone".
+   * Where a document that used to live at `path` is now, or null when it never
+   * moved away from there. Safe to ask speculatively — "nowhere to forward" is a
+   * 204, so an ordinary answer does not surface as a console error.
    */
-  resolveMoved(spaceId: string, path: string): Observable<ResolvedLocation> {
-    return this.http.get<ResolvedLocation>(`/api/spaces/${spaceId}/documents/resolve-moved`, {
+  resolveMoved(spaceId: string, path: string): Observable<ResolvedLocation | null> {
+    return this.http.get<ResolvedLocation | null>(`/api/spaces/${spaceId}/documents/resolve-moved`, {
       params: { path }
     });
   }

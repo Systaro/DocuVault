@@ -47,6 +47,15 @@ to create a new document at the old path. Chains and folder moves resolve too
 forwards. Forwarding respects permissions: it only points you somewhere you
 are allowed to look.
 
+This applies to **every kind of file**, not just Markdown. Rendered files —
+HTML pages, PDFs, images, spreadsheets, draw.io diagrams — are handed straight
+to an `<iframe>` or `<img>`, which reports no HTTP status, so a moved one would
+silently show a blank frame with no way to notice. For those the move is looked
+up as the file opens rather than in response to a failure.
+
+A path that was vacated and later filled again is **not** forwarded — whatever
+lives there now wins over the old move.
+
 ## The panel
 
 The **Version history** panel lists every version of the current document,
@@ -80,8 +89,12 @@ in time. The view is read-only and marked with a banner.
 - `POST /api/spaces/{spaceId}/document-history/restore` (`{path, sha}`) — restore
 - `GET /api/spaces/{spaceId}/documents/resolve-moved?path=…` — where the document
   that used to live at `path` is now (`spaceId`, `spaceFullPath`, `spaceName`,
-  `path`, `sameSpace`, `viaFolder`). 404 when the path was never moved away from,
-  when the destination no longer exists, or when the caller may not see it.
+  `path`, `sameSpace`, `viaFolder`). Answers **204** when there is nowhere to
+  forward: the path was never moved away from, something occupies it again, the
+  destination no longer exists, or the caller may not see it. It is deliberately
+  not a 404, because callers ask this speculatively (a previewed file is handed
+  to an `<iframe>` that reports no status, so the question has to be asked before
+  anything fails) and the ordinary answer must not read as an error.
 
 Reading history requires view access to the space; restoring requires edit
 access.
