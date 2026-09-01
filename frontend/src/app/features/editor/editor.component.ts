@@ -2448,6 +2448,15 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     return this.htmlEditor ? this.htmlEditor.confirmLeave() : true;
   }
 
+  /**
+   * The path the document had at a given version. History follows renames, so a
+   * version from before a move lives under its old path — reading it under the
+   * current one would find nothing.
+   */
+  private pathAt(version: DocumentVersion): string {
+    return version.path || this.documentPath;
+  }
+
   /** Open the version-history drawer and load the document's commit track. */
   openHistory(): void {
     this.closeActionMenus();
@@ -2507,7 +2516,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
       if (!this.canViewVersions()) return;
       this.setPreviewUrl(
         `/api/spaces/${space.id}/document-history/raw` +
-        `?path=${encodeURIComponent(this.documentPath)}&sha=${encodeURIComponent(version.sha)}`
+        `?path=${encodeURIComponent(this.pathAt(version))}&sha=${encodeURIComponent(version.sha)}`
       );
       this.viewingVersion.set(version);
       this.historyViewMode.set('doc');
@@ -2515,7 +2524,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     }
 
     this.versionLoadingSha.set(version.sha);
-    this.documentHistoryService.getVersionContent(space.id, this.documentPath, version.sha)
+    this.documentHistoryService.getVersionContent(space.id, this.pathAt(version), version.sha)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
@@ -2539,7 +2548,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     if (!space || this.versionLoadingSha()) return;
     if (this.viewingVersion()?.sha === version.sha && this.historyViewMode() === 'diff') return;
     this.versionLoadingSha.set(version.sha);
-    this.documentHistoryService.getVersionDiff(space.id, this.documentPath, version.sha)
+    this.documentHistoryService.getVersionDiff(space.id, this.pathAt(version), version.sha)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (res) => {
@@ -3009,9 +3018,40 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         });
       },
       error: () => {
-        this.initializeNewDocument();
+        // Nothing at this path — but it may have been moved rather than deleted,
+        // in which case an old link should land on the document, not on a blank
+        // new one. Only then fall back to creating.
+        this.forwardToMovedDocument(space.id, this.documentPath);
       }
     });
+  }
+
+  /**
+   * Follows a link whose document has since been renamed or moved. Falls back to
+   * the new-document editor when the path really is unoccupied.
+   */
+  private forwardToMovedDocument(spaceId: string, path: string): void {
+    this.documentsService.resolveMoved(spaceId, path)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (moved) => {
+          const inSpace = moved.sameSpace ? '' : ` in ${moved.spaceName}`;
+          this.toastService.info(
+            'This document moved',
+            `It now lives at ${moved.path}${inSpace}. Taking you there.`
+          );
+          // Landing in another space changes the route's space segments *and*
+          // the path, and the path arrives first. Dropping the loaded space
+          // keeps the editor from fetching the new path out of the old space —
+          // a guaranteed 404 that would flash the blank new-document editor.
+          if (!moved.sameSpace) this.space.set(null);
+          this.router.navigate(spaceRoute(moved.spaceFullPath, 'doc'), {
+            queryParams: { path: moved.path },
+            replaceUrl: true
+          });
+        },
+        error: () => this.initializeNewDocument()
+      });
   }
 
   private loadAvailableTranslations(spaceId: string, path: string): void {

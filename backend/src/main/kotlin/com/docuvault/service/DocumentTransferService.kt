@@ -30,7 +30,8 @@ class DocumentTransferService(
     private val gitService: GitService,
     private val documentRepository: DocumentRepository,
     private val annotationService: AnnotationService,
-    private val documentPersistService: DocumentPersistService
+    private val documentPersistService: DocumentPersistService,
+    private val documentLineageService: DocumentLineageService
 ) {
     private val logger = LoggerFactory.getLogger(DocumentTransferService::class.java)
 
@@ -64,7 +65,8 @@ class DocumentTransferService(
         }
 
         val targetPath = freePath(targetSpace, requested)
-        val fileCount = gitService.listFilesUnder(sourceSpace, sourcePath).size
+        val containedFiles = gitService.listFilesUnder(sourceSpace, sourcePath)
+        val fileCount = containedFiles.size
 
         if (!gitService.copyItemAcrossSpaces(sourceSpace, sourcePath, targetSpace, targetPath)) {
             return TransferResult.Failed("Could not write into ${targetSpace.name}.")
@@ -84,6 +86,18 @@ class DocumentTransferService(
             }
             dropSourceDocuments(sourceSpace, sourcePath, isDirectory)
             moveAnnotations(sourceSpace, sourcePath, targetSpace, targetPath, isDirectory)
+            // Only once the original is really gone: this record forwards the old
+            // URL and carries the creator across the space boundary. Deleting the
+            // file does not erase its git history, so the origin is still readable.
+            documentLineageService.recordTransfer(
+                sourceSpace = sourceSpace,
+                sourcePath = sourcePath,
+                targetSpace = targetSpace,
+                targetPath = targetPath,
+                isDirectory = isDirectory,
+                containedFiles = containedFiles,
+                user = user
+            )
         }
 
         val verb = if (mode == TransferMode.MOVE) "Move" else "Copy"

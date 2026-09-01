@@ -102,6 +102,76 @@ class GitVersioningTest {
         assertEquals("", diffService.fileDiffAtCommit(space, latest.sha, "docs/a.md"))
     }
 
+    /**
+     * The bug this guards: the mover became the creator. A move is one commit
+     * that adds the new path and deletes the old one, so a plain `log <path>`
+     * finds only that commit and reports whoever made it as the author of the
+     * document's first version.
+     */
+    @Test
+    fun `moving a document keeps its original creator and history`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "docs/guide.md", "# Guide\n\nfirst draft\n")
+        gitService.commitAndPush(space, "Add docs/guide.md", "Alice", "alice@example.com")
+        gitService.writeFile(space, "docs/guide.md", "# Guide\n\nsecond draft\n")
+        gitService.commitAndPush(space, "Update docs/guide.md", "Alice", "alice@example.com")
+
+        // Bob only reorganises: same content, new location.
+        assertTrue(gitService.renameItem(space, "docs/guide.md", "handbook/guide.md"))
+        gitService.commitAndPush(space, "Move docs/guide.md", "Bob", "bob@example.com")
+
+        val meta = diffService.fileMeta(space, "handbook/guide.md")
+        assertEquals("Alice", meta.created?.authorName, "the creator must survive someone else's move")
+        assertEquals("Bob", meta.lastEdited?.authorName)
+
+        // The whole track comes along, not just the move commit.
+        val history = diffService.fileHistory(space, "handbook/guide.md")
+        assertEquals(3, history.size)
+        assertEquals(listOf("Bob", "Alice", "Alice"), history.map { it.authorName })
+
+        // Versions from before the move are reported under the path they had then.
+        assertEquals("handbook/guide.md", history[0].path)
+        assertEquals("docs/guide.md", history[2].path)
+    }
+
+    @Test
+    fun `content and diff of a version from before a move are still readable`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "docs/guide.md", "original\n")
+        gitService.commitAndPush(space, "Add docs/guide.md", "Alice", "alice@example.com")
+        gitService.renameItem(space, "docs/guide.md", "handbook/guide.md")
+        gitService.commitAndPush(space, "Move docs/guide.md", "Bob", "bob@example.com")
+
+        val history = diffService.fileHistory(space, "handbook/guide.md")
+        val beforeMove = history.last()
+
+        // Asked for by the document's *current* path, as the UI does.
+        assertEquals(
+            "original\n",
+            diffService.fileAtCommit(space, beforeMove.sha, "handbook/guide.md"),
+            "an old version must resolve through the rename, not 404"
+        )
+        assertTrue(diffService.fileDiffAtCommit(space, beforeMove.sha, "handbook/guide.md")!!.contains("+original"))
+    }
+
+    @Test
+    fun `a renamed folder keeps the creator of the documents inside it`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "notes/one.md", "one\n")
+        gitService.commitAndPush(space, "Add notes/one.md", "Alice", "alice@example.com")
+
+        assertTrue(gitService.renameItem(space, "notes", "archive"))
+        gitService.commitAndPush(space, "Rename notes to archive", "Bob", "bob@example.com")
+
+        assertEquals("Alice", diffService.fileMeta(space, "archive/one.md").created?.authorName)
+    }
+
     @Test
     fun `commit with no changes is a no-op instead of an empty commit`() {
         val (gitService, diffService) = services()

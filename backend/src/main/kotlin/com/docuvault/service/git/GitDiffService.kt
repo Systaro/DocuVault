@@ -28,7 +28,12 @@ data class FileVersion(
     val message: String?,
     val authorName: String?,
     val authorEmail: String?,
-    val committedAt: java.time.Instant
+    val committedAt: java.time.Instant,
+    /**
+     * Path the file had at this commit. Differs from the file's current path for
+     * versions before a rename/move; null where the walk doesn't track it.
+     */
+    val path: String? = null
 )
 
 data class FileHistoryMeta(
@@ -43,6 +48,11 @@ class GitDiffService(
     private val gitService: GitService
 ) {
     private val logger = LoggerFactory.getLogger(GitDiffService::class.java)
+
+    companion object {
+        /** Guard against a pathological rename chain stalling a page render. */
+        private const val MAX_RENAME_HOPS = 20
+    }
 
     fun currentHeadSha(space: Space): String? {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()
@@ -85,6 +95,9 @@ class GitDiffService(
     /**
      * All commits that touched the given file, newest first — the version track for
      * the document history / time-capsule view.
+     *
+     * Follows renames, so moving a document keeps its past instead of restarting
+     * the track at the move commit.
      */
     fun fileHistory(space: Space, path: String, limit: Int = 200): List<FileVersion> {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()
@@ -92,11 +105,9 @@ class GitDiffService(
 
         return try {
             Git.open(repoDir).use { git ->
-                git.log()
-                    .addPath(path)
-                    .setMaxCount(limit)
-                    .call()
-                    .map { it.toFileVersion() }
+                followRenames(git, path, limit).map { (commit, pathThen) ->
+                    commit.toFileVersion(pathThen)
+                }
             }
         } catch (e: Exception) {
             logger.warn("Failed to read file history for '${path}' in space '${space.name}': ${e.message}")
@@ -107,6 +118,10 @@ class GitDiffService(
     /**
      * First and last commit that touched the given file. Unlike [fileHistory] this
      * walks the full log, so `created` stays correct past the history cap.
+     *
+     * Renames are followed here too — without that, whoever moved a document
+     * would be shown as having created it, because the move commit is the oldest
+     * one touching the new path.
      */
     fun fileMeta(space: Space, path: String): FileHistoryMeta {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()
@@ -114,20 +129,102 @@ class GitDiffService(
 
         return try {
             Git.open(repoDir).use { git ->
-                var newest: RevCommit? = null
-                var oldest: RevCommit? = null
-                for (commit in git.log().addPath(path).call()) {
-                    if (newest == null) newest = commit
-                    oldest = commit
-                }
+                val track = followRenames(git, path, limit = Int.MAX_VALUE)
                 FileHistoryMeta(
-                    created = oldest?.toFileVersion(),
-                    lastEdited = newest?.toFileVersion()
+                    created = track.lastOrNull()?.let { (c, p) -> c.toFileVersion(p) },
+                    lastEdited = track.firstOrNull()?.let { (c, p) -> c.toFileVersion(p) }
                 )
             }
         } catch (e: Exception) {
             logger.warn("Failed to read file meta for '${path}' in space '${space.name}': ${e.message}")
             FileHistoryMeta(null, null)
+        }
+    }
+
+    /**
+     * Commits that touched the file, newest first, paired with the path the file
+     * had at that commit — the equivalent of `git log --follow`.
+     *
+     * Walked in hops: log the current path until its oldest commit, ask whether
+     * that commit got the file by renaming something else, and if so continue
+     * from the old path before that commit. Rename detection therefore runs once
+     * per rename rather than once per commit.
+     */
+    private fun followRenames(git: Git, startPath: String, limit: Int): List<Pair<RevCommit, String>> {
+        val repo = git.repository
+        val track = mutableListOf<Pair<RevCommit, String>>()
+        var path = startPath
+        var from: org.eclipse.jgit.lib.ObjectId? = repo.resolve(org.eclipse.jgit.lib.Constants.HEAD) ?: return track
+        var hops = 0
+
+        while (from != null && track.size < limit && hops++ < MAX_RENAME_HOPS) {
+            val remaining = limit - track.size
+            val log = git.log().add(from).addPath(path)
+            if (remaining < Int.MAX_VALUE) log.setMaxCount(remaining)
+            val commits = log.call().toList()
+            if (commits.isEmpty()) break
+
+            val pathAtHop = path
+            commits.forEach { track.add(it to pathAtHop) }
+            if (track.size >= limit) break
+
+            // The oldest commit on this path either created the file or renamed
+            // it here from somewhere else; only the latter continues the walk.
+            val hop = renameHop(repo, commits.last().id, path) ?: break
+            path = hop.fromPath
+            from = hop.parent
+        }
+        return track
+    }
+
+    /** Where a rename came from, plus the commit to keep walking back from. */
+    private data class RenameHop(val fromPath: String, val parent: org.eclipse.jgit.lib.ObjectId)
+
+    /**
+     * The path the file currently at [currentPath] had at commit [sha], or null
+     * when that commit is not part of its history. Differs from [currentPath]
+     * only for versions from before a rename.
+     */
+    private fun historicalPath(git: Git, currentPath: String, sha: String): String? =
+        followRenames(git, currentPath, limit = Int.MAX_VALUE)
+            .firstOrNull { (commit, _) -> commit.name == sha }
+            ?.second
+            ?.takeIf { it != currentPath }
+
+    /**
+     * Whether the commit [commitId] got [path] by renaming something else, and
+     * if so from where. Null when it created the file outright.
+     *
+     * The commit is re-read in a plain [RevWalk] on purpose: a path-filtered log
+     * rewrites parents to simplify history, so the commit handed in may claim to
+     * have no parent at all, and its real parent's tree is unparsed.
+     */
+    private fun renameHop(repo: Repository, commitId: org.eclipse.jgit.lib.ObjectId, path: String): RenameHop? {
+        return try {
+            RevWalk(repo).use { walk ->
+                val self = walk.parseCommit(commitId)
+                if (self.parentCount == 0) return null
+                val parent = walk.parseCommit(self.getParent(0).id)
+
+                val reader = repo.newObjectReader()
+                val newTree = CanonicalTreeParser().also { it.reset(reader, self.tree) }
+                val oldTree = CanonicalTreeParser().also { it.reset(reader, parent.tree) }
+                val from = Git.wrap(repo).use { git ->
+                    val raw = git.diff().setNewTree(newTree).setOldTree(oldTree).call()
+                    RenameDetector(repo).apply { addAll(raw) }.compute()
+                        .firstOrNull {
+                            it.newPath == path &&
+                                (it.changeType == DiffEntry.ChangeType.RENAME ||
+                                    it.changeType == DiffEntry.ChangeType.COPY)
+                        }
+                        ?.oldPath
+                } ?: return null
+
+                RenameHop(from, parent.id)
+            }
+        } catch (e: Exception) {
+            logger.warn("Rename detection failed for '$path' at ${commitId.name}: ${e.message}")
+            null
         }
     }
 
@@ -197,13 +294,14 @@ class GitDiffService(
         }
     }
 
-    private fun RevCommit.toFileVersion() = FileVersion(
+    private fun RevCommit.toFileVersion(pathThen: String? = null) = FileVersion(
         sha = name,
         shortSha = name.take(8),
         message = shortMessage,
         authorName = authorIdent?.name,
         authorEmail = authorIdent?.emailAddress,
-        committedAt = java.time.Instant.ofEpochSecond(commitTime.toLong())
+        committedAt = java.time.Instant.ofEpochSecond(commitTime.toLong()),
+        path = pathThen
     )
 
     /**
@@ -227,8 +325,16 @@ class GitDiffService(
                     org.eclipse.jgit.diff.DiffFormatter(out).use { formatter ->
                         formatter.setRepository(repo)
                         formatter.isDetectRenames = true
-                        val entries = formatter.scan(parent?.tree, commit.tree)
-                            .filter { it.newPath == path || it.oldPath == path }
+                        val scanned = formatter.scan(parent?.tree, commit.tree)
+                        var entries = scanned.filter { it.newPath == path || it.oldPath == path }
+                        // Nothing under the current path: before a rename the
+                        // file appears under its old one, so follow the track.
+                        if (entries.isEmpty()) {
+                            val then = historicalPath(git, path, sha)
+                            if (then != null) {
+                                entries = scanned.filter { it.newPath == then || it.oldPath == then }
+                            }
+                        }
                         entries.forEach { formatter.format(it) }
                     }
                     out.toString(Charsets.UTF_8)
@@ -240,7 +346,13 @@ class GitDiffService(
         }
     }
 
-    /** File content as it existed at the given commit, or null when absent there. */
+    /**
+     * File content as it existed at the given commit, or null when absent there.
+     *
+     * A version from before a rename is stored under the old path, so when the
+     * current path is not in that commit the file's rename track is consulted
+     * before giving up.
+     */
     fun fileAtCommit(space: Space, sha: String, path: String): String? {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()
         if (!repoDir.exists()) return null
@@ -251,7 +363,12 @@ class GitDiffService(
                 val commitId = repo.resolve(sha) ?: return null
                 RevWalk(repo).use { walk ->
                     val commit = walk.parseCommit(commitId)
-                    val treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(repo, path, commit.tree)
+                    val resolved = if (org.eclipse.jgit.treewalk.TreeWalk.forPath(repo, path, commit.tree) != null) {
+                        path
+                    } else {
+                        historicalPath(git, path, sha) ?: return null
+                    }
+                    val treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(repo, resolved, commit.tree)
                         ?: return null
                     treeWalk.use {
                         String(repo.open(it.getObjectId(0)).bytes, Charsets.UTF_8)

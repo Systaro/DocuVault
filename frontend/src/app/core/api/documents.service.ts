@@ -84,6 +84,17 @@ export interface TransferResult {
   fileCount: number;
 }
 
+/** The current home of a document whose old path someone still links to. */
+export interface ResolvedLocation {
+  spaceId: string;
+  spaceFullPath: string;
+  spaceName: string;
+  path: string;
+  sameSpace: boolean;
+  /** True when the document travelled inside a folder that was moved. */
+  viaFolder: boolean;
+}
+
 /** A commit as the history APIs report it. */
 export interface FileVersion {
   sha: string;
@@ -163,6 +174,16 @@ export class DocumentsService {
    */
   transfer(spaceId: string, request: TransferRequest): Observable<TransferResult> {
     return this.http.post<TransferResult>(`/api/spaces/${spaceId}/documents/transfer`, request);
+  }
+
+  /**
+   * Where a document that used to live at `path` is now. 404s when the path was
+   * never moved away from, so callers treat an error as "really gone".
+   */
+  resolveMoved(spaceId: string, path: string): Observable<ResolvedLocation> {
+    return this.http.get<ResolvedLocation>(`/api/spaces/${spaceId}/documents/resolve-moved`, {
+      params: { path }
+    });
   }
 
   /**
