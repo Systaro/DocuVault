@@ -3,6 +3,7 @@ package com.docuvault.api.documents
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.DocumentLineageService
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.HtmlPreviewInjection
 import com.docuvault.service.PermissionService
@@ -36,7 +37,8 @@ class DocumentHistoryController(
     private val gitService: GitService,
     private val gitDiffService: GitDiffService,
     private val documentPersistService: DocumentPersistService,
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val documentLineageService: DocumentLineageService
 ) {
 
     @GetMapping
@@ -85,7 +87,13 @@ class DocumentHistoryController(
             gitService.ensureLocalRepo(space)
         }
 
-        return ResponseEntity.ok(gitDiffService.fileMeta(space, path))
+        val meta = gitDiffService.fileMeta(space, path)
+
+        // A document that came from another space has no history here before the
+        // commit that brought it in, so git would name whoever moved it as the
+        // creator. The move recorded who really created it.
+        val origin = documentLineageService.originCreated(space.id!!, path)
+        return ResponseEntity.ok(if (origin != null) meta.copy(created = origin) else meta)
     }
 
     @GetMapping("/content")

@@ -5,6 +5,7 @@ import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.AnnotationService
+import com.docuvault.service.DocumentLineageService
 import com.docuvault.service.DocumentPatchService
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.DocumentTransferService
@@ -48,7 +49,8 @@ class DocumentController(
     private val documentPersistService: DocumentPersistService,
     private val documentTransferService: DocumentTransferService,
     private val annotationService: AnnotationService,
-    private val documentPatchService: DocumentPatchService
+    private val documentPatchService: DocumentPatchService,
+    private val documentLineageService: DocumentLineageService
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
     private fun hashContent(content: String) = documentPersistService.hashContent(content)
@@ -693,12 +695,67 @@ class DocumentController(
             isDirectory = isDir
         )
 
+        // Links people already shared point at the old path; this forwards them.
+        documentLineageService.recordRename(space, request.oldPath, request.newPath, isDir, user)
+
         documentPersistService.commitIfRequested(
             space, autoCommit = true,
             message = "Rename ${request.oldPath} to ${request.newPath}", user = user
         )
 
         return ResponseEntity.ok().build()
+    }
+
+    /**
+     * Where the document that used to live at `path` is now, for a link that
+     * points at a path nothing occupies any more. Answers 404 when the path was
+     * never moved away from — the caller then shows its own "not found".
+     *
+     * A moved document keeps its permissions from its new home, so the answer is
+     * only given when the user may actually see the destination; otherwise this
+     * would reveal that a document exists in a space they have no access to.
+     */
+    @GetMapping("/resolve-moved")
+    fun resolveMoved(
+        @PathVariable spaceId: UUID,
+        @RequestParam path: String,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<ResolvedLocationDto> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        val moved = documentLineageService.resolve(spaceId, path)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasAccess(user.id!!, moved.spaceId, user.role)) {
+            return ResponseEntity.notFound().build()
+        }
+
+        val destination = spaceRepository.findById(moved.spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        // A record can outlive the file itself — moved once, deleted later.
+        if (!gitService.itemExists(destination, moved.path)) {
+            return ResponseEntity.notFound().build()
+        }
+
+        return ResponseEntity.ok(
+            ResolvedLocationDto(
+                spaceId = moved.spaceId,
+                spaceFullPath = moved.spaceFullPath,
+                spaceName = moved.spaceName,
+                path = moved.path,
+                sameSpace = moved.spaceId == spaceId,
+                viaFolder = moved.viaFolder
+            )
+        )
     }
 
     /**
@@ -761,6 +818,16 @@ class DocumentController(
     }
 
 }
+
+data class ResolvedLocationDto(
+    val spaceId: UUID,
+    val spaceFullPath: String,
+    val spaceName: String,
+    val path: String,
+    val sameSpace: Boolean,
+    /** True when the document travelled inside a folder that was moved. */
+    val viaFolder: Boolean
+)
 
 data class TransferRequest(
     @field:NotBlank(message = "Source path is required")

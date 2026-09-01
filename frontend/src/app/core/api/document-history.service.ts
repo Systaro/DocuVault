@@ -10,6 +10,12 @@ export interface DocumentVersion {
   authorName?: string;
   authorEmail?: string;
   committedAt: string;
+  /**
+   * Path the document had at this version — different from its current path for
+   * versions from before a rename or move. Reading that version's content has to
+   * use this path, not the current one.
+   */
+  path?: string;
 }
 
 export interface DocumentHistoryMeta {

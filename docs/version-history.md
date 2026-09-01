@@ -22,6 +22,31 @@ last edited it, each with date and time, taken from the document's version
 track. The **History** button next to it opens the version history panel
 directly. Documents without any versions yet (e.g. never saved) show nothing.
 
+## Moved and renamed documents
+
+A move is a single commit that adds the new path and removes the old one, so a
+naive lookup would report whoever reorganised the space as the document's
+author. History therefore **follows renames**:
+
+- **Within a space** the version track continues across the rename, so the
+  creator, the full list of versions and every old version's content stay
+  reachable under the new path. Versions from before the move are read under
+  the path they had at the time — the API handles that, callers pass the
+  current path.
+- **Across spaces** the target repository is a different one and its history
+  starts at the arrival commit. The move therefore records who originally
+  created each document, and the topbar shows that instead of the mover. The
+  *version list* in the new space still starts at the arrival — the earlier
+  versions live in the source space's repository.
+
+Every move and rename is also recorded so that **links to the old path keep
+working**: opening a URL whose document has since moved forwards to its new
+location (in whichever space it now lives) and says so, rather than offering
+to create a new document at the old path. Chains and folder moves resolve too
+— a document moved twice, or one that travelled inside a renamed folder, still
+forwards. Forwarding respects permissions: it only points you somewhere you
+are allowed to look.
+
 ## The panel
 
 The **Version history** panel lists every version of the current document,
