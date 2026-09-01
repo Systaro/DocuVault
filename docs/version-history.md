@@ -78,6 +78,10 @@ in time. The view is read-only and marked with a banner.
 - `GET /api/spaces/{spaceId}/document-history/content?path=…&sha=…` — content at a version
 - `GET /api/spaces/{spaceId}/document-history/diff?path=…&sha=…` — unified diff of what that version changed
 - `POST /api/spaces/{spaceId}/document-history/restore` (`{path, sha}`) — restore
+- `GET /api/spaces/{spaceId}/documents/resolve-moved?path=…` — where the document
+  that used to live at `path` is now (`spaceId`, `spaceFullPath`, `spaceName`,
+  `path`, `sameSpace`, `viaFolder`). 404 when the path was never moved away from,
+  when the destination no longer exists, or when the caller may not see it.
 
 Reading history requires view access to the space; restoring requires edit
 access.
