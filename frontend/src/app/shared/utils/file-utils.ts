@@ -40,14 +40,33 @@ export function getFileIcon(name: string): string {
   return `assets/file-icons/file-extension-${slug}-icon.png`;
 }
 
-/** Material-icons glyph for a file path (used where PNG icons are too heavy, e.g. search results). */
+/**
+ * Material-icons glyph for a file path (used where PNG icons are too heavy, e.g.
+ * search results).
+ *
+ * The distinctions worth drawing are the ones that change what you get when you
+ * click: a page, a rendered document, a picture, a table, a diagram. Anything
+ * else is a file you will download, and one glyph covers all of those.
+ */
 export function getFileIconGlyph(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() || '';
   if (ext === 'md') return 'description';
   if (['html', 'htm'].includes(ext)) return 'code';
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (ext === 'pdf') return 'picture_as_pdf';
+  if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) return 'table_chart';
+  if (ext === 'drawio') return 'account_tree';
+  if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) return 'article';
+  if (['ppt', 'pptx', 'pps', 'odp'].includes(ext)) return 'slideshow';
+  if (['zip', '7z', 'rar', 'gz', 'tgz', 'tar', 'iso', 'dmg'].includes(ext)) return 'folder_zip';
+  if (['json', 'xml', 'yml', 'yaml', 'js', 'ts', 'css', 'php', 'sh', 'sql'].includes(ext)) return 'data_object';
+  if (['txt', 'log'].includes(ext)) return 'notes';
   return 'insert_drive_file';
+}
+
+/** Material-icons glyph for a search hit that is a container rather than a file. */
+export function getContainerIconGlyph(kind: 'SPACE' | 'GROUP'): string {
+  return kind === 'GROUP' ? 'folder_copy' : 'workspaces';
 }
 
 /**
