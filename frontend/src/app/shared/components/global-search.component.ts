@@ -2,7 +2,7 @@ import { Component, output, signal, ElementRef, ViewChild, AfterViewInit, OnDest
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { SearchService, SearchResult } from '../../core/api/search.service';
-import { getFileIconGlyph } from '../utils/file-utils';
+import { getContainerIconGlyph, getFileIconGlyph } from '../utils/file-utils';
 import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil } from 'rxjs';
 
 @Component({
@@ -38,24 +38,32 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
           } @else if (results().length === 0 && query().length >= 2) {
             <div class="search-status">
               <span translate="no" class="material-icons">search_off</span>
-              No documents found
+              Nothing found
             </div>
           } @else {
-            @for (result of results(); track result.documentPath + result.spaceId; let i = $index) {
+            @for (result of results(); track result.kind + result.documentPath + result.spaceId; let i = $index) {
               <button
                 class="search-result"
                 [class.active]="i === activeIndex()"
+                [class.is-container]="result.kind !== 'DOCUMENT'"
                 (click)="navigateTo(result)"
                 (mouseenter)="activeIndex.set(i)"
               >
                 <div class="result-icon">
-                  <span translate="no" class="material-icons">{{ getFileIcon(result.documentPath) }}</span>
+                  <span translate="no" class="material-icons">{{ resultIcon(result) }}</span>
                 </div>
                 <div class="result-body">
                   <div class="result-title">{{ result.documentTitle }}</div>
                   <div class="result-meta">
-                    <span class="result-space">{{ result.spaceName }}</span>
-                    <span class="result-path">{{ result.documentPath }}</span>
+                    @if (result.kind === 'DOCUMENT') {
+                      <span class="result-space">{{ result.spaceName }}</span>
+                      <span class="result-path">{{ result.documentPath }}</span>
+                    } @else {
+                      <!-- A container has no path of its own to show; say what it
+                           is and where it sits instead. -->
+                      <span class="result-space">{{ result.kind === 'GROUP' ? 'Group' : 'Space' }}</span>
+                      <span class="result-path">{{ result.spaceFullPath }}</span>
+                    }
                   </div>
                   @if (result.snippet) {
                     <div class="result-snippet">{{ result.snippet }}</div>
@@ -207,6 +215,15 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
       margin-top: 2px;
     }
 
+    .search-result.is-container .result-icon {
+      background: rgba(56, 128, 135, 0.14);
+      color: var(--primary-dark);
+    }
+
+    .search-result.is-container .result-title {
+      font-weight: 600;
+    }
+
     .result-space {
       font-weight: 500;
       color: var(--primary);
@@ -304,13 +321,20 @@ export class GlobalSearchComponent implements AfterViewInit, OnDestroy {
 
   navigateTo(result: SearchResult): void {
     this.close.emit();
-    this.router.navigate(
-      ['/spaces', ...result.spaceFullPath.split('/'), 'doc'],
-      { queryParams: { path: result.documentPath } }
-    );
+    const spaceSegments = ['/spaces', ...result.spaceFullPath.split('/')];
+    if (result.kind === 'DOCUMENT') {
+      this.router.navigate([...spaceSegments, 'doc'], {
+        queryParams: { path: result.documentPath }
+      });
+    } else {
+      // A space or group opens at its overview — there is no document to show.
+      this.router.navigate(spaceSegments);
+    }
   }
 
-  getFileIcon(path: string): string {
-    return getFileIconGlyph(path);
+  resultIcon(result: SearchResult): string {
+    return result.kind === 'DOCUMENT'
+      ? getFileIconGlyph(result.documentPath)
+      : getContainerIconGlyph(result.kind);
   }
 }

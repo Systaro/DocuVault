@@ -43,6 +43,12 @@ class SearchController(
         val spaceIds = spaces.mapNotNull { it.id }
         val spaceMap = spaces.associateBy { it.id }
 
+        // Spaces and groups are containers, not documents, so they are matched
+        // separately and put first: someone typing "Product Handbook" is looking for the
+        // space itself, and burying it under every document that merely mentions
+        // the name is the same as not finding it.
+        val containers = matchingContainers(spaces, q)
+
         // Literal substring match over title, path, and content (via the chunks
         // already indexed for embeddings). The query is split into whitespace
         // terms that are AND-ed, so multi-word searches match across fields.
@@ -50,7 +56,7 @@ class SearchController(
         // content), not recency — see DocumentRepositoryImpl.searchByTerms.
         val documents = documentRepository.searchByTerms(spaceIds, q, limit)
 
-        val results = documents.map { doc ->
+        val documentResults = documents.map { doc ->
             val space = spaceMap[doc.space.id]
             val snippet = try {
                 val content = gitService.readFile(doc.space, doc.path)
@@ -62,6 +68,7 @@ class SearchController(
             }
 
             SearchResultDto(
+                kind = SearchResultKind.DOCUMENT,
                 documentPath = doc.path,
                 documentTitle = doc.title ?: doc.path.substringAfterLast("/").substringBeforeLast("."),
                 spaceId = doc.space.id!!,
@@ -72,7 +79,51 @@ class SearchController(
             )
         }
 
-        return ResponseEntity.ok(results)
+        return ResponseEntity.ok(containers + documentResults)
+    }
+
+    /**
+     * Spaces and groups whose name, slug or full path matches every term of the
+     * query. Capped so a broad word can't push the documents off the list —
+     * containers are a shortcut to the right place, not the answer itself.
+     */
+    private fun matchingContainers(
+        spaces: List<com.docuvault.domain.space.Space>,
+        query: String,
+        limit: Int = 5
+    ): List<SearchResultDto> {
+        val terms = query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (terms.isEmpty()) return emptyList()
+
+        return spaces
+            .filter { space ->
+                val haystack = listOf(space.name, space.slug, space.getFullPath())
+                    .joinToString(" ")
+                    .lowercase()
+                terms.all { haystack.contains(it.lowercase()) }
+            }
+            // A name that starts with what was typed is the likelier target than
+            // one that merely contains it somewhere.
+            .sortedWith(
+                compareByDescending<com.docuvault.domain.space.Space> {
+                    it.name.lowercase().startsWith(terms.first().lowercase())
+                }.thenBy { it.name.lowercase() }
+            )
+            .take(limit)
+            .map { space ->
+                SearchResultDto(
+                    kind = if (space.type == SpaceType.GROUP) SearchResultKind.GROUP else SearchResultKind.SPACE,
+                    // A container has no document to open; the caller navigates by
+                    // spaceFullPath instead.
+                    documentPath = "",
+                    documentTitle = space.name,
+                    spaceId = space.id!!,
+                    spaceName = space.parent?.name ?: "",
+                    spaceFullPath = space.getFullPath(),
+                    snippet = null,
+                    updatedAt = space.updatedAt.toString()
+                )
+            }
     }
 
     @PostMapping("/semantic")
@@ -149,10 +200,16 @@ data class SemanticSearchResultDto(
     val spaceFullPath: String?
 )
 
+/** What a hit actually is, so the caller can label and open it correctly. */
+enum class SearchResultKind { DOCUMENT, SPACE, GROUP }
+
 data class SearchResultDto(
+    val kind: SearchResultKind = SearchResultKind.DOCUMENT,
+    /** Empty for SPACE and GROUP hits — they are opened by [spaceFullPath]. */
     val documentPath: String,
     val documentTitle: String,
     val spaceId: UUID,
+    /** For a container hit this is its parent group, not the container itself. */
     val spaceName: String,
     val spaceFullPath: String,
     val snippet: String?,
