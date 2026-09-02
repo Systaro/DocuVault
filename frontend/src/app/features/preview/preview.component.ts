@@ -5,6 +5,8 @@ import { Subject, forkJoin, takeUntil } from 'rxjs';
 import { SafeResourceUrl, SafeHtml, DomSanitizer } from '@angular/platform-browser';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, FileNode } from '../../core/api/documents.service';
+import { ToastService } from '../../shared/services/toast.service';
+import { spaceRoute } from '../../shared/utils/route-utils';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
@@ -647,6 +649,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
     private annotationsService: AnnotationsService,
     private sanitizer: DomSanitizer,
     private elementRef: ElementRef<HTMLElement>,
+    private toastService: ToastService,
     protected caps: CapabilitiesService
   ) {
     // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
@@ -781,14 +784,59 @@ export class PreviewComponent implements OnInit, OnDestroy {
             this.loading.set(false);
           },
           error: () => {
-            this.error.set('Failed to load file content.');
-            this.loading.set(false);
+            // It may have moved rather than gone; only then is it really missing.
+            this.forwardToMovedFile(path, () => {
+              this.error.set('Failed to load file content.');
+              this.loading.set(false);
+            });
           }
         });
     } else {
       this.renderMode.set(mode);
       this.loading.set(false);
+      // Everything else is handed to an <iframe>/<img>, which reports no HTTP
+      // status — a moved file would render the backend's 404 with nothing to
+      // react to. So ask up front instead of waiting for a failure.
+      this.forwardToMovedFile(path, () => {});
     }
+  }
+
+  /**
+   * Follows a link whose document has since been renamed or moved. The endpoint
+   * answers 204 unless the path really is vacated and something moved out of it,
+   * so this is safe to ask speculatively; [onNotMoved] runs when there is
+   * nowhere to go.
+   *
+   * Forwarding leaves this viewer for the document's own route: this component
+   * reads its path from the URL once, in ngOnInit, so it cannot re-point itself
+   * at another space — and a stale link should land wherever the document
+   * actually lives.
+   */
+  private forwardToMovedFile(path: string, onNotMoved: () => void): void {
+    this.documentsService.resolveMoved(this.spaceId, path)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (moved) => {
+          // The answer can arrive after the reader has opened another file.
+          if (this.currentPath() !== path) return;
+          if (!moved) {
+            onNotMoved();
+            return;
+          }
+          const inSpace = moved.sameSpace ? '' : ` in ${moved.spaceName}`;
+          this.toastService.info(
+            'This document moved',
+            `It now lives at ${moved.path}${inSpace}. Taking you there.`
+          );
+          this.router.navigate(spaceRoute(moved.spaceFullPath, 'doc'), {
+            queryParams: { path: moved.path },
+            replaceUrl: true
+          });
+        },
+        error: () => {
+          if (this.currentPath() === path) onNotMoved();
+        }
+      });
   }
 
   onMarkdownClick(event: MouseEvent): void {
