@@ -520,7 +520,9 @@ interface OutlineItem {
             <ng-container *ngTemplateOutlet="diffView"></ng-container>
           } @else if (previewType() === 'html') {
             <div class="html-preview-container annotation-host">
-              <iframe [src]="safePreviewUrl()" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+              @if (safePreviewUrl(); as src) {
+                <iframe [src]="src" class="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+              }
               <!-- Comments belong to the live page; a historic version has no
                    pins to place and its markup no longer matches theirs. -->
               @if (space() && documentPath && !viewingVersion()) {
@@ -534,7 +536,9 @@ interface OutlineItem {
             </div>
           } @else if (previewType() === 'pdf') {
             <div class="pdf-preview-container annotation-host">
-              <iframe [src]="safePreviewUrl()" class="preview-iframe"></iframe>
+              @if (safePreviewUrl(); as src) {
+                <iframe [src]="src" class="preview-iframe"></iframe>
+              }
               @if (space() && documentPath) {
                 <app-annotation-overlay
                   [spaceId]="space()!.id"
@@ -2078,7 +2082,14 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.previewType() === 'spreadsheet' &&
     !(this.viewingVersion() && this.historyViewMode() === 'diff')
   );
-  safePreviewUrl = signal<SafeResourceUrl>('');
+  /**
+   * Null until the space is known and a real URL can be trusted. It must not
+   * start as `''`: an empty string is not a SafeResourceUrl, so binding it to an
+   * iframe throws NG0904 on the first render of a cold load — which leaves the
+   * frame pointed at the app root and showing "refused to connect" even after a
+   * valid URL arrives. The template only renders the iframe once this is set.
+   */
+  safePreviewUrl = signal<SafeResourceUrl | null>(null);
   imageZoom = signal(1);
   isDraggingImage = signal(false);
   isGitSpace = computed(() => !!this.space()?.gitlabUrl);
@@ -2915,7 +2926,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           }
         }
         // A previewed file never goes through loadDocument(), so who created and
-        // last edited it has to be fetched on this path.
+        // last edited it — and whether it moved — has to be handled on this path.
         if (this.isPreviewFile()) {
           if (pathChanged) {
             this.viewingVersion.set(null);
@@ -2924,7 +2935,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
             this.historyMeta.set(null);
             this.showHistoryPanel.set(false);
           }
-          this.loadHistoryMeta();
+          this.initPreviewFile();
         }
       } else {
         // New document — remember the folder the user created it from so it
@@ -2966,7 +2977,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
               this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
             }
           }
-          this.loadHistoryMeta();
+          this.initPreviewFile();
         } else if (this.documentPath) {
           this.loadDocument();
         }
@@ -3021,20 +3032,31 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         // Nothing at this path — but it may have been moved rather than deleted,
         // in which case an old link should land on the document, not on a blank
         // new one. Only then fall back to creating.
-        this.forwardToMovedDocument(space.id, this.documentPath);
+        this.forwardToMovedDocument(space.id, this.documentPath, () => this.initializeNewDocument());
       }
     });
   }
 
   /**
-   * Follows a link whose document has since been renamed or moved. Falls back to
-   * the new-document editor when the path really is unoccupied.
+   * Follows a link whose document has since been renamed or moved.
+   *
+   * The endpoint answers 204 unless the path really is vacated and something was
+   * moved out of it, so this is safe to ask speculatively — [onNotMoved] runs
+   * when there is nowhere to go.
    */
-  private forwardToMovedDocument(spaceId: string, path: string): void {
+  private forwardToMovedDocument(spaceId: string, path: string, onNotMoved: () => void): void {
     this.documentsService.resolveMoved(spaceId, path)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (moved) => {
+          // The answer can arrive after the user has moved on to another file;
+          // forwarding then would yank them out of what they are reading.
+          if (this.documentPath !== path) return;
+          if (!moved) {
+            onNotMoved();
+            return;
+          }
+
           const inSpace = moved.sameSpace ? '' : ` in ${moved.spaceName}`;
           this.toastService.info(
             'This document moved',
@@ -3050,8 +3072,26 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
             replaceUrl: true
           });
         },
-        error: () => this.initializeNewDocument()
+        error: () => {
+          if (this.documentPath === path) onNotMoved();
+        }
       });
+  }
+
+  /**
+   * What a previewed file (HTML, PDF, image, drawio, spreadsheet) needs once its
+   * URL is set. Unlike a markdown document these are handed straight to an
+   * `<iframe>`/`<img>`, which reports no HTTP status — a moved file would just
+   * render the backend's 404 body with no way to notice. So the move is asked
+   * about up front rather than in response to a failure, and a file that is
+   * simply still there is left alone.
+   */
+  private initPreviewFile(): void {
+    this.loadHistoryMeta();
+    const space = this.space();
+    if (space && this.documentPath) {
+      this.forwardToMovedDocument(space.id, this.documentPath, () => {});
+    }
   }
 
   private loadAvailableTranslations(spaceId: string, path: string): void {

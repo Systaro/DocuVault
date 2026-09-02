@@ -708,8 +708,14 @@ class DocumentController(
 
     /**
      * Where the document that used to live at `path` is now, for a link that
-     * points at a path nothing occupies any more. Answers 404 when the path was
-     * never moved away from — the caller then shows its own "not found".
+     * points at a path nothing occupies any more.
+     *
+     * "Nowhere to forward" answers **204**, not 404, because callers ask this
+     * speculatively — a previewed file is handed to an `<iframe>` that reports no
+     * status, so the question has to be asked before anything fails. An error for
+     * the ordinary answer would put a red entry in the console on every file
+     * opened. A 4xx here means the *request* was wrong, not that the document
+     * simply never moved.
      *
      * A moved document keeps its permissions from its new home, so the answer is
      * only given when the user may actually see the destination; otherwise this
@@ -731,19 +737,27 @@ class DocumentController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
+        // Something lives here again — a file was moved away and a new one later
+        // created in its place. The path is live, so there is nothing to forward,
+        // and answering with the old move would send the caller away from a real
+        // document. This is what makes the endpoint safe to ask speculatively.
+        if (gitService.itemExists(space, path)) {
+            return ResponseEntity.noContent().build()
+        }
+
         val moved = documentLineageService.resolve(spaceId, path)
-            ?: return ResponseEntity.notFound().build()
+            ?: return ResponseEntity.noContent().build()
 
         if (!permissionService.hasAccess(user.id!!, moved.spaceId, user.role)) {
-            return ResponseEntity.notFound().build()
+            return ResponseEntity.noContent().build()
         }
 
         val destination = spaceRepository.findById(moved.spaceId).orElse(null)
-            ?: return ResponseEntity.notFound().build()
+            ?: return ResponseEntity.noContent().build()
 
         // A record can outlive the file itself — moved once, deleted later.
         if (!gitService.itemExists(destination, moved.path)) {
-            return ResponseEntity.notFound().build()
+            return ResponseEntity.noContent().build()
         }
 
         return ResponseEntity.ok(
