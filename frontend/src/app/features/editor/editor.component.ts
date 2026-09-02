@@ -48,7 +48,7 @@ import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../sh
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
 import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
-import { Observable, Subject, debounceTime, filter, takeUntil } from 'rxjs';
+import { Observable, Subject, debounceTime, filter, lastValueFrom, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
@@ -91,6 +91,24 @@ interface OutlineItem {
   text: string;
   level: 1 | 2;
   el: HTMLElement;
+}
+
+/**
+ * One sheet of a workbook as the editor shows it.
+ *
+ * The grid is walked from the sheet's declared range rather than built from
+ * `sheet_to_json`, because that helper drops blank rows — which silently shifts
+ * every row below one, so grid coordinates would no longer map to the cell
+ * addresses a save has to write back to.
+ */
+interface SheetView {
+  name: string;
+  /** Displayed text per cell, row-major over the sheet's used range. */
+  rows: string[][];
+  /** Cells carrying a formula; editing one replaces it with a literal. */
+  formulaAt: boolean[][];
+  /** Top-left of the used range — grid (0,0) is this cell. */
+  origin: { r: number; c: number };
 }
 
 @Component({
@@ -430,6 +448,25 @@ interface OutlineItem {
               <span class="btn-badge">alpha</span>
             </button>
           }
+          @if (canEditSpreadsheet()) {
+            <button
+              class="btn-edit"
+              (click)="startSheetEdit()"
+              title="Edit cell values — alpha: charts, styling and anything Excel-specific this editor cannot model are not preserved, so check the result before you save"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit
+              <span class="btn-badge">alpha</span>
+            </button>
+          }
+          @if (sheetEditMode()) {
+            <button class="btn-edit" (click)="cancelSheetEdit()" [disabled]="savingSheet()">Cancel</button>
+            <button
+              class="btn-edit btn-edit-primary"
+              (click)="saveSpreadsheet()"
+              [disabled]="!sheetDirty() || savingSheet()"
+            >{{ savingSheet() ? 'Saving…' : 'Save' }}</button>
+          }
           <div class="relative">
             <button
               (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
@@ -578,7 +615,39 @@ interface OutlineItem {
                     }
                   </div>
                 }
-                <div class="sheet-scroll" [innerHTML]="activeSheetHtml()"></div>
+                @if (xlsxBlockedReason(); as reason) {
+                  <p class="sheet-blocked">
+                    <span translate="no" class="material-icons">lock</span>
+                    {{ reason }}
+                  </p>
+                }
+                @if (sheetEditMode() && activeSheet(); as sheet) {
+                  <!-- Editable grid. Rendered as real inputs rather than the
+                       read-only HTML so a cell keeps its position in the sheet
+                       even when it is blank. -->
+                  <div class="sheet-scroll sheet-edit">
+                    <table class="data-table">
+                      <tbody>
+                        @for (row of sheet.rows; track $index; let r = $index) {
+                          <tr>
+                            @for (cell of row; track $index; let c = $index) {
+                              <td [class.has-formula]="sheet.formulaAt[r][c]">
+                                <input
+                                  class="sheet-cell"
+                                  [value]="cell"
+                                  [title]="sheet.formulaAt[r][c] ? 'This cell is calculated — typing here replaces the formula with a fixed value' : ''"
+                                  (change)="onCellEdit(r, c, $event)"
+                                />
+                              </td>
+                            }
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                } @else {
+                  <div class="sheet-scroll" [innerHTML]="activeSheetHtml()"></div>
+                }
               }
             </div>
           } @else {
@@ -923,6 +992,24 @@ interface OutlineItem {
           (closed)="closeHistory()"
         />
       }
+
+      @if (confirmSheetLeave()) {
+        <div class="sheet-leave-overlay" (click)="answerSheetLeave(false)">
+          <div class="sheet-leave-modal" (click)="$event.stopPropagation()">
+            <h2>Leave without saving?</h2>
+            <p>
+              {{ documentPath.split('/').pop() }} has cell changes that were never
+              saved. Leaving this page throws them away.
+            </p>
+            <div class="sheet-leave-actions">
+              <button type="button" class="btn-edit" (click)="answerSheetLeave(false)">Keep editing</button>
+              <button type="button" class="btn-edit btn-edit-danger" (click)="answerSheetLeave(true)">
+                Leave without saving
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -1027,6 +1114,61 @@ interface OutlineItem {
       transition: background 0.15s, border-color 0.15s;
 
       &:hover { background: var(--background); border-color: var(--primary); color: var(--primary); }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      &:disabled:hover {
+        background: var(--surface);
+        border-color: var(--border);
+        color: var(--text-primary);
+      }
+    }
+
+    .sheet-leave-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .sheet-leave-modal {
+      width: min(420px, calc(100vw - 32px));
+      padding: 20px;
+      background: var(--surface);
+      border-radius: 12px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+
+      h2 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; }
+      p { margin: 0 0 16px; font-size: 0.8125rem; color: var(--text-secondary); }
+    }
+
+    .sheet-leave-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .btn-edit-danger {
+      background: #b3261e;
+      border-color: #b3261e;
+      color: #fff;
+
+      &:hover { background: #8c1d18; border-color: #8c1d18; color: #fff; }
+    }
+
+    .btn-edit-primary {
+      background: var(--primary-dark);
+      border-color: var(--primary-dark);
+      color: #fff;
+
+      &:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
+      &:disabled:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
     }
 
     /* Early-access marker on the action that opens the HTML editor. The tint
@@ -1308,6 +1450,44 @@ interface OutlineItem {
       display: flex;
       flex-direction: column;
       background: var(--surface);
+    }
+
+    .sheet-blocked {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: var(--background);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+
+      .material-icons { font-size: 16px; }
+    }
+
+    .sheet-edit .sheet-cell {
+      width: 100%;
+      min-width: 90px;
+      padding: 2px 4px;
+      font: inherit;
+      color: inherit;
+      background: transparent;
+      border: none;
+      outline: none;
+
+      &:focus {
+        background: var(--surface);
+        box-shadow: inset 0 0 0 2px var(--primary);
+        border-radius: 2px;
+      }
+    }
+
+    /* A calculated cell is marked, because typing into one trades the formula
+       for whatever was typed — worth seeing before you do it, not after. */
+    .sheet-edit td.has-formula {
+      background: var(--border-light);
     }
 
     .sheet-tabs {
@@ -2064,15 +2244,47 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
   previewUrl = signal('');
-  // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order,
-  // each holding the rendered table for that sheet.
-  sheets = signal<{ name: string; html: string }[]>([]);
+  // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order.
+  sheets = signal<SheetView[]>([]);
   activeSheetIndex = signal(0);
+  activeSheet = computed<SheetView | undefined>(() => this.sheets()[this.activeSheetIndex()]);
   activeSheetHtml = computed<SafeHtml>(() => {
-    const sheet = this.sheets()[this.activeSheetIndex()];
-    return sheet ? this.sanitizer.bypassSecurityTrustHtml(sheet.html) : '';
+    const sheet = this.activeSheet();
+    return sheet
+      ? this.sanitizer.bypassSecurityTrustHtml(this.dataFileService.renderTable(sheet.rows))
+      : '';
   });
   spreadsheetError = signal<string | null>(null);
+
+  // --- Spreadsheet editing -------------------------------------------------
+  /**
+   * The parsed workbook, kept so a save can change the edited cells *in it* and
+   * write that back. Rebuilding a workbook from the displayed strings instead
+   * would drop every formula, number format, merge and column width — the grid
+   * shows formatted text, not the underlying model.
+   */
+  private xlsxWorkbook: any = null;
+  /** Pending cell edits, keyed `sheetIndex:row:col` (grid coordinates). */
+  private xlsxEdits = new Map<string, string>();
+  /** False when the workbook holds things this editor would silently destroy. */
+  xlsxEditable = signal(false);
+  /** Why editing is refused, shown instead of the Edit button. */
+  xlsxBlockedReason = signal<string | null>(null);
+  sheetEditMode = signal(false);
+  sheetDirty = signal(false);
+  savingSheet = signal(false);
+  /** Showing the "leave without saving?" prompt for unsaved cell edits. */
+  confirmSheetLeave = signal(false);
+  private sheetLeaveAnswer?: Subject<boolean>;
+  /** The Edit affordance for a spreadsheet, mirroring canEditHtmlFile. */
+  canEditSpreadsheet = computed(() =>
+    this.isPreviewFile() &&
+    this.previewType() === 'spreadsheet' &&
+    !this.sheetEditMode() &&
+    !this.viewingVersion() &&
+    this.xlsxEditable() &&
+    this.canWriteFiles()
+  );
   /** The sheet pane is on screen — a diff of an old version takes precedence. */
   showsSheetPane = computed(() =>
     this.previewType() === 'spreadsheet' &&
@@ -2441,11 +2653,31 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   /**
-   * Route-guard hook (see unsavedChangesGuard): the HTML editor keeps unsaved
-   * edits in the browser only, so navigating away has to be confirmed.
+   * Route-guard hook (see unsavedChangesGuard): the HTML editor and the
+   * spreadsheet grid both keep unsaved edits in the browser only, so navigating
+   * away has to be confirmed rather than quietly discarding them.
    */
   confirmLeave(): boolean | Observable<boolean> {
-    return this.htmlEditor ? this.htmlEditor.confirmLeave() : true;
+    if (this.htmlEditor) return this.htmlEditor.confirmLeave();
+    if (!this.sheetDirty()) return true;
+
+    this.sheetLeaveAnswer?.next(false);
+    const answer = new Subject<boolean>();
+    this.sheetLeaveAnswer = answer;
+    this.confirmSheetLeave.set(true);
+    return answer.asObservable();
+  }
+
+  /** Resolves the leave prompt; true discards the edits and lets navigation run. */
+  answerSheetLeave(leave: boolean): void {
+    this.confirmSheetLeave.set(false);
+    this.sheetLeaveAnswer?.next(leave);
+    this.sheetLeaveAnswer?.complete();
+    this.sheetLeaveAnswer = undefined;
+    if (leave) {
+      this.xlsxEdits.clear();
+      this.sheetDirty.set(false);
+    }
   }
 
   /**
@@ -3206,18 +3438,25 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
       this.loadXlsxLib(),
     ])
       .then(([buffer, XLSX]) => {
-        const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
-        const sheets = wb.SheetNames.map((name: string) => {
-          const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], {
-            header: 1, blankrows: false, defval: '', raw: false
-          });
-          const stringRows = rows.map(r =>
-            (r ?? []).map((c: any) => (c === null || c === undefined) ? '' : String(c))
-          );
-          return { name, html: this.dataFileService.renderTable(stringRows) };
+        // bookFiles exposes the archive's entries, which is how the editability
+        // guard sees parts we would drop. cellStyles keeps number formats.
+        const wb = XLSX.read(new Uint8Array(buffer), {
+          type: 'array', cellStyles: true, bookFiles: true
         });
+        const sheets: SheetView[] = wb.SheetNames.map((name: string) =>
+          this.readSheet(XLSX, wb.Sheets[name], name)
+        );
         // Guard against a race where the user navigated to another file mid-fetch.
         if (this.documentPath !== path) return;
+
+        this.xlsxWorkbook = wb;
+        this.xlsxEdits.clear();
+        this.sheetDirty.set(false);
+        this.sheetEditMode.set(false);
+        const blocked = this.unsupportedForEditing(wb);
+        this.xlsxBlockedReason.set(blocked);
+        this.xlsxEditable.set(blocked === null);
+
         this.sheets.set(sheets);
         this.activeSheetIndex.set(0);
         this.loading.set(false);
@@ -3227,6 +3466,167 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         this.spreadsheetError.set('This spreadsheet could not be read.');
         this.loading.set(false);
       });
+  }
+
+  startSheetEdit(): void {
+    if (!this.canEditSpreadsheet()) return;
+    this.sheetEditMode.set(true);
+  }
+
+  cancelSheetEdit(): void {
+    this.sheetEditMode.set(false);
+    if (!this.sheetDirty()) return;
+    // Edits live only in the grid and the pending map, so re-reading the file is
+    // the cheapest way to be certain nothing half-applied survives.
+    this.xlsxEdits.clear();
+    this.sheetDirty.set(false);
+    this.loadSpreadsheet();
+  }
+
+  /** A cell was typed into: update the grid and remember the edit for the save. */
+  onCellEdit(rowIndex: number, colIndex: number, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    const sheetIndex = this.activeSheetIndex();
+    const sheets = this.sheets();
+    const sheet = sheets[sheetIndex];
+    if (!sheet) return;
+    if (sheet.rows[rowIndex]?.[colIndex] === value) return;
+
+    // Signals holding arrays don't re-emit on in-place mutation, so the row is
+    // replaced rather than written through.
+    const rows = sheet.rows.map((r, i) =>
+      i === rowIndex ? r.map((c, j) => (j === colIndex ? value : c)) : r
+    );
+    this.sheets.set(sheets.map((s, i) => (i === sheetIndex ? { ...s, rows } : s)));
+    this.xlsxEdits.set(`${sheetIndex}:${rowIndex}:${colIndex}`, value);
+    this.sheetDirty.set(true);
+  }
+
+  /**
+   * Writes the edited cells into the parsed workbook and saves the whole file
+   * back through the upload endpoint, which replaces the bytes at this path and
+   * commits — the ordinary document save path only carries text.
+   */
+  saveSpreadsheet(): void {
+    const space = this.space();
+    const wb = this.xlsxWorkbook;
+    if (!space || !wb || this.savingSheet() || !this.sheetDirty()) return;
+
+    this.savingSheet.set(true);
+    const path = this.documentPath;
+
+    this.loadXlsxLib()
+      .then((XLSX: any) => {
+        this.applyEdits(XLSX, wb);
+        const out: ArrayBuffer = XLSX.write(wb, {
+          bookType: 'xlsx', type: 'array', cellStyles: true
+        });
+        const name = path.split('/').pop() || 'sheet.xlsx';
+        const file = new File([out], name, {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        // uploadFiles reports progress events, so the upload is only finished
+        // when the stream completes — the first event is merely "sent".
+        return lastValueFrom(
+          this.documentsService.uploadFiles(space.id, [{ file, relativePath: path }], {
+            commit: true,
+            commitMessage: `Edit ${path}`
+          })
+        );
+      })
+      .then(() => {
+        this.savingSheet.set(false);
+        this.xlsxEdits.clear();
+        this.sheetDirty.set(false);
+        this.toastService.success('Spreadsheet saved', 'Your changes were written and committed.');
+        // The topbar's last-editor line is now stale.
+        this.loadHistoryMeta();
+      })
+      .catch(() => {
+        this.savingSheet.set(false);
+        this.toastService.error('Save failed', 'The spreadsheet could not be saved. Please try again.');
+      });
+  }
+
+  /** Puts each pending edit into its cell, keeping the rest of the model intact. */
+  private applyEdits(XLSX: any, wb: any): void {
+    const sheets = this.sheets();
+    for (const [key, raw] of this.xlsxEdits) {
+      const [sheetIndex, rowIndex, colIndex] = key.split(':').map(Number);
+      const sheet = sheets[sheetIndex];
+      const ws = wb.Sheets[wb.SheetNames[sheetIndex]];
+      if (!sheet || !ws) continue;
+
+      const address = XLSX.utils.encode_cell({
+        r: sheet.origin.r + rowIndex,
+        c: sheet.origin.c + colIndex
+      });
+      const previous = ws[address];
+      const value = raw.trim();
+
+      if (value === '') {
+        delete ws[address];
+        continue;
+      }
+
+      // A typed literal replaces whatever was there, formula included — the UI
+      // marks formula cells so that is a deliberate act rather than a surprise.
+      const asNumber = Number(value);
+      const isNumeric = value !== '' && Number.isFinite(asNumber);
+      const cell: any = isNumeric ? { t: 'n', v: asNumber } : { t: 's', v: raw };
+      // Keep the cell's number format so an edited figure still displays as one.
+      if (previous?.z) cell.z = previous.z;
+      ws[address] = cell;
+    }
+  }
+
+  /** One sheet's grid, walked over its declared range so indices map to addresses. */
+  private readSheet(XLSX: any, ws: any, name: string): SheetView {
+    const ref = ws?.['!ref'];
+    if (!ref) return { name, rows: [], formulaAt: [], origin: { r: 0, c: 0 } };
+
+    const range = XLSX.utils.decode_range(ref);
+    const rows: string[][] = [];
+    const formulaAt: boolean[][] = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const row: string[] = [];
+      const formulaRow: boolean[] = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        // `w` is the formatted text Excel would show; fall back to the raw value.
+        row.push(cell ? (cell.w ?? (cell.v === undefined || cell.v === null ? '' : String(cell.v))) : '');
+        formulaRow.push(!!cell?.f);
+      }
+      rows.push(row);
+      formulaAt.push(formulaRow);
+    }
+    return { name, rows, formulaAt, origin: { r: range.s.r, c: range.s.c } };
+  }
+
+  /**
+   * Parts of a workbook this editor cannot round-trip, by archive entry.
+   *
+   * SheetJS does not model charts, pivot tables, drawings or embedded images, so
+   * they are absent from the object we write back — a save would drop them
+   * without a word. Refusing to edit is the honest outcome: the alternative is
+   * silently returning someone a gutted workbook.
+   */
+  private unsupportedForEditing(wb: any): string | null {
+    const entries: string[] = wb?.keys ?? Object.keys(wb?.files ?? {});
+    if (!entries.length) return null;
+
+    const found = [
+      { prefix: 'xl/charts/', label: 'charts' },
+      { prefix: 'xl/pivotTables/', label: 'pivot tables' },
+      { prefix: 'xl/drawings/', label: 'drawings' },
+      { prefix: 'xl/media/', label: 'images' },
+    ].filter(part => entries.some(e => e.startsWith(part.prefix))).map(part => part.label);
+
+    if (!found.length) return null;
+    const list = found.length === 1
+      ? found[0]
+      : `${found.slice(0, -1).join(', ')} and ${found[found.length - 1]}`;
+    return `This workbook contains ${list}, which editing here would remove. Open it in Excel to change it.`;
   }
 
   private xlsxLoader?: Promise<any>;
