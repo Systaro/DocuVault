@@ -865,6 +865,8 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
 
   private shouldScrollToBottom = false;
   private markdownCache = new Map<string, SafeHtml>();
+  /** Pending mermaid pass; coalesced so a burst of renders runs it once. */
+  private mermaidTimer?: number;
 
   constructor(
     private route: ActivatedRoute,
@@ -973,6 +975,7 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
     this.aiService.getChatHistoryById(history.id).subscribe({
       next: (chat) => {
         this.currentChat.set(chat);
+        this.scheduleMermaid();
         this.shouldScrollToBottom = true;
         this.historyOpen.set(false);
       }
@@ -1047,6 +1050,7 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
         }
         this.sending.set(false);
         this.shouldScrollToBottom = true;
+        this.scheduleMermaid();
         this.loadChatHistories(space.id);
       },
       error: () => {
@@ -1068,15 +1072,33 @@ export class SpaceChatComponent implements OnInit, AfterViewChecked {
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   }
 
+  /**
+   * Called from a template binding, so it runs on every change detection cycle —
+   * once per message, on every keystroke, hover and timer. It must therefore be
+   * a pure cache lookup and nothing else.
+   *
+   * It used to also schedule a mermaid pass over the whole conversation. That
+   * queued one timer per message per cycle, and each pass rewrote the DOM, which
+   * scheduled the next round: with a long conversation the tab grew until Chrome
+   * killed it ("Aw, Snap", out of memory). Mermaid now runs once when the
+   * messages actually change — see [scheduleMermaid].
+   */
   renderMarkdown(content: string): SafeHtml {
     let cached = this.markdownCache.get(content);
     if (!cached) {
       cached = this.markdownService.renderInline(content);
       this.markdownCache.set(content, cached);
     }
-    // Defer mermaid rendering until Angular has flushed the new innerHTML.
-    setTimeout(() => this.markdownService.runMermaid(this.hostRef.nativeElement), 0);
     return cached;
+  }
+
+  /** One mermaid pass after Angular has flushed newly rendered messages. */
+  private scheduleMermaid(): void {
+    clearTimeout(this.mermaidTimer);
+    this.mermaidTimer = setTimeout(
+      () => this.markdownService.runMermaid(this.hostRef.nativeElement),
+      0
+    ) as unknown as number;
   }
 
   navigateToSource(source: string): void {
