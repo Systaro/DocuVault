@@ -1,8 +1,44 @@
-export type RenderMode = 'markdown' | 'html' | 'image' | 'pdf' | 'download';
+export type RenderMode = 'markdown' | 'html' | 'image' | 'pdf' | 'video' | 'audio' | 'download';
 
 const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
 ]);
+
+/**
+ * Formats a browser can play in a <video>/<audio> element. Kept in step with
+ * MEDIA_CONTENT_TYPES in the backend's SpaceFileController — a format listed
+ * here but not there is served as octet-stream and will not play.
+ */
+export const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'ogv', 'mov']);
+export const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'oga', 'ogg', 'flac', 'aac']);
+
+/**
+ * Files DocuVault has no viewer for. They are offered as a download rather than
+ * opened, because the fallback is the text editor — and handing it a zip or a
+ * .docx produced an empty "Untitled" page that looked like the file was gone.
+ *
+ * This is a list of known-binary formats rather than "anything unrecognised":
+ * an unknown extension is far more likely to be text (`.conf`, `.env`, `.rb`)
+ * and those still open in the editor, which is the useful behaviour.
+ */
+const UNRENDERABLE_EXTENSIONS = new Set([
+  // Office documents with no in-app viewer (xlsx/xls render as sheets, so not here)
+  'doc', 'docx', 'odt', 'rtf', 'ppt', 'pptx', 'pps', 'odp', 'pages', 'key', 'numbers',
+  // Archives and disk images
+  'zip', '7z', 'rar', 'gz', 'gz2', 'tgz', 'tar', 'bz2', 'xz', 'iso', 'dmg', 'jar', 'apk', 'msi', 'deb', 'rpm',
+  // Media the browser cannot play in a <video>/<audio> element
+  'wmv', 'avi', 'mkv', 'flv', 'swf', '3gp', 'asf', 'divx', 'mpeg', 'mpg', 'wma', 'aiff', 'mid', 'midi',
+  // Images with no browser support
+  'tif', 'tiff', 'psd', 'ai', 'eps', 'raw', 'cr2', 'nef', 'heic',
+  // Binaries, libraries and fonts
+  'exe', 'dll', 'sys', 'bat', 'so', 'dylib', 'bin', 'dat', 'class', 'pyc', 'o', 'a',
+  'ttf', 'otf', 'woff', 'woff2', 'eot',
+]);
+
+/** True when there is no viewer for this file and it should be offered for download. */
+export function isUnrenderable(path: string): boolean {
+  return UNRENDERABLE_EXTENSIONS.has(getExtension(path));
+}
 
 export function getRenderMode(extension: string): RenderMode {
   const ext = extension.toLowerCase();
@@ -10,6 +46,8 @@ export function getRenderMode(extension: string): RenderMode {
   if (ext === 'html' || ext === 'htm') return 'html';
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (ext === 'pdf') return 'pdf';
+  if (VIDEO_EXTENSIONS.has(ext)) return 'video';
+  if (AUDIO_EXTENSIONS.has(ext)) return 'audio';
   return 'download';
 }
 
@@ -54,6 +92,8 @@ export function getFileIconGlyph(path: string): string {
   if (['html', 'htm'].includes(ext)) return 'code';
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (ext === 'pdf') return 'picture_as_pdf';
+  if (VIDEO_EXTENSIONS.has(ext)) return 'movie';
+  if (AUDIO_EXTENSIONS.has(ext)) return 'audiotrack';
   if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) return 'table_chart';
   if (ext === 'drawio') return 'account_tree';
   if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) return 'article';
