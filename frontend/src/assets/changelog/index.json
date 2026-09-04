@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.7.0",
+    "date": "2026-09-04",
+    "title": "Moving something no longer breaks the trail back to it"
+  },
+  {
     "version": "v0.6.0",
     "date": "2026-08-29",
     "title": "Comment on the words you mean"
