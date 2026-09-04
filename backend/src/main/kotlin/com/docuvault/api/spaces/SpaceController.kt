@@ -14,6 +14,8 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.TeamRepository
 import com.docuvault.infrastructure.repository.TeamSpacePermissionRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.AccessRequestResult
+import com.docuvault.service.AccessRequestService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.SpaceMember
 import com.docuvault.service.TeamService
@@ -52,6 +54,7 @@ class SpaceController(
     private val gitLabService: GitLabService,
     private val gitService: GitService,
     private val permissionService: PermissionService,
+    private val accessRequestService: AccessRequestService,
     private val s3Client: S3Client,
     @Value("\${minio.bucket}") private val logoBucket: String
 ) {
@@ -192,6 +195,60 @@ class SpaceController(
             documentCount = if (space.type == SpaceType.REPOSITORY) documentRepository.countBySpaceId(space.id!!) else 0,
             childCount = spaceRepository.countChildren(space.id!!)
         ))
+    }
+
+    /**
+     * Asks the people who can grant it to let this user into a space.
+     *
+     * Addressed by path, not id: the caller got a 403 with no body, so the path
+     * from the URL is all they have. Any signed-in user may call it — that is
+     * the point — and it deliberately confirms the space exists, which the 403
+     * already did.
+     */
+    @PostMapping("/request-access")
+    fun requestAccess(
+        @Valid @RequestBody request: AccessRequestDto,
+        @AuthenticationPrincipal userDetails: UserDetails
+    ): ResponseEntity<Map<String, String>> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = resolveSpaceByPath(request.fullPath)
+            ?: return ResponseEntity.notFound().build()
+
+        return when (val result = accessRequestService.request(user, space, request.message)) {
+            is AccessRequestResult.Sent -> ResponseEntity.ok(
+                mapOf(
+                    "status" to "SENT",
+                    "message" to "Your request was sent to ${result.notified} " +
+                        if (result.notified == 1) "person who can grant access." else "people who can grant access."
+                )
+            )
+            AccessRequestResult.AlreadyPending -> ResponseEntity.ok(
+                mapOf("status" to "ALREADY_PENDING", "message" to "You already asked for this recently. They have been notified.")
+            )
+            AccessRequestResult.AlreadyHasAccess -> ResponseEntity.ok(
+                mapOf("status" to "ALREADY_HAS_ACCESS", "message" to "You already have access to this space.")
+            )
+            AccessRequestResult.NoOneToNotify -> ResponseEntity.ok(
+                mapOf(
+                    "status" to "NO_ONE_TO_NOTIFY",
+                    "message" to "Nobody could be reached about this space. Please ask an administrator directly."
+                )
+            )
+        }
+    }
+
+    /** Walks a slug path down the space tree, ignoring permissions. */
+    private fun resolveSpaceByPath(fullPath: String): Space? {
+        val slugs = fullPath.split("/").filter { it.isNotBlank() }
+        if (slugs.isEmpty()) return null
+        var current: Space? = spaceRepository.findBySlugAndParentIsNull(slugs[0])
+        for (i in 1 until slugs.size) {
+            if (current == null) return null
+            current = spaceRepository.findBySlugAndParentId(slugs[i], current.id)
+        }
+        return current
     }
 
     @GetMapping("/path/{*fullPath}")
@@ -759,6 +816,14 @@ class SpaceController(
         return ResponseEntity.ok(mapOf("level" to level.name))
     }
 }
+
+/** "Request access" from someone who cannot open a space. */
+data class AccessRequestDto(
+    @field:NotBlank(message = "Path is required")
+    val fullPath: String,
+    /** Optional note from the requester, shown in the email. */
+    val message: String? = null
+)
 
 data class CreateSpaceRequest(
     @field:NotBlank(message = "Name is required")

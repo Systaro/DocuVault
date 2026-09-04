@@ -74,6 +74,12 @@ export interface SpaceMember {
   superAdmin: boolean;
 }
 
+/** Outcome of asking for access to a space. */
+export interface AccessRequestResponse {
+  status: 'SENT' | 'ALREADY_PENDING' | 'ALREADY_HAS_ACCESS' | 'NO_ONE_TO_NOTIFY';
+  message: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SpacesService {
   constructor(private http: HttpClient) {}
@@ -103,6 +109,14 @@ export class SpacesService {
 
   getSpaceBySlug(slug: string): Observable<Space> {
     return this.http.get<Space>(`/api/spaces/slug/${slug}`);
+  }
+
+  /**
+   * Asks whoever can grant it to let the current user into a space.
+   * Addressed by path because a 403 gives the caller no space id.
+   */
+  requestAccess(fullPath: string, message?: string): Observable<AccessRequestResponse> {
+    return this.http.post<AccessRequestResponse>('/api/spaces/request-access', { fullPath, message });
   }
 
   getSpaceByPath(fullPath: string): Observable<Space> {
