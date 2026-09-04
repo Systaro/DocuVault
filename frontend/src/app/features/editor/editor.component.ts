@@ -28,7 +28,7 @@ import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '..
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
-import { isAiEditable } from '../../shared/utils/file-utils';
+import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
 import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 import { AuthService } from '../../core/auth/auth.service';
@@ -588,6 +588,38 @@ interface SheetView {
           } @else if (previewType() === 'drawio') {
             <div class="drawio-preview-container">
               <div #drawioElement class="drawio" [attr.data-drawio-src]="previewUrl()"></div>
+            </div>
+          } @else if (previewType() === 'download') {
+            <div class="media-preview-container">
+              <div class="unsupported-card">
+                <span translate="no" class="material-icons unsupported-icon">{{ fileGlyph(documentPath) }}</span>
+                <h2 class="unsupported-name">{{ documentPath.split('/').pop() }}</h2>
+                <p class="unsupported-hint">DocuVault can't show this kind of file. You can download it and open it locally.</p>
+                <a class="unsupported-download" [href]="previewUrl() + '?download=true'" download>
+                  <span translate="no" class="material-icons">download</span>
+                  Download file
+                </a>
+              </div>
+            </div>
+          } @else if (previewType() === 'video' || previewType() === 'audio') {
+            <div class="media-preview-container">
+              @if (previewType() === 'video') {
+                <!-- The backend answers Range requests, so this streams and seeks
+                     rather than waiting for the whole file. -->
+                <video
+                  class="media-player media-video"
+                  [src]="previewUrl()"
+                  controls
+                  preload="metadata"
+                  playsinline
+                ></video>
+              } @else {
+                <div class="media-audio-card">
+                  <span translate="no" class="material-icons media-audio-icon">audiotrack</span>
+                  <span class="media-audio-name">{{ documentPath.split('/').pop() }}</span>
+                  <audio class="media-player" [src]="previewUrl()" controls preload="metadata"></audio>
+                </div>
+              }
             </div>
           } @else if (previewType() === 'spreadsheet') {
             <div class="spreadsheet-preview-container">
@@ -1456,6 +1488,98 @@ interface SheetView {
       background: var(--surface);
     }
 
+    .unsupported-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      max-width: 420px;
+      padding: 32px;
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    .unsupported-icon {
+      font-size: 44px;
+      color: var(--primary);
+    }
+
+    .unsupported-name {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    .unsupported-hint {
+      margin: 0 0 6px;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .unsupported-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-md);
+      background: var(--primary-dark);
+      color: #fff;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      text-decoration: none;
+
+      &:hover { background: var(--primary); }
+      .material-icons { font-size: 18px; }
+    }
+
+    .media-preview-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      padding: 24px;
+    }
+
+    .media-video {
+      /* Bounded so a portrait clip cannot push the page taller than the pane. */
+      max-width: min(100%, 1100px);
+      max-height: 78vh;
+      background: #000;
+      border-radius: var(--radius-md);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+    }
+
+    .media-audio-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 28px 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
+
+    .media-audio-icon {
+      font-size: 40px;
+      color: var(--primary);
+    }
+
+    .media-audio-name {
+      font-size: 13px;
+      color: var(--text-secondary);
+      word-break: break-all;
+      text-align: center;
+    }
+
+    .media-audio-card .media-player {
+      width: min(70vw, 420px);
+    }
+
     .sheet-blocked {
       display: flex;
       align-items: center;
@@ -2127,7 +2251,9 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private static readonly HTML_EXTENSIONS = new Set(['html', 'htm']);
   private static readonly PDF_EXTENSIONS = new Set(['pdf']);
   // Binary spreadsheets — fetched as bytes and parsed client-side into tables.
-  private static readonly SPREADSHEET_EXTENSIONS = new Set(['xlsx', 'xls']);
+  private static readonly VIDEO_EXTENSIONS = VIDEO_EXTENSIONS;
+ static readonly AUDIO_EXTENSIONS = AUDIO_EXTENSIONS;
+ static readonly SPREADSHEET_EXTENSIONS = new Set(['xlsx', 'xls']);
 
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
@@ -2246,7 +2372,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     !(this.viewingVersion() && this.historyViewMode() === 'diff')
   );
   isPreviewFile = signal(false);
-  previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet'>('image');
+  previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet' | 'video' | 'audio' | 'download'>('image');
   previewUrl = signal('');
   // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order.
   sheets = signal<SheetView[]>([]);
@@ -2700,6 +2826,11 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     return version.path || this.documentPath;
   }
 
+  /** Material glyph for a file, so the download card is not a generic sheet of paper. */
+  fileGlyph(path: string): string {
+    return getFileIconGlyph(path);
+  }
+
   /** Open the version-history drawer and load the document's commit track. */
   openHistory(): void {
     this.closeActionMenus();
@@ -3123,9 +3254,28 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
             this.previewUrl.set(url);
             this.safePreviewUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(url));
           }
+        } else if (EditorComponent.VIDEO_EXTENSIONS.has(ext) || EditorComponent.AUDIO_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.previewType.set(EditorComponent.VIDEO_EXTENSIONS.has(ext) ? 'video' : 'audio');
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
+          }
         } else if (ext === 'drawio') {
           this.isPreviewFile.set(true);
           this.previewType.set('drawio');
+          this.loading.set(false);
+          const space = this.space();
+          if (space) {
+            this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
+          }
+        } else if (isUnrenderable(path)) {
+          // No viewer for this one. Without this branch it fell through to the
+          // text editor and opened a blank "Untitled" page, which reads as if
+          // the file were missing.
+          this.isPreviewFile.set(true);
+          this.previewType.set('download');
           this.loading.set(false);
           const space = this.space();
           if (space) {
