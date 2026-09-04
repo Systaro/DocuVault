@@ -1151,16 +1151,8 @@ interface SheetView {
 
       &:hover { background: var(--background); border-color: var(--primary); color: var(--primary); }
 
-      &:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-
-      &:disabled:hover {
-        background: var(--surface);
-        border-color: var(--border);
-        color: var(--text-primary);
-      }
+      &:disabled { opacity: 0.5; cursor: default; }
+      &:disabled:hover { background: var(--surface); border-color: var(--border); color: var(--text-primary); }
     }
 
     .sheet-leave-overlay {
@@ -1181,30 +1173,21 @@ interface SheetView {
       box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
 
       h2 { margin: 0 0 8px; font-size: 1rem; font-weight: 600; }
-      p { margin: 0 0 16px; font-size: 0.8125rem; color: var(--text-secondary); }
+      p { margin: 0 0 16px; font-size: 13px; color: var(--text-secondary); }
     }
 
-    .sheet-leave-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
+    .sheet-leave-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-    .btn-edit-danger {
+    .btn-edit-danger, .btn-edit-danger:hover {
       background: #b3261e;
       border-color: #b3261e;
       color: #fff;
-
-      &:hover { background: #8c1d18; border-color: #8c1d18; color: #fff; }
     }
 
-    .btn-edit-primary {
+    .btn-edit-primary, .btn-edit-primary:hover, .btn-edit-primary:disabled:hover {
       background: var(--primary-dark);
       border-color: var(--primary-dark);
       color: #fff;
-
-      &:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
-      &:disabled:hover { background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; }
     }
 
     /* Early-access marker on the action that opens the HTML editor. The tint
@@ -1488,98 +1471,6 @@ interface SheetView {
       background: var(--surface);
     }
 
-    .unsupported-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      max-width: 420px;
-      padding: 32px;
-      text-align: center;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-    }
-
-    .unsupported-icon {
-      font-size: 44px;
-      color: var(--primary);
-    }
-
-    .unsupported-name {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-      word-break: break-all;
-    }
-
-    .unsupported-hint {
-      margin: 0 0 6px;
-      font-size: 0.8125rem;
-      color: var(--text-secondary);
-      line-height: 1.5;
-    }
-
-    .unsupported-download {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: var(--radius-md);
-      background: var(--primary-dark);
-      color: #fff;
-      font-size: 0.8125rem;
-      font-weight: 500;
-      text-decoration: none;
-
-      &:hover { background: var(--primary); }
-      .material-icons { font-size: 18px; }
-    }
-
-    .media-preview-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 60vh;
-      padding: 24px;
-    }
-
-    .media-video {
-      /* Bounded so a portrait clip cannot push the page taller than the pane. */
-      max-width: min(100%, 1100px);
-      max-height: 78vh;
-      background: #000;
-      border-radius: var(--radius-md);
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-    }
-
-    .media-audio-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 28px 32px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-    }
-
-    .media-audio-icon {
-      font-size: 40px;
-      color: var(--primary);
-    }
-
-    .media-audio-name {
-      font-size: 13px;
-      color: var(--text-secondary);
-      word-break: break-all;
-      text-align: center;
-    }
-
-    .media-audio-card .media-player {
-      width: min(70vw, 420px);
-    }
-
     .sheet-blocked {
       display: flex;
       align-items: center;
@@ -1605,11 +1496,7 @@ interface SheetView {
       border: none;
       outline: none;
 
-      &:focus {
-        background: var(--surface);
-        box-shadow: inset 0 0 0 2px var(--primary);
-        border-radius: 2px;
-      }
+      &:focus { background: var(--surface); box-shadow: inset 0 0 0 2px var(--primary); border-radius: 2px; }
     }
 
     /* A calculated cell is marked, because typing into one trades the formula

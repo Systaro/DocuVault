@@ -1737,3 +1737,62 @@ body {
 
   &:hover { background: var(--surface-hover, #f3f4f6); }
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Preview pane: media player and the "no viewer" download card.
+
+   Global rather than component-scoped for the same reason .data-table is:
+   the editor and the /preview viewer both render these, and the editor's
+   own stylesheet is already at the per-component budget ceiling.
+   ────────────────────────────────────────────────────────────── */
+/* Frame shared by the player and the "no viewer" card. */
+.media-preview-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+}
+
+/* Bounded so a portrait clip cannot push the page taller than the pane. */
+.media-video {
+  max-width: min(100%, 1100px);
+  max-height: 78vh;
+  background: #000;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+.media-audio-card, .unsupported-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  padding: 28px 32px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.media-audio-icon, .unsupported-icon { font-size: 42px; color: var(--primary); }
+.media-audio-name, .unsupported-hint { font-size: 13px; color: var(--text-secondary); word-break: break-word; }
+.unsupported-name { margin: 0; font-size: 1rem; font-weight: 600; word-break: break-all; }
+.unsupported-hint { margin: 0 0 4px; line-height: 1.5; }
+.media-audio-card .media-player { width: min(70vw, 420px); }
+
+.unsupported-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  background: var(--primary-dark);
+  color: #fff;
+  font-size: 13px;
+  text-decoration: none;
+
+  &:hover { background: var(--primary); }
+  .material-icons { font-size: 18px; }
+}

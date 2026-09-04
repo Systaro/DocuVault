@@ -187,15 +187,15 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
               />
             </div>
           } @else if (renderMode() === 'video') {
-            <div class="media-container">
+            <div class="media-preview-container">
               <video class="media-video" [src]="rawUrl()" controls preload="metadata" playsinline></video>
             </div>
           } @else if (renderMode() === 'audio') {
-            <div class="media-container">
+            <div class="media-preview-container">
               <div class="media-audio-card">
                 <span translate="no" class="material-icons media-audio-icon">audiotrack</span>
                 <span class="media-audio-name">{{ currentFileName() }}</span>
-                <audio [src]="rawUrl()" controls preload="metadata"></audio>
+                <audio class="media-player" [src]="rawUrl()" controls preload="metadata"></audio>
               </div>
             </div>
           } @else if (renderMode() === 'download') {
