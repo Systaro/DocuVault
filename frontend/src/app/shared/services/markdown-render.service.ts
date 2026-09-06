@@ -56,7 +56,7 @@ export class MarkdownRenderService {
     renderer.heading = (text: string, level: number, raw: string) => {
       return `<h${level} id="${this.headingId(raw)}">${text}</h${level}>\n`;
     };
-    this.applyCodeRules(renderer);
+    this.applyRendererRules(renderer);
 
     let html = marked.parse(content, { renderer }) as string;
 
@@ -111,7 +111,7 @@ export class MarkdownRenderService {
    */
   renderToHtml(content: string): string {
     const renderer = new Renderer();
-    this.applyCodeRules(renderer);
+    this.applyRendererRules(renderer);
     return marked.parse(content, { renderer }) as string;
   }
 
@@ -427,6 +427,12 @@ export class MarkdownRenderService {
       .trim();
   }
 
+  /** The renderer overrides every render surface shares. */
+  private applyRendererRules(renderer: Renderer): void {
+    this.applyCodeRules(renderer);
+    this.applyTableRule(renderer);
+  }
+
   /**
    * Code is not prose. Chrome's "Translate this page" rewrites any text it can
    * reach, which turns a shell command or an identifier into nonsense, so every
@@ -445,6 +451,21 @@ export class MarkdownRenderService {
     };
     // marked hands codespan() text that is already escaped.
     renderer.codespan = (code: string) => `<code translate="no">${code}</code>`;
+  }
+
+  /**
+   * A table gets its own scrollport. On a phone the paper column is narrower
+   * than any table with more than two columns, and without a wrapper the only
+   * ways out are squeezing every column to a couple of characters or pushing
+   * the whole page sideways. The wrapper takes the sideways scroll instead, so
+   * the table can keep its natural column widths while the prose around it
+   * stays put; on a wide screen it is inert, because the table fits.
+   */
+  private applyTableRule(renderer: Renderer): void {
+    renderer.table = (header: string, body: string) =>
+      `<div class="md-table-scroll"><table><thead>${header}</thead>` +
+      (body ? `<tbody>${body}</tbody>` : '') +
+      `</table></div>\n`;
   }
 
   private escape(s: string): string {

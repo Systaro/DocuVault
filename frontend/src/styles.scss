@@ -1689,6 +1689,87 @@ body {
 }
 
 // ============================================
+// MARKDOWN TABLES ON NARROW SCREENS
+// ============================================
+// Every markdown table is rendered inside `.md-table-scroll` (see
+// MarkdownRenderService.applyTableRule), which is the table's own scrollport.
+// Placed after both `.markdown-readonly` and `.markdown-container` on purpose:
+// the rules below share their specificity, so source order is what lets them
+// win over the desktop table styles.
+//
+// On a wide screen the wrapper does nothing — the table still fills the paper
+// column and never scrolls. It earns its keep on a phone, where a paper column
+// of ~300px cannot hold four columns: the alternative is a table squeezed to
+// two characters per column, or a page that pans sideways as a whole and takes
+// the prose with it.
+//
+// Deliberately without an edge fade or scroll shadow: the header row and the
+// zebra stripes are opaque and paint straight over anything the wrapper puts
+// behind them (measured, not assumed). The clipping is the affordance — a table
+// cut through the middle of a column at the screen edge reads as "there is
+// more" in a way the squeezed version never did.
+.md-table-scroll {
+  overflow-x: auto;
+  // Keeps a sideways swipe inside the table instead of handing it on to the
+  // page — or, on iOS, to the browser's back gesture.
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .md-table-scroll {
+    // Full-bleed: the paper's padding is worth more to the table than the
+    // alignment with the prose, and the padding is put back inside so the
+    // first and last column don't sit flush against the screen edge.
+    // `max-width: none` is what lets the negative margins actually widen the
+    // box — clamped to 100% it would slide left without gaining any room, and
+    // end up narrower than the prose it was meant to outgrow.
+    max-width: none;
+    margin-inline: calc(var(--paper-padding, 24px) * -1);
+    padding-inline: var(--paper-padding, 24px);
+
+    table {
+      // Smaller than the body text: a table is scanned, not read, and the extra
+      // characters per line are what keep a heading like "Fahrzeuge
+      // gleichzeitig" on one or two lines instead of five.
+      font-size: 12.5px;
+      line-height: 1.45;
+      // Wide enough to fill the scrollport when the table is small, free to
+      // grow past it when it isn't.
+      width: max-content;
+      min-width: 100%;
+    }
+
+    th, td {
+      padding: 5px 8px;
+      // Without a floor, a column of short numbers collapses to nothing next to
+      // a column of prose; without a ceiling, one long cell drags the table
+      // thousands of pixels wide. Between them the columns wrap.
+      min-width: 4.5rem;
+      max-width: 14rem;
+      overflow-wrap: break-word;
+    }
+  }
+}
+
+// The two paper surfaces pad themselves differently, and the full-bleed rule
+// above has to undo exactly as much as the surface it sits on applied.
+.markdown-readonly {
+  --paper-padding: 24px;
+}
+
+.markdown-container {
+  --paper-padding: 48px;
+
+  @media (max-width: 768px) {
+    // 48px of padding either side leaves a phone barely 290px of content.
+    --paper-padding: 20px;
+    padding: 24px 20px;
+  }
+}
+
+// ============================================
 // SHARED IMAGE ZOOM TOOLBAR
 // ============================================
 .zoom-toolbar {
