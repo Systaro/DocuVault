@@ -52,7 +52,7 @@ import { APP_VERSION } from '../version';
           <app-header-search class="desktop-search" />
           <button class="quick-note-btn" title="Quick Note (⌘K)" (click)="showCapture.set(true)">
             <span translate="no" class="material-icons">add</span>
-            Quick Note
+            <span class="quick-note-label">Quick Note</span>
           </button>
           <button class="icon-btn mobile-search-btn" title="Search" (click)="showSearch.set(true)">
             <span translate="no" class="material-icons">search</span>
@@ -306,9 +306,17 @@ import { APP_VERSION } from '../version';
       flex: 1;
     }
 
+    // The bar is one fixed 64px row and nothing in it shrinks, so on a phone it
+    // simply ran past the viewport — 375px of actions in 244px of room — and
+    // made the *whole page* pan sideways. That is why a document appeared to
+    // scroll horizontally as a whole: the header, not the document, was too
+    // wide. Everything below is about getting the row under the viewport width;
+    // nothing is dropped that has no other way in, because .header-nav is
+    // already gone here and admin settings would otherwise be unreachable.
     @media (max-width: 768px) {
       .app-header {
-        padding: 0 var(--spacing-md);
+        padding: 0 10px;
+        gap: var(--spacing-xs);
       }
 
       .header-nav {
@@ -325,6 +333,69 @@ import { APP_VERSION } from '../version';
 
       .mobile-search-btn {
         display: flex;
+      }
+
+      // The wordmark is the one element with slack: it is a horizontal lockup
+      // and reads fine smaller, while every icon next to it is already at the
+      // floor of a comfortable tap target.
+      .logo-img {
+        max-width: 88px;
+        height: auto;
+      }
+
+      .header-actions {
+        gap: var(--spacing-xs);
+      }
+
+      // Icon only. The label is the single biggest item in the row (114px of
+      // 375) and the icon plus the title attribute carry the same meaning.
+      .quick-note-btn {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        gap: 0;
+        justify-content: center;
+      }
+
+      .quick-note-label {
+        display: none;
+      }
+
+      .header-user {
+        margin-left: var(--spacing-xs);
+        padding-left: var(--spacing-sm);
+      }
+
+      .avatar {
+        width: 32px;
+        height: 32px;
+      }
+    }
+
+    // A second tier for the narrow end of the range (320-400px). Same idea,
+    // one notch tighter — measured at 320px, which is where the first tier
+    // still ran 19px over.
+    @media (max-width: 400px) {
+      .app-header {
+        padding: 0 var(--spacing-sm);
+      }
+
+      .logo-img {
+        max-width: 68px;
+      }
+
+      .header-actions {
+        gap: 2px;
+      }
+
+      .quick-note-btn {
+        width: 32px;
+        height: 32px;
+      }
+
+      .header-user {
+        margin-left: 2px;
+        padding-left: 6px;
       }
     }
   `]
