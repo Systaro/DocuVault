@@ -1689,6 +1689,30 @@ body {
 }
 
 // ============================================
+// APP HEADER ICON BUTTONS ON NARROW SCREENS
+// ============================================
+// The rest of the header's phone tier lives in LayoutComponent, next to the
+// classes it owns. These two live here because `.icon-btn` is a global class
+// and one of the header's icon buttons — notifications — is rendered by a
+// child component, where the layout's scoped styles do not reach. Sizing them
+// from the component would shrink four buttons out of five and leave the bell
+// standing at 40px, which is exactly the kind of near-miss that puts the row
+// back over the viewport width.
+@media (max-width: 768px) {
+  .app-header .icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (max-width: 400px) {
+  .app-header .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+// ============================================
 // MARKDOWN TABLES ON NARROW SCREENS
 // ============================================
 // Every markdown table is rendered inside `.md-table-scroll` (see
