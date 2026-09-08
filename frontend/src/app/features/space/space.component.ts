@@ -275,6 +275,30 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
           />
         }
 
+        @if (pendingMove(); as move) {
+          <div class="modal-overlay" (click)="cancelMove()">
+            <div class="modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h2>{{ move.node.isDirectory ? 'Move folder' : 'Move file' }}</h2>
+              </div>
+              <div class="modal-body">
+                <p>Move <strong>{{ move.node.name }}</strong> to <strong>{{ move.targetLabel }}</strong>?</p>
+                <p class="modal-hint">From {{ move.sourceLabel }} to {{ move.targetLabel }}.</p>
+                @if (move.node.isDirectory) {
+                  <p class="modal-warning">
+                    <span translate="no" class="material-icons">warning_amber</span>
+                    <span>Everything inside moves with it.</span>
+                  </p>
+                }
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" (click)="cancelMove()">Cancel</button>
+                <button type="button" class="btn btn-primary" (click)="confirmMove()">Move</button>
+              </div>
+            </div>
+          </div>
+        }
+
         @if (deletingNode(); as node) {
           <div class="modal-overlay" (click)="cancelDeleteFile()">
             <div class="modal" (click)="$event.stopPropagation()">
@@ -2041,6 +2065,11 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    // The confirmation is the most recently opened thing, so it goes first.
+    if (this.pendingMove()) {
+      this.pendingMove.set(null);
+      return;
+    }
     if (this.mobileSidebarOpen()) {
       this.mobileSidebarOpen.set(false);
     }
@@ -2404,7 +2433,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     }
     const node = this.draggingNode();
     this.draggingNode.set(null);
-    if (node) this.moveNodeToFolder(node, path);
+    if (node) this.requestMoveToFolder(node, path);
   }
 
   // --- Empty sidebar space: drop into the space root ---
@@ -2433,7 +2462,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     }
     const node = this.draggingNode();
     this.draggingNode.set(null);
-    if (node) this.moveNodeToFolder(node, '');
+    if (node) this.requestMoveToFolder(node, '');
   }
 
   /** Dropped files or folders land in `folder`, directory structure intact. */
@@ -2478,18 +2507,64 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     });
   }
 
-  /** Move a dragged tree node (file or folder) into a destination folder. */
-  private moveNodeToFolder(node: FileNode, targetFolder: string): void {
-    const space = this.spaceSignal();
-    if (!space) return;
+  /**
+   * A drop that is waiting to be confirmed. Drag and drop is easy to trigger by
+   * accident — a press that travels far enough while the pointer happens to be
+   * over another folder moves the document without anyone meaning to, and the
+   * only clue afterwards is that the file is no longer where it was. So the
+   * drop states its case and waits. The menu's own "Move to…" is not routed
+   * through here: there the target was picked deliberately, in a dialog.
+   */
+  pendingMove = signal<{
+    node: FileNode; targetFolder: string; sourceLabel: string; targetLabel: string;
+  } | null>(null);
+
+  /** Human-readable name of a folder path, for the dialog. */
+  private folderLabel(path: string): string {
+    return path || 'space root';
+  }
+
+  /**
+   * Runs the checks that would make the move impossible, then asks. Refusing
+   * here rather than after the confirmation keeps the dialog from offering a
+   * move that cannot happen.
+   */
+  private requestMoveToFolder(node: FileNode, targetFolder: string): void {
     const newPath = targetFolder ? `${targetFolder}/${node.name}` : node.name;
-    // Already there — dropping on the current parent is a no-op.
+    // Already there — dropping on the current parent is a no-op, and asking
+    // about a move that changes nothing would be noise.
     if (newPath === node.path) return;
     // A folder can't be moved into itself or one of its own descendants.
     if (node.isDirectory && (targetFolder === node.path || targetFolder.startsWith(node.path + '/'))) {
       this.toastService.error('Move failed', "Can't move a folder into itself.");
       return;
     }
+    const slash = node.path.lastIndexOf('/');
+    this.pendingMove.set({
+      node,
+      targetFolder,
+      sourceLabel: this.folderLabel(slash === -1 ? '' : node.path.slice(0, slash)),
+      targetLabel: this.folderLabel(targetFolder)
+    });
+  }
+
+  confirmMove(): void {
+    const move = this.pendingMove();
+    this.pendingMove.set(null);
+    if (move) this.moveNodeToFolder(move.node, move.targetFolder);
+  }
+
+  cancelMove(): void {
+    this.pendingMove.set(null);
+  }
+
+  /** Move a dragged tree node (file or folder) into a destination folder. */
+  private moveNodeToFolder(node: FileNode, targetFolder: string): void {
+    const space = this.spaceSignal();
+    if (!space) return;
+    // The no-op and folder-into-itself cases were already ruled out in
+    // requestMoveToFolder, before the user was asked.
+    const newPath = targetFolder ? `${targetFolder}/${node.name}` : node.name;
     const wasActive = this.currentDocPath() === node.path;
     this.documentsService.rename(space.id, node.path, newPath).subscribe({
       next: () => {
