@@ -26,6 +26,7 @@ import { DocumentsService, DocumentContent, UploadedFile } from '../../core/api/
 import { HttpResponse } from '@angular/common/http';
 import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
+import { PdfExportService } from '../../core/api/pdf-export.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
 import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
@@ -2479,7 +2480,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     private documentSettingsService: DocumentSettingsService,
     private stateExportService: StateExportService,
     protected prefs: DisplayPrefsService,
-    protected caps: CapabilitiesService
+    protected caps: CapabilitiesService,
+    private pdfExportService: PdfExportService
   ) {
     // Every space autosaves, so what the editor shows is what the API — and any
     // MCP client reading the space — gets back. Git-backed spaces autosave
@@ -2979,6 +2981,71 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   exportAsPdf(): void {
     const title = this.documentTitle || this.documentPath.split('/').pop() || 'Document';
 
+    // A configured renderer gives back a real file. Everything else — an
+    // install without one, a renderer that is down — falls through to the
+    // browser's print dialog, so the menu entry always does something.
+    if (this.caps.pdfRenderer() && !this.isPreviewFile()) {
+      const html = this.exportBodyHtml();
+      if (html === null) {
+        this.toastService.error('Export failed', 'There is nothing to export yet.');
+        return;
+      }
+      this.exportingPdf.set(true);
+      this.pdfExportService.render(this.printableDocument(title, html), title).subscribe({
+        next: (pdf) => {
+          this.exportingPdf.set(false);
+          this.pdfExportService.save(pdf, title);
+        },
+        error: () => {
+          this.exportingPdf.set(false);
+          this.toastService.info('Falling back to print', 'The PDF service is unavailable.');
+          this.printAsPdf(title);
+        }
+      });
+      return;
+    }
+
+    this.printAsPdf(title);
+  }
+
+  /** True while the server is rendering, so the menu entry can say so. */
+  exportingPdf = signal(false);
+
+  /**
+   * The standalone HTML that becomes the PDF, whether it is rendered on the
+   * server or run through the browser's print dialog. One source for both, so
+   * a change to the styling cannot land in one output and miss the other.
+   */
+  private printableDocument(title: string, bodyContent: string, forPrint = false): string {
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>${this.escapeHtml(title)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 24px; color: #1a1a1a; line-height: 1.6; }
+  h1 { font-size: 1.8em; margin-bottom: 0.5em; }
+  h2 { font-size: 1.4em; margin-top: 1.5em; }
+  h3 { font-size: 1.2em; margin-top: 1.2em; }
+  pre { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
+  code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #555; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  img { max-width: 100%; height: auto; }
+  ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+  ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
+  ul[data-type="taskList"] li::before { content: "\u2610"; }
+  ul[data-type="taskList"] li[data-checked="true"]::before { content: "\u2611"; }
+  a { color: #2563eb; }
+  ${forPrint ? '@media print { body { padding: 0; } }' : '@page { margin: 18mm 16mm; } body { padding: 0; max-width: none; }'}
+</style>
+</head><body>${bodyContent}</body></html>`;
+  }
+
+  private printAsPdf(title: string): void {
+
     let bodyContent = '';
     if (this.isPreviewFile()) {
       if (this.previewType() === 'image') {
@@ -3003,31 +3070,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
       return;
     }
 
-    printWindow.document.write(`<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<title>${this.escapeHtml(title)}</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 24px; color: #1a1a1a; line-height: 1.6; }
-  h1 { font-size: 1.8em; margin-bottom: 0.5em; }
-  h2 { font-size: 1.4em; margin-top: 1.5em; }
-  h3 { font-size: 1.2em; margin-top: 1.2em; }
-  pre { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
-  code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }
-  pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #555; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-  th { background: #f5f5f5; font-weight: 600; }
-  img { max-width: 100%; height: auto; }
-  ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-  ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
-  ul[data-type="taskList"] li::before { content: "☐"; }
-  ul[data-type="taskList"] li[data-checked="true"]::before { content: "☑"; }
-  a { color: #2563eb; }
-  @media print { body { padding: 0; } }
-</style>
-</head><body>${bodyContent}</body></html>`);
+    printWindow.document.write(this.printableDocument(title, bodyContent, true));
     printWindow.document.close();
 
     // document.write() often finishes before this line runs, so waiting for

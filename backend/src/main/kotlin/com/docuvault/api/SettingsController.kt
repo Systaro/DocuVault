@@ -71,6 +71,12 @@ class SettingsController(
         request.mailFromName?.let {
             settingsService.set(SettingsService.MAIL_FROM_NAME, it)
         }
+        request.pdfRenderUrl?.let {
+            settingsService.set(SettingsService.PDF_RENDER_URL, it)
+        }
+        request.pdfApiKey?.let {
+            settingsService.set(SettingsService.PDF_API_KEY, it, encrypted = true)
+        }
 
         return ResponseEntity.ok(mapOf("message" to "Settings updated successfully"))
     }
@@ -196,7 +202,9 @@ data class UpdateSettingsRequest(
     val mailPassword: String? = null,
     val mailStartTls: Boolean? = null,
     val mailFromAddress: String? = null,
-    val mailFromName: String? = null
+    val mailFromName: String? = null,
+    val pdfRenderUrl: String? = null,
+    val pdfApiKey: String? = null
 )
 
 data class TestEmailRequest(

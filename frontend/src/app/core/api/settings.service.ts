@@ -23,6 +23,8 @@ export interface AppSettings {
   'mail.starttls'?: SettingValue;
   'mail.from-address'?: SettingValue;
   'mail.from-name'?: SettingValue;
+  'pdf.render-url'?: SettingValue;
+  'pdf.api-key'?: SettingValue;
 }
 
 export interface UpdateSettingsRequest {
@@ -39,6 +41,8 @@ export interface UpdateSettingsRequest {
   mailStartTls?: boolean;
   mailFromAddress?: string;
   mailFromName?: string;
+  pdfRenderUrl?: string;
+  pdfApiKey?: string;
 }
 
 export interface TestResult {

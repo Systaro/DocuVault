@@ -27,6 +27,8 @@ class SettingsService(
     @Value("\${spring.mail.properties.mail.smtp.starttls.enable:true}") private val defaultMailStartTls: String,
     @Value("\${app.mail.from-address:noreply@docuvault.systaro.de}") private val defaultMailFromAddress: String,
     @Value("\${app.mail.from-name:DocuVault}") private val defaultMailFromName: String,
+    @Value("\${pdf.render-url:}") private val defaultPdfRenderUrl: String,
+    @Value("\${pdf.api-key:}") private val defaultPdfApiKey: String,
     @Value("\${encryption.key}") private val encryptionKeySource: String
 ) {
     private val encryptionKey: SecretKeySpec by lazy {
@@ -71,6 +73,12 @@ class SettingsService(
         const val MAIL_STARTTLS = "mail.starttls"
         const val MAIL_FROM_ADDRESS = "mail.from-address"
         const val MAIL_FROM_NAME = "mail.from-name"
+
+        // Optional HTML-to-PDF renderer. Left blank the product falls back to
+        // the browser's own print dialog, so a self-hosted install without one
+        // still exports — just not as a downloaded file.
+        const val PDF_RENDER_URL = "pdf.render-url"
+        const val PDF_API_KEY = "pdf.api-key"
     }
 
     fun get(key: String): String? {
@@ -132,6 +140,11 @@ class SettingsService(
     fun getMailFromAddress(): String = getOrDefault(MAIL_FROM_ADDRESS, defaultMailFromAddress)
     fun getMailFromName(): String = getOrDefault(MAIL_FROM_NAME, defaultMailFromName)
     fun isMailConfigured(): Boolean = getMailHost().isNotBlank()
+
+    fun getPdfRenderUrl(): String = getOrDefault(PDF_RENDER_URL, defaultPdfRenderUrl)
+    fun getPdfApiKey(): String = getOrDefault(PDF_API_KEY, defaultPdfApiKey)
+    /** Only the URL is required — a renderer may well need no key. */
+    fun isPdfConfigured(): Boolean = getPdfRenderUrl().isNotBlank()
 
     // Get all settings with masked sensitive values
     fun getAllSettingsForDisplay(): Map<String, SettingValue> {
@@ -205,6 +218,17 @@ class SettingsService(
                 value = dbSettings[MAIL_FROM_NAME]?.takeIf { it.isNotBlank() } ?: defaultMailFromName,
                 source = if (dbSettings[MAIL_FROM_NAME]?.isNotBlank() == true) "database" else "environment",
                 masked = false
+            ),
+            PDF_RENDER_URL to SettingValue(
+                value = dbSettings[PDF_RENDER_URL]?.takeIf { it.isNotBlank() } ?: defaultPdfRenderUrl,
+                source = if (dbSettings[PDF_RENDER_URL]?.isNotBlank() == true) "database" else "environment",
+                masked = false
+            ),
+            PDF_API_KEY to SettingValue(
+                value = maskToken(dbSettings[PDF_API_KEY]?.takeIf { it.isNotBlank() } ?: defaultPdfApiKey),
+                source = if (dbSettings[PDF_API_KEY]?.isNotBlank() == true) "database" else "environment",
+                masked = true,
+                configured = (dbSettings[PDF_API_KEY]?.isNotBlank() == true) || defaultPdfApiKey.isNotBlank()
             )
         )
     }
