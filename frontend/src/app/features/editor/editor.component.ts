@@ -26,6 +26,7 @@ import { DocumentsService, DocumentContent, UploadedFile } from '../../core/api/
 import { HttpResponse } from '@angular/common/http';
 import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
+import { PdfExportService } from '../../core/api/pdf-export.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
 import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
@@ -2479,7 +2480,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     private documentSettingsService: DocumentSettingsService,
     private stateExportService: StateExportService,
     protected prefs: DisplayPrefsService,
-    protected caps: CapabilitiesService
+    protected caps: CapabilitiesService,
+    private pdfExportService: PdfExportService
   ) {
     // Every space autosaves, so what the editor shows is what the API — and any
     // MCP client reading the space — gets back. Git-backed spaces autosave
@@ -2959,24 +2961,63 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     }
   }
 
+  /**
+   * The document as HTML for export. Which view is on screen decides where it
+   * comes from: the TipTap instance only exists while editing (`showEditor()`),
+   * so in the read view it is null and asking it for HTML yields nothing —
+   * which is how this export used to produce a blank sheet for anyone who had
+   * not clicked Edit first. The read view keeps its rendered markup in
+   * `readonlyElement`, and that is also the copy with Mermaid diagrams drawn
+   * and image paths already resolved.
+   */
+  private exportBodyHtml(): string | null {
+    if (this.showEditor() && this.editor) return this.editor.getHTML();
+    const readonly = this.readonlyElement?.nativeElement;
+    if (readonly?.innerHTML.trim()) return readonly.innerHTML;
+    // Neither view has content — the document is still loading, or failed to.
+    return null;
+  }
+
   exportAsPdf(): void {
     const title = this.documentTitle || this.documentPath.split('/').pop() || 'Document';
 
-    let bodyContent = '';
-    if (this.isPreviewFile()) {
-      if (this.previewType() === 'image') {
-        bodyContent = `<img src="${window.location.origin}${this.previewUrl()}" style="max-width:100%;height:auto;" />`;
-      } else {
-        bodyContent = `<iframe src="${window.location.origin}${this.previewUrl()}" style="width:100%;height:100vh;border:none;"></iframe>`;
+    // A configured renderer gives back a real file. Everything else — an
+    // install without one, a renderer that is down — falls through to the
+    // browser's print dialog, so the menu entry always does something.
+    if (this.caps.pdfRenderer() && !this.isPreviewFile()) {
+      const html = this.exportBodyHtml();
+      if (html === null) {
+        this.toastService.error('Export failed', 'There is nothing to export yet.');
+        return;
       }
-    } else if (this.editor) {
-      bodyContent = `<h1>${this.escapeHtml(title)}</h1>${this.editor.getHTML()}`;
+      this.exportingPdf.set(true);
+      this.pdfExportService.render(this.printableDocument(title, html), title).subscribe({
+        next: (pdf) => {
+          this.exportingPdf.set(false);
+          this.pdfExportService.save(pdf, title);
+        },
+        error: () => {
+          this.exportingPdf.set(false);
+          this.toastService.info('Falling back to print', 'The PDF service is unavailable.');
+          this.printAsPdf(title);
+        }
+      });
+      return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    this.printAsPdf(title);
+  }
 
-    printWindow.document.write(`<!DOCTYPE html>
+  /** True while the server is rendering, so the menu entry can say so. */
+  exportingPdf = signal(false);
+
+  /**
+   * The standalone HTML that becomes the PDF, whether it is rendered on the
+   * server or run through the browser's print dialog. One source for both, so
+   * a change to the styling cannot land in one output and miss the other.
+   */
+  private printableDocument(title: string, bodyContent: string, forPrint = false): string {
+    return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <title>${this.escapeHtml(title)}</title>
@@ -2995,16 +3036,59 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   img { max-width: 100%; height: auto; }
   ul[data-type="taskList"] { list-style: none; padding-left: 0; }
   ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
-  ul[data-type="taskList"] li::before { content: "☐"; }
-  ul[data-type="taskList"] li[data-checked="true"]::before { content: "☑"; }
+  ul[data-type="taskList"] li::before { content: "\u2610"; }
+  ul[data-type="taskList"] li[data-checked="true"]::before { content: "\u2611"; }
   a { color: #2563eb; }
-  @media print { body { padding: 0; } }
+  ${forPrint ? '@media print { body { padding: 0; } }' : '@page { margin: 18mm 16mm; } body { padding: 0; max-width: none; }'}
 </style>
-</head><body>${bodyContent}</body></html>`);
+</head><body>${bodyContent}</body></html>`;
+  }
+
+  private printAsPdf(title: string): void {
+
+    let bodyContent = '';
+    if (this.isPreviewFile()) {
+      if (this.previewType() === 'image') {
+        bodyContent = `<img src="${window.location.origin}${this.previewUrl()}" style="max-width:100%;height:auto;" />`;
+      } else {
+        bodyContent = `<iframe src="${window.location.origin}${this.previewUrl()}" style="width:100%;height:100vh;border:none;"></iframe>`;
+      }
+    } else {
+      const html = this.exportBodyHtml();
+      if (html === null) {
+        // Better a plain refusal than a print dialog over an empty sheet, which
+        // reads as "the export is broken" and costs a trip to the printer.
+        this.toastService.error('Export failed', 'There is nothing to export yet.');
+        return;
+      }
+      bodyContent = `<h1>${this.escapeHtml(title)}</h1>${html}`;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      this.toastService.error('Export failed', 'The browser blocked the print window.');
+      return;
+    }
+
+    printWindow.document.write(this.printableDocument(title, bodyContent, true));
     printWindow.document.close();
-    printWindow.onload = () => {
-      printWindow.print();
+
+    // document.write() often finishes before this line runs, so waiting for
+    // `onload` alone can mean waiting forever. Check the state first, and give
+    // images a chance to arrive — printing before they load prints gaps.
+    const print = (): void => {
+      const images = Array.from(printWindow.document.images);
+      const pending = images.filter(img => !img.complete);
+      let left = pending.length;
+      const go = (): void => { printWindow.focus(); printWindow.print(); };
+      if (!left) { go(); return; }
+      const done = (): void => { if (--left === 0) go(); };
+      pending.forEach(img => { img.addEventListener('load', done); img.addEventListener('error', done); });
+      // A stuck image must not hold the export hostage.
+      setTimeout(() => { if (left > 0) { left = 0; go(); } }, 3000);
     };
+    if (printWindow.document.readyState === 'complete') print();
+    else printWindow.addEventListener('load', print);
   }
 
   downloadFile(): void {

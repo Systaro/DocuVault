@@ -347,6 +347,59 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           </div>
         </div>
 
+        <!-- PDF export -->
+        <div class="settings-card" id="pdf">
+          <div class="settings-card-header">
+            <div class="settings-card-icon">
+              <span translate="no" class="material-icons">picture_as_pdf</span>
+            </div>
+            <div>
+              <h2>PDF export</h2>
+              <p>Optional. With a renderer, "Export as PDF" downloads a file; without one it opens the browser's print dialog</p>
+            </div>
+          </div>
+
+          <div class="settings-card-body">
+            <div class="form-group">
+              <label for="pdfRenderUrl">Renderer URL</label>
+              <input id="pdfRenderUrl" type="text" [(ngModel)]="pdfRenderUrl"
+                     placeholder="https://pdf.example.com/render" class="form-input" />
+              <p class="form-hint">
+                Receives <code>POST {{ '{' }} html, options {{ '}' }}</code> and answers with the PDF.
+                Leave empty to keep using the print dialog.
+              </p>
+            </div>
+
+            <div class="form-group">
+              <label for="pdfApiKey">API key</label>
+              <input id="pdfApiKey" type="password" [(ngModel)]="pdfApiKey"
+                     [placeholder]="pdfKeyConfigured() ? 'Saved — type to replace' : 'Optional'"
+                     class="form-input" autocomplete="off" />
+              <p class="form-hint">
+                Sent as <code>X-API-Key</code>. Stored encrypted and never handed to the browser —
+                the rendering happens on the server for exactly that reason.
+              </p>
+            </div>
+
+            @if (pdfSaveResult()) {
+              <div class="test-result" [class.success]="pdfSaveResult()?.success" [class.error]="!pdfSaveResult()?.success">
+                <span translate="no" class="material-icons">{{ pdfSaveResult()?.success ? 'check_circle' : 'error' }}</span>
+                {{ pdfSaveResult()?.message }}
+              </div>
+            }
+
+            <div class="button-row">
+              <button (click)="savePdf()" [disabled]="savingPdf()" class="btn btn-primary">
+                @if (savingPdf()) {
+                  <span translate="no" class="material-icons animate-spin">sync</span> Saving…
+                } @else {
+                  <span translate="no" class="material-icons">save</span> Save PDF settings
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Application Info -->
         <div class="settings-card">
           <div class="settings-card-header">
@@ -742,6 +795,13 @@ export class SettingsComponent implements OnInit {
   testEmailTo = '';
   testingEmail = signal(false);
   savingEmail = signal(false);
+
+  // PDF export
+  pdfRenderUrl = '';
+  pdfApiKey = '';
+  pdfKeyConfigured = signal(false);
+  savingPdf = signal(false);
+  pdfSaveResult = signal<TestResult | null>(null);
   emailTestResult = signal<TestResult | null>(null);
 
   constructor(private settingsService: SettingsService) {}
@@ -767,6 +827,11 @@ export class SettingsComponent implements OnInit {
         this.mailStartTls = (settings['mail.starttls']?.value || 'true') === 'true';
         this.mailFromAddress = settings['mail.from-address']?.value || '';
         this.mailFromName = settings['mail.from-name']?.value || 'DocuVault';
+        this.pdfRenderUrl = settings['pdf.render-url']?.value || '';
+        // The key comes back masked, so it is never put in the field — an empty
+        // box with a "Saved" placeholder, and typing replaces it.
+        this.pdfKeyConfigured.set(settings['pdf.api-key']?.configured === true);
+        this.pdfApiKey = '';
         this.testEmailTo = '';
         this.loading.set(false);
       },
@@ -852,6 +917,27 @@ export class SettingsComponent implements OnInit {
       error: () => {
         this.openaiTestResult.set({ success: false, message: 'Failed to save settings' });
         this.savingOpenai.set(false);
+      }
+    });
+  }
+
+  savePdf(): void {
+    this.savingPdf.set(true);
+    this.pdfSaveResult.set(null);
+    this.settingsService.updateSettings({
+      pdfRenderUrl: this.pdfRenderUrl,
+      // Sending an empty key would wipe a stored one; only a typed value is sent.
+      pdfApiKey: this.pdfApiKey || undefined
+    }).subscribe({
+      next: () => {
+        this.pdfApiKey = '';
+        this.loadSettings();
+        this.savingPdf.set(false);
+        this.pdfSaveResult.set({ success: true, message: 'PDF settings saved' });
+      },
+      error: () => {
+        this.savingPdf.set(false);
+        this.pdfSaveResult.set({ success: false, message: 'Failed to save settings' });
       }
     });
   }
