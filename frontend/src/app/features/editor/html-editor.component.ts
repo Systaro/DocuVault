@@ -7,6 +7,7 @@ import { Observable, Subject, of, takeUntil } from 'rxjs';
 import { DocumentsService } from '../../core/api/documents.service';
 import { DocumentHistoryService, DocumentVersion } from '../../core/api/document-history.service';
 import { ToastService } from '../../shared/services/toast.service';
+import { describeSaveError, NOTHING_TO_SAVE } from '../../shared/utils/save-error';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import {
   buildFrameDocument,
@@ -717,6 +718,11 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
     if (this.saving() || this.viewingVersion()) return;
     const content = this.currentSource();
 
+    if (!content.trim()) {
+      this.toast.error(NOTHING_TO_SAVE.title, NOTHING_TO_SAVE.message);
+      return;
+    }
+
     this.saving.set(true);
     this.documentsService.updateDocument(this.spaceId, this.path, {
       title: this.docTitle || undefined,
@@ -736,12 +742,10 @@ export class HtmlEditorComponent implements OnInit, OnDestroy {
           if (this.showHistory()) this.loadHistory();
           this.toast.success('Saved', `${this.fileName()} was saved as a new version.`);
         },
-        error: () => {
+        error: (err) => {
           this.saving.set(false);
-          this.toast.error(
-            'Could not save',
-            'Your changes are still in the editor but could not be stored. Please try again.'
-          );
+          const { title, message } = describeSaveError(err);
+          this.toast.error(title, message);
         }
       });
   }
