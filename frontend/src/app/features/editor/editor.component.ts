@@ -43,6 +43,7 @@ import { DisplayPrefsService } from '../../shared/services/display-prefs.service
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
+import { describeSaveError, NOTHING_TO_SAVE } from '../../shared/utils/save-error';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../shared/utils/scroll-anchor';
@@ -3977,11 +3978,23 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     return (this.documentTitle || '').replace(/\s+/g, ' ').trim();
   }
 
-  /** Re-attach the load-time "# Title" line, following a title rename. */
+  /**
+   * Re-attach the load-time "# Title" line, following a title rename.
+   *
+   * A document being created has no such line yet, so it gets one written in.
+   * Without it the title lived only in the database: the markdown file opened
+   * headingless everywhere outside DocuVault, and a page that had been named but
+   * not yet written serialized to an empty string, which the backend rejects
+   * outright. [body] never carries the heading itself, so re-prepending it on
+   * every later save cannot double it up.
+   */
   private withTitleHeading(body: string): string {
-    if (!this.strippedH1) return body;
-    const originalTitle = this.strippedH1.match(/^#\s+(.+)/)?.[1]?.trim();
     const currentTitle = this.cleanTitle();
+    if (!this.strippedH1) {
+      if (!this.isNewDocument() || !currentTitle) return body;
+      return body.trim() ? `# ${currentTitle}\n\n${body}` : `# ${currentTitle}\n`;
+    }
+    const originalTitle = this.strippedH1.match(/^#\s+(.+)/)?.[1]?.trim();
     if (!currentTitle || originalTitle === currentTitle) return this.strippedH1 + body;
     const newlines = this.strippedH1.substring(this.strippedH1.indexOf('\n'));
     return `# ${currentTitle}${newlines}${body}`;
@@ -4004,6 +4017,13 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     }
 
     const { body, content, raw } = this.serializeForSave();
+
+    // Nothing typed anywhere: the backend refuses blank content, so asking it
+    // only produces a storage error for something a single word would fix.
+    if (!content.trim()) {
+      if (!autosave) this.toastService.error(NOTHING_TO_SAVE.title, NOTHING_TO_SAVE.message);
+      return;
+    }
 
     this.saving.set(true);
 
@@ -4049,7 +4069,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           this.document.set(doc);
           onSaved();
         },
-        error: () => this.handleSaveError()
+        error: (err) => this.handleSaveError(err)
       });
     } else {
       // Create new document
@@ -4067,7 +4087,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           this.treeSync.notify(space.id);
           onSaved();
         },
-        error: () => this.handleSaveError()
+        error: (err) => this.handleSaveError(err)
       });
     }
   }
@@ -4077,16 +4097,14 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    * holds the only copy of the change. Keeps the document dirty so the next edit
    * retries, and reports once per failure streak instead of once per keystroke.
    */
-  private handleSaveError(): void {
+  private handleSaveError(error: unknown): void {
     this.saving.set(false);
     this.hasChanges.set(true);
     this.lastSaved.set(false);
     if (this.saveErrorNotified) return;
     this.saveErrorNotified = true;
-    this.toastService.error(
-      'Could not save',
-      'Your changes are still in the editor but could not be stored. Please try again.'
-    );
+    const { title, message } = describeSaveError(error);
+    this.toastService.error(title, message);
   }
 
   /**
@@ -4127,6 +4145,11 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
 
     const { body, content, raw } = this.serializeForSave();
 
+    if (!content.trim()) {
+      this.toastService.error(NOTHING_TO_SAVE.title, NOTHING_TO_SAVE.message);
+      return;
+    }
+
     this.saving.set(true);
 
     const path = this.documentPath || this.generatePath();
@@ -4151,7 +4174,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         if (this.showHistoryPanel()) this.loadHistory();
         this.loadHistoryMeta();
       },
-      error: () => this.handleSaveError()
+      error: (err) => this.handleSaveError(err)
     });
   }
 
