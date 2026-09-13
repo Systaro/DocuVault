@@ -105,7 +105,7 @@ Downloading *without* state returns the raw file unchanged; it loads live state 
 
 ## MCP Access
 
-AI agents can read and maintain state buckets through the `@systaro/docuvault-mcp` server, gated by the same space permissions as the web UI:
+AI agents can read and maintain state buckets through DocuVault's MCP server (`/api/mcp`), gated by the same space permissions as the web UI:
 
 | Tool | Description |
 |------|-------------|

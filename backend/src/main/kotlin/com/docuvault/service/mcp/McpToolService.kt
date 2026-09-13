@@ -73,6 +73,8 @@ class McpToolService(
         fun listState(spaceId: String): JsonNode = call(HttpMethod.GET, "/spaces/$spaceId/state")
         fun getState(spaceId: String, key: String): JsonNode =
             call(HttpMethod.GET, "/spaces/$spaceId/state/${UriUtils.encodePathSegment(key, StandardCharsets.UTF_8)}")
+        fun issueTransfer(spaceId: String, path: String, kind: String): JsonNode =
+            call(HttpMethod.POST, "/transfers", mapOf("spaceId" to spaceId, "path" to path, "kind" to kind))
         fun putState(spaceId: String, key: String, value: String): JsonNode =
             call(HttpMethod.PUT, "/spaces/$spaceId/state/${UriUtils.encodePathSegment(key, StandardCharsets.UTF_8)}", mapOf("value" to value))
 
@@ -274,7 +276,7 @@ class McpToolService(
             val spaceId = s.resolveSpaceId(a.requiredString("spaceId"))
             val path = a.requiredString("path")
             if (isBinary(path)) {
-                throw McpToolException("\"$path\" is a binary file and cannot be read as text. Open it in DocuVault or use share_document to create a link.")
+                throw McpToolException("\"$path\" is a binary file and cannot be read as text. Use download_file to fetch it, or share_document to create a link.")
             }
             val doc = s.api.readDocument(spaceId, path)
             val docPath = doc.text("path") ?: path
@@ -296,7 +298,7 @@ class McpToolService(
         ) { s, a ->
             val spaceId = s.resolveSpaceId(a.requiredString("spaceId"))
             val path = a.requiredString("path")
-            if (isBinary(path)) throw McpToolException("Binary files (images, PDF, Office) cannot be created through this server. Upload them in DocuVault.")
+            if (isBinary(path)) throw McpToolException("Binary files (images, PDF, Office) need upload_file, which transfers the bytes directly instead of through the conversation.")
             val autoCommit = a.optionalBoolean("auto_commit", false)
             val doc = s.api.createDocument(
                 spaceId,
@@ -329,7 +331,7 @@ class McpToolService(
         ) { s, a ->
             val spaceId = s.resolveSpaceId(a.requiredString("spaceId"))
             val path = a.requiredString("path")
-            if (isBinary(path)) throw McpToolException("Binary files (images, PDF, Office) cannot be replaced through this server. Upload them in DocuVault.")
+            if (isBinary(path)) throw McpToolException("Binary files (images, PDF, Office) need upload_file, which transfers the bytes directly instead of through the conversation.")
             a.optionalString("content_hash")?.let { expected ->
                 val current = s.api.readDocument(spaceId, path).text("contentHash")
                 if (current != expected) {
@@ -474,6 +476,53 @@ RULES:
                 "Password protected: ${if (link.get("hasPassword")?.asBoolean() == true) "Yes" else "No"}",
                 "Expires: ${link.text("expiresAt") ?: "Never"}"
             ).joinToString("\n")
+        },
+
+        Tool(
+            "upload_file",
+            """Upload a local file (image, PDF, Office document, or any text file) into a space. Two steps: this tool returns a one-time upload URL, then you run the printed curl command in the shell so the bytes go from disk to DocuVault directly without passing through the conversation. The file is committed to Git right away and an existing file at that path is replaced.""",
+            schema(
+                "spaceId" to str("The space (ID, full path or name)"),
+                "path" to str("Target path within the space including the filename (e.g. \"assets/diagram.png\")"),
+                "localPath" to str("Absolute path of the local file, only used to pre-fill the curl command"),
+                required = listOf("spaceId", "path")
+            )
+        ) { s, a ->
+            val ticket = s.api.issueTransfer(s.resolveSpaceId(a.requiredString("spaceId")), a.requiredString("path"), "upload")
+            val local = a.optionalString("localPath") ?: "/absolute/path/to/local-file"
+            """Upload ticket ready (valid ${ticket.get("expiresInSeconds")?.asLong()?.div(60)} minutes, single use). Run ONE of these in the shell:
+
+macOS / Linux / Git Bash:
+curl -sS -T "$local" -H "Content-Type: application/octet-stream" "${ticket.text("url")}"
+
+Windows PowerShell (plain "curl" there is an alias for Invoke-WebRequest; curl.exe also works):
+Invoke-WebRequest -Method Put -InFile "$local" -ContentType "application/octet-stream" -Uri "${ticket.text("url")}" | Select-Object -ExpandProperty Content
+
+It answers with JSON (path, name, size, url) once the file is stored and committed to ${ticket.text("path")}. If it answers with an error, read the message: a 404 means the ticket expired or was already used, so call upload_file again."""
+        },
+
+        Tool(
+            "download_file",
+            """Download a file from a space to the local disk, including binary files. Two steps: this tool returns a one-time download URL, then you run the printed curl command in the shell. For reading a text document's content, read_document is simpler.""",
+            schema(
+                "spaceId" to str("The space (ID, full path or name)"),
+                "path" to str("The file path within the space"),
+                "saveTo" to str("Absolute local path to save to, only used to pre-fill the curl command"),
+                required = listOf("spaceId", "path")
+            )
+        ) { s, a ->
+            val path = a.requiredString("path")
+            val ticket = s.api.issueTransfer(s.resolveSpaceId(a.requiredString("spaceId")), path, "download")
+            val local = a.optionalString("saveTo") ?: "/absolute/path/to/${path.substringAfterLast('/')}"
+            """Download ticket ready (valid ${ticket.get("expiresInSeconds")?.asLong()?.div(60)} minutes, single use). Run ONE of these in the shell:
+
+macOS / Linux / Git Bash:
+curl -sS -f -o "$local" "${ticket.text("url")}"
+
+Windows PowerShell:
+Invoke-WebRequest -Uri "${ticket.text("url")}" -OutFile "$local"
+
+A 404 means the ticket expired or was already used; call download_file again."""
         },
 
         Tool(

@@ -6,10 +6,9 @@
 > claude mcp add --transport http docuvault https://your-docuvault-instance.com/api/mcp
 > ```
 >
-> This npm package is the stdio alternative for two cases: clients without
-> OAuth/HTTP support, and workflows that upload local binary files (images,
-> PDFs, Office documents) or download documents to disk, which the built-in
-> server does not do.
+> This npm package is the stdio alternative for clients without OAuth/HTTP
+> support. The built-in server covers file transfers too (upload_file /
+> download_file hand out a one-time URL for curl).
 
 An MCP (Model Context Protocol) server that gives Claude Code full access to your DocuVault documentation. Search, read, create, edit, and delete documents directly from your coding environment.
 

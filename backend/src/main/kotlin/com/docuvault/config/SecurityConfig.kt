@@ -54,6 +54,9 @@ class SecurityConfig(
                     .requestMatchers("/.well-known/**").permitAll()
                     .requestMatchers("/oauth/**").permitAll()
                     .requestMatchers("/mcp").permitAll()
+                    // Redeeming a transfer ticket: the ticket itself is the credential (issuing one is authenticated).
+                    .requestMatchers(org.springframework.http.HttpMethod.PUT, "/transfers/*").permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/transfers/*").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)

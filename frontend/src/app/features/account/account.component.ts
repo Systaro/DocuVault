@@ -259,7 +259,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               <p>
                 The <strong>Model Context Protocol (MCP)</strong> lets AI assistants like Claude access your documentation directly.
                 DocuVault runs the MCP server itself: add one URL to your client, approve the connection in your browser, done.
-                Nothing to install, no token to copy.
+                Nothing to install, no token to copy. Works with Claude Code on macOS, Linux and Windows.
               </p>
 
               <div class="mcp-capabilities">
@@ -281,6 +281,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                     <li><strong>edit_document</strong> &mdash; surgical find-and-replace that preserves all formatting</li>
                     <li><strong>insert_in_document</strong> &mdash; add content at a specific location</li>
                     <li><strong>share_document</strong> &mdash; create a public share link</li>
+                    <li><strong>upload_file</strong> / <strong>download_file</strong> &mdash; move images, PDFs and large files via a one-time URL</li>
                   </ul>
                 </div>
               </div>

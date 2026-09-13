@@ -6,6 +6,7 @@ import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.AnnotationService
 import com.docuvault.service.DocumentLineageService
+import com.docuvault.service.FileUploadService
 import com.docuvault.service.DocumentPatchService
 import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.DocumentTransferService
@@ -50,7 +51,8 @@ class DocumentController(
     private val documentTransferService: DocumentTransferService,
     private val annotationService: AnnotationService,
     private val documentPatchService: DocumentPatchService,
-    private val documentLineageService: DocumentLineageService
+    private val documentLineageService: DocumentLineageService,
+    private val fileUploadService: FileUploadService
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
     private fun hashContent(content: String) = documentPersistService.hashContent(content)
@@ -193,7 +195,7 @@ class DocumentController(
         requireSpaceWritable(space)
 
         val prefix = folder?.trim('/')?.let { "$it/" } ?: ""
-        val uploaded = mutableListOf<UploadedFileDto>()
+        val uploaded = mutableListOf<com.docuvault.service.StoredFile>()
 
         for ((index, file) in (files ?: emptyList()).withIndex()) {
             // Extract only the basename — browsers on some OS send full local path (e.g. C:\Users\...\file.md)
@@ -202,76 +204,19 @@ class DocumentController(
                 ?.substringAfterLast('\\')
                 ?.ifBlank { null }
                 ?: continue
-            val relativePath = sanitizeRelativePath(paths?.getOrNull(index)) ?: originalName
-            val path = "$prefix$relativePath"
-            val bytes = file.bytes
-
-            val success = gitService.writeBinaryFile(space, path, bytes)
-            if (!success) continue
-
-            // Register markdown files as documents in the DB
-            if (originalName.endsWith(".md", ignoreCase = true)) {
-                val content = String(bytes)
-                val contentHash = hashContent(content)
-                val now = java.time.Instant.now()
-                var document = documentRepository.findBySpaceIdAndPath(spaceId, path)
-                if (document != null) {
-                    document.title = extractTitle(content, path)
-                    document.contentHash = contentHash
-                    document.lastSyncedAt = now
-                    document.updatedAt = now
-                } else {
-                    document = com.docuvault.domain.space.Document(
-                        space = space,
-                        path = path,
-                        title = extractTitle(content, path),
-                        contentHash = contentHash,
-                        lastSyncedAt = now
-                    )
-                }
-                val saved = documentRepository.save(document)
-                embeddingService.processDocument(saved.id!!, content)
-            }
-
-            uploaded.add(UploadedFileDto(path = path, name = originalName))
+            val relativePath = fileUploadService.sanitizeRelativePath(paths?.getOrNull(index)) ?: originalName
+            fileUploadService.store(space, "$prefix$relativePath", file.bytes)?.let { uploaded.add(it) }
         }
 
         // A finalize call (no files) commits regardless — that is its whole purpose.
         if (commit && (uploaded.isNotEmpty() || files.isNullOrEmpty())) {
-            documentPersistService.commitIfRequested(
-                space, autoCommit = true,
-                message = commitMessage?.takeIf { it.isNotBlank() } ?: uploadCommitMessage(uploaded),
-                user = user
-            )
+            fileUploadService.commit(space, uploaded, user, commitMessage)
         }
 
-        return ResponseEntity.ok(uploaded)
+        return ResponseEntity.ok(uploaded.map { UploadedFileDto(path = it.path, name = it.name) })
     }
 
-    /**
-     * Turns a browser-supplied relative path into a safe, repo-relative one:
-     * drive letters, traversal segments and blank parts are dropped, so an
-     * uploaded folder keeps its structure but can never escape its target.
-     */
-    private fun sanitizeRelativePath(raw: String?): String? {
-        if (raw.isNullOrBlank()) return null
-        return raw.replace('\\', '/')
-            .split('/')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && it != "." && it != ".." && !it.endsWith(":") }
-            .joinToString("/")
-            .ifBlank { null }
-    }
 
-    /** Names the first few uploads and counts the rest — a folder upload must not
-     *  produce a commit subject with hundreds of filenames in it. */
-    private fun uploadCommitMessage(uploaded: List<UploadedFileDto>): String {
-        if (uploaded.isEmpty()) return "Finish upload"
-        val shown = uploaded.take(5).joinToString(", ") { it.name }
-        val rest = uploaded.size - minOf(uploaded.size, 5)
-        val names = if (rest > 0) "$shown and $rest more" else shown
-        return "Upload ${uploaded.size} file(s): $names"
-    }
 
     @PostMapping
     fun createDocument(

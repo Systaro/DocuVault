@@ -78,9 +78,12 @@ take the same URL:
 }
 ```
 
-The server exposes 14 tools covering search/list/read/create/edit/share for
-documents, spaces and space state. Every call runs as the signed-in user with
-that user's space permissions. For scripts and CI, where no browser is
+The server exposes 16 tools covering search/list/read/create/edit/share for
+documents, spaces and space state, plus `upload_file` / `download_file` for
+binaries and large files: they hand out a one-time URL and the agent moves the
+bytes with `curl` (or `Invoke-WebRequest` on Windows), so nothing binary
+passes through the model. Every call runs as the signed-in user with that
+user's space permissions. For scripts and CI, where no browser is
 available, the same endpoint accepts a personal API token from your account
 page as `Authorization: Bearer dv_...` header.
 
@@ -91,8 +94,7 @@ which the frontend nginx forwards to the backend. `PUBLIC_URL` is the OAuth
 issuer, so it has to be exactly the URL clients use.
 
 The legacy stdio package `@systaro/docuvault-mcp` (`npx`, API token in the env)
-still works and remains the option when the agent needs to upload local
-binary files, which the HTTP server does not do.
+still works for clients without HTTP/OAuth support.
 
 ## Status
 
