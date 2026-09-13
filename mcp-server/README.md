@@ -1,4 +1,15 @@
-# DocuVault MCP Server
+# DocuVault MCP Server (stdio package)
+
+> **DocuVault runs an MCP server itself.** Connect with one line and approve in the browser, no token to copy:
+>
+> ```bash
+> claude mcp add --transport http docuvault https://your-docuvault-instance.com/api/mcp
+> ```
+>
+> This npm package is the stdio alternative for two cases: clients without
+> OAuth/HTTP support, and workflows that upload local binary files (images,
+> PDFs, Office documents) or download documents to disk, which the built-in
+> server does not do.
 
 An MCP (Model Context Protocol) server that gives Claude Code full access to your DocuVault documentation. Search, read, create, edit, and delete documents directly from your coding environment.
 

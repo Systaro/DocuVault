@@ -139,7 +139,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             <span translate="no" class="material-icons card-icon">key</span>
             <div>
               <h2>API Tokens</h2>
-              <p>Create tokens for external integrations like the MCP server</p>
+              <p>Create tokens for scripts, CI and other integrations that cannot sign in through a browser</p>
             </div>
           </div>
           <div class="card-body">
@@ -250,15 +250,16 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           <div class="card-header">
             <span translate="no" class="material-icons card-icon">terminal</span>
             <div>
-              <h2>MCP Server Setup</h2>
-              <p>Use DocuVault documentation directly in Claude Code</p>
+              <h2>MCP Server</h2>
+              <p>Use DocuVault documentation directly in Claude Code, Claude Desktop or Cursor</p>
             </div>
           </div>
           <div class="card-body">
             <div class="mcp-explainer">
               <p>
                 The <strong>Model Context Protocol (MCP)</strong> lets AI assistants like Claude access your documentation directly.
-                Once configured, Claude can search, read, and edit your docs without leaving the conversation.
+                DocuVault runs the MCP server itself: add one URL to your client, approve the connection in your browser, done.
+                Nothing to install, no token to copy.
               </p>
 
               <div class="mcp-capabilities">
@@ -268,18 +269,18 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
                     <li><strong>search_documentation</strong> &mdash; semantic search across all docs</li>
                     <li><strong>search_by_keyword</strong> &mdash; find docs by title or path</li>
                     <li><strong>read_document</strong> &mdash; read the full content of any page</li>
-                    <li><strong>download_document</strong> &mdash; save a document to a local file for editing</li>
-                    <li><strong>list_spaces</strong> / <strong>list_documents</strong> &mdash; browse the doc tree</li>
+                    <li><strong>list_spaces</strong> / <strong>list_documents</strong> / <strong>list_directory</strong> &mdash; browse the doc tree</li>
+                    <li><strong>get_space_state</strong> &mdash; read the data interactive HTML pages store</li>
                   </ul>
                 </div>
                 <div class="capability-group">
-                  <h4><span translate="no" class="material-icons">edit_note</span> Write &amp; Edit</h4>
+                  <h4><span translate="no" class="material-icons">edit_note</span> Write &amp; Share</h4>
                   <ul>
-                    <li><strong>create_document</strong> &mdash; create new pages (inline or from a local file)</li>
+                    <li><strong>create_document</strong> &mdash; create new pages</li>
                     <li><strong>update_document</strong> &mdash; fully replace a document's content</li>
                     <li><strong>edit_document</strong> &mdash; surgical find-and-replace that preserves all formatting</li>
                     <li><strong>insert_in_document</strong> &mdash; add content at a specific location</li>
-                    <li><strong>delete_document</strong> &mdash; remove a document from the space</li>
+                    <li><strong>share_document</strong> &mdash; create a public share link</li>
                   </ul>
                 </div>
               </div>
@@ -287,27 +288,42 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               <div class="mcp-note">
                 <span translate="no" class="material-icons">info</span>
                 <p>
-                  Write tools require an API token with <strong>Editor</strong> or <strong>Admin</strong> permissions on the target space.
-                  Edits use optimistic locking — if the document changes between reading and writing, the edit is safely rejected.
+                  The assistant acts as you, with your permissions in each space. Edits use optimistic locking &mdash; if a document changes between reading and writing, the edit is safely rejected.
+                  Deleting documents is not available through MCP.
                 </p>
               </div>
             </div>
 
-            <h3 class="setup-heading">Configuration</h3>
+            <h3 class="setup-heading">Claude Code</h3>
             <p class="setup-intro">
-              Add the following to your project's <code>.mcp.json</code> file to enable DocuVault tools in Claude Code:
+              Run this once. Then, in a session, open <code>/mcp</code>, pick <strong>docuvault</strong> and <strong>Authenticate</strong>: your browser opens DocuVault to approve the connection.
+            </p>
+            <div class="code-block">
+              <div class="code-header">
+                <span>Terminal</span>
+                <button class="btn btn-ghost btn-sm" (click)="copySnippet('command')" [title]="copiedSnippet() === 'command' ? 'Copied!' : 'Copy'">
+                  <span translate="no" class="material-icons">{{ copiedSnippet() === 'command' ? 'check' : 'content_copy' }}</span>
+                </button>
+              </div>
+              <pre>{{ mcpCommand }}</pre>
+            </div>
+
+            <h3 class="setup-heading">Other clients</h3>
+            <p class="setup-intro">
+              Claude Desktop, Cursor and any client with HTTP transport and OAuth support take the same URL, for example in a project's <code>.mcp.json</code>:
             </p>
             <div class="code-block">
               <div class="code-header">
                 <span>.mcp.json</span>
-                <button class="btn btn-ghost btn-sm" (click)="copyMcpConfig()" [title]="mcpCopied() ? 'Copied!' : 'Copy'">
-                  <span translate="no" class="material-icons">{{ mcpCopied() ? 'check' : 'content_copy' }}</span>
+                <button class="btn btn-ghost btn-sm" (click)="copySnippet('config')" [title]="copiedSnippet() === 'config' ? 'Copied!' : 'Copy'">
+                  <span translate="no" class="material-icons">{{ copiedSnippet() === 'config' ? 'check' : 'content_copy' }}</span>
                 </button>
               </div>
               <pre>{{ mcpConfig }}</pre>
             </div>
             <p class="setup-note">
-              Replace <code>&lt;paste-your-token-here&gt;</code> with your API token from above.
+              For scripts and CI, where no browser is available, the same endpoint accepts an API token from above as a header:
+              <code>--header "Authorization: Bearer dv_..."</code>
             </p>
           </div>
         </div>
@@ -862,7 +878,7 @@ export class AccountComponent implements OnInit {
   createError = signal<string | null>(null);
   newToken = signal<string | null>(null);
   copied = signal(false);
-  mcpCopied = signal(false);
+  copiedSnippet = signal<'command' | 'config' | null>(null);
 
   changingPassword = signal(false);
   passwordError = signal<string | null>(null);
@@ -883,7 +899,9 @@ export class AccountComponent implements OnInit {
     { value: null, label: 'No expiry' }
   ];
 
-  mcpConfig: string;
+  readonly mcpUrl: string;
+  readonly mcpCommand: string;
+  readonly mcpConfig: string;
 
   constructor(
     public authService: AuthService,
@@ -891,16 +909,11 @@ export class AccountComponent implements OnInit {
     private usersService: UsersService
   ) {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://docuvault.systaro.de';
+    this.mcpUrl = `${origin}/api/mcp`;
+    this.mcpCommand = `claude mcp add --transport http docuvault ${this.mcpUrl}`;
     this.mcpConfig = JSON.stringify({
       mcpServers: {
-        docuvault: {
-          command: 'npx',
-          args: ['-y', '@systaro/docuvault-mcp'],
-          env: {
-            DOCUVAULT_URL: origin,
-            DOCUVAULT_TOKEN: '<paste-your-token-here>'
-          }
-        }
+        docuvault: { type: 'http', url: this.mcpUrl }
       }
     }, null, 2);
   }
@@ -1002,10 +1015,10 @@ export class AccountComponent implements OnInit {
     });
   }
 
-  copyMcpConfig(): void {
-    navigator.clipboard.writeText(this.mcpConfig);
-    this.mcpCopied.set(true);
-    setTimeout(() => this.mcpCopied.set(false), 2000);
+  copySnippet(kind: 'command' | 'config'): void {
+    navigator.clipboard.writeText(kind === 'command' ? this.mcpCommand : this.mcpConfig);
+    this.copiedSnippet.set(kind);
+    setTimeout(() => this.copiedSnippet.set(null), 2000);
   }
 
   formatDate(dateStr: string): string {

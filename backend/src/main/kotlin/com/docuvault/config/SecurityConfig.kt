@@ -48,6 +48,12 @@ class SecurityConfig(
                     .requestMatchers("/notifications/unsubscribe", "/notifications/unsubscribe/info").permitAll()
                     .requestMatchers("/shared/**").permitAll()
                     .requestMatchers("/meetings/bot/**").permitAll()
+                    // MCP + OAuth: discovery is public, the rest checks its own credential
+                    // (bearer token, or the session on the consent endpoints) so the 401
+                    // can carry the WWW-Authenticate pointer MCP clients discover with.
+                    .requestMatchers("/.well-known/**").permitAll()
+                    .requestMatchers("/oauth/**").permitAll()
+                    .requestMatchers("/mcp").permitAll()
                     .anyRequest().authenticated()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)

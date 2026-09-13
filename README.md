@@ -58,23 +58,41 @@ Full install + upgrade documentation: [docs/install.md](docs/install.md).
 
 ## MCP server (for AI agents)
 
+DocuVault runs its own MCP server at `/api/mcp` (Streamable HTTP). Connecting
+works like connecting GitLab: one URL in the client, a consent page in the
+browser, done. No token to copy, nothing to install.
+
+```bash
+claude mcp add --transport http docuvault https://your-docuvault.example.com/api/mcp
+# then, in a session: /mcp → docuvault → Authenticate
+```
+
+Claude Desktop, Cursor and other clients with HTTP transport and OAuth support
+take the same URL:
+
 ```jsonc
-// In your MCP client config (Claude Desktop, Claude Code, etc.)
 {
   "mcpServers": {
-    "docuvault": {
-      "command": "npx",
-      "args": ["-y", "@systaro/docuvault-mcp"],
-      "env": {
-        "DOCUVAULT_URL": "https://your-docuvault.example.com",
-        "DOCUVAULT_TOKEN": "dv_..."
-      }
-    }
+    "docuvault": { "type": "http", "url": "https://your-docuvault.example.com/api/mcp" }
   }
 }
 ```
 
-Generate an API token from your account page. The MCP server exposes ~12 tools covering list/read/create/edit/delete/share for documents and spaces.
+The server exposes 14 tools covering search/list/read/create/edit/share for
+documents, spaces and space state. Every call runs as the signed-in user with
+that user's space permissions. For scripts and CI, where no browser is
+available, the same endpoint accepts a personal API token from your account
+page as `Authorization: Bearer dv_...` header.
+
+The OAuth side is a small built-in authorization server (dynamic client
+registration, PKCE, refresh rotation); clients discover it through
+`/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`,
+which the frontend nginx forwards to the backend. `PUBLIC_URL` is the OAuth
+issuer, so it has to be exactly the URL clients use.
+
+The legacy stdio package `@systaro/docuvault-mcp` (`npx`, API token in the env)
+still works and remains the option when the agent needs to upload local
+binary files, which the HTTP server does not do.
 
 ## Status
 

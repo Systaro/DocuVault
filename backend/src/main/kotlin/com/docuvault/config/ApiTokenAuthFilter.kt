@@ -1,7 +1,9 @@
 package com.docuvault.config
 
+import com.docuvault.domain.user.User
 import com.docuvault.service.ApiTokenService
 import com.docuvault.service.SpaceTokenService
+import com.docuvault.service.oauth.OauthService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -14,7 +16,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 class ApiTokenAuthFilter(
     private val apiTokenService: ApiTokenService,
-    private val spaceTokenService: SpaceTokenService
+    private val spaceTokenService: SpaceTokenService,
+    private val oauthService: OauthService
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -50,24 +53,29 @@ class ApiTokenAuthFilter(
                     }
                 }
                 token.startsWith("dv_") -> {
-                    val user = apiTokenService.authenticateToken(token)
-                    if (user != null) {
-                        val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.role.name}"))
-                        val authentication = UsernamePasswordAuthenticationToken(
-                            org.springframework.security.core.userdetails.User(
-                                user.email,
-                                "",
-                                authorities
-                            ),
-                            null,
-                            authorities
-                        )
-                        SecurityContextHolder.getContext().authentication = authentication
-                    }
+                    apiTokenService.authenticateToken(token)?.let { authenticateAs(it) }
+                }
+                // OAuth access token issued to an MCP client: same rights as the user.
+                token.startsWith(OauthService.ACCESS_TOKEN_PREFIX) -> {
+                    oauthService.userForAccessToken(token)?.let { authenticateAs(it) }
                 }
             }
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun authenticateAs(user: User) {
+        val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.role.name}"))
+        val authentication = UsernamePasswordAuthenticationToken(
+            org.springframework.security.core.userdetails.User(
+                user.email,
+                "",
+                authorities
+            ),
+            null,
+            authorities
+        )
+        SecurityContextHolder.getContext().authentication = authentication
     }
 }

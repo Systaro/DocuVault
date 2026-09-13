@@ -16,12 +16,16 @@ class RateLimitFilter : OncePerRequestFilter() {
         private const val AUTH_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
         private const val SHARED_MAX_ATTEMPTS = 600
         private const val SHARED_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
+        // Registration, code exchange and refresh: a handful per client per hour is normal use.
+        private const val OAUTH_MAX_ATTEMPTS = 120
+        private const val OAUTH_WINDOW_MS = 15 * 60 * 1000L // 15 minutes
     }
 
     private data class RateEntry(val count: AtomicInteger = AtomicInteger(0), val windowStart: Long = System.currentTimeMillis())
 
     private val authAttempts = ConcurrentHashMap<String, RateEntry>()
     private val sharedAttempts = ConcurrentHashMap<String, RateEntry>()
+    private val oauthAttempts = ConcurrentHashMap<String, RateEntry>()
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val path = request.requestURI
@@ -31,6 +35,15 @@ class RateLimitFilter : OncePerRequestFilter() {
                 response.status = 429
                 response.contentType = "application/json"
                 response.writer.write("""{"error":"Too many login attempts. Please try again later."}""")
+                return
+            }
+        }
+
+        if (path.startsWith("/api/oauth/") && request.method == "POST") {
+            if (isRateLimited(request.remoteAddr, oauthAttempts, OAUTH_MAX_ATTEMPTS, OAUTH_WINDOW_MS)) {
+                response.status = 429
+                response.contentType = "application/json"
+                response.writer.write("""{"error":"slow_down","error_description":"Too many requests. Please try again later."}""")
                 return
             }
         }

@@ -49,6 +49,11 @@ where indicated (`openssl rand -base64 48`). The fields that *must* be set:
 You do **not** set an admin account in `.env`. The first admin is created in
 the browser via the setup wizard the first time you visit your instance.
 
+`PUBLIC_URL` (defaults to `https://$PUBLIC_HOSTNAME`) must be exactly the URL
+people open in the browser. It is also the OAuth issuer for MCP clients, so a
+mismatch (wrong scheme, extra path, a different hostname) stops Claude Code
+and other MCP clients from connecting, while the web UI keeps working.
+
 ## 3. Install
 
 ```bash
@@ -162,6 +167,22 @@ to your `PUBLIC_HOSTNAME` in `.env` and restart:
 ```bash
 docker compose -f docker-compose.product.yml up -d backend
 ```
+
+**MCP client cannot connect (OAuth discovery fails, "authentication failed").**
+The client fetches `https://<host>/.well-known/oauth-protected-resource` and
+`/.well-known/oauth-authorization-server` from the *site root*. The frontend
+container answers both by forwarding them to the backend, so this works out
+of the box with the bundled nginx-proxy. With your own reverse proxy, make
+sure every path (not only `/api/`) reaches the frontend container, and that
+`PUBLIC_URL` in `.env` equals the URL the client is configured with. Check:
+
+```bash
+curl -s https://<host>/.well-known/oauth-authorization-server
+```
+
+A JSON document with `authorization_endpoint`, `token_endpoint` and
+`registration_endpoint` means discovery works; an HTML page means the request
+never reached the backend.
 
 **Where do logs live.**
 All container logs go through Docker:

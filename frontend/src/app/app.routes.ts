@@ -33,6 +33,13 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/reset-password.component').then(m => m.ResetPasswordComponent)
   },
   {
+    // OAuth consent for MCP clients (Claude Code, Cursor, ...). The guard runs
+    // the normal login first and returns here with the query string intact.
+    path: 'oauth/authorize',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/auth/oauth-consent.component').then(m => m.OAuthConsentComponent)
+  },
+  {
     path: 'unsubscribe',
     loadComponent: () => import('./features/public/unsubscribe.component').then(m => m.UnsubscribeComponent)
   },

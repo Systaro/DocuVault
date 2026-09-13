@@ -3,5 +3,11 @@
     "target": "http://127.0.0.1:7030",
     "secure": false,
     "changeOrigin": true
+  },
+  "/.well-known/oauth-": {
+    "target": "http://127.0.0.1:7030",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/.well-known": "/api/.well-known" }
   }
 }

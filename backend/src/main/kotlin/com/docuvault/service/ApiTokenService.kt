@@ -5,7 +5,6 @@ import com.docuvault.domain.user.User
 import com.docuvault.infrastructure.repository.ApiTokenRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
 import java.util.*
@@ -78,9 +77,5 @@ class ApiTokenService(
         return apiToken.user
     }
 
-    private fun hashToken(rawToken: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(rawToken.toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
+    private fun hashToken(rawToken: String): String = TokenHashing.sha256Hex(rawToken)
 }
