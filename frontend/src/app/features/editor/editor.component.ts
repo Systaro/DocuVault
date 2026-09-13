@@ -289,13 +289,13 @@ interface SheetView {
           <div></div>
         }
         <div class="flex items-center gap-2" [class.ml-auto]="!showEditor()">
-          @if (!showEditor() && canEdit() && !viewingVersion()) {
+          @if (!showEditor() && canEdit() && !viewingVersion() && !notFound()) {
             <button class="btn-edit" (click)="enterEditMode()" title="Edit document">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
               Edit
             </button>
           }
-          @if (documentPath) {
+          @if (documentPath && !notFound()) {
             <div class="relative">
               <button
                 (click)="showActionMenu.set(!showActionMenu()); $event.stopPropagation()"
@@ -750,6 +750,24 @@ interface SheetView {
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
+              </div>
+            } @else if (notFound()) {
+              <div class="doc-not-found">
+                <span translate="no" class="material-icons doc-not-found-icon">search_off</span>
+                <h2>File not found</h2>
+                <p>There is no document at <code>{{ documentPath }}</code> in this space. The link may be outdated or mistyped.</p>
+                <div class="doc-not-found-actions">
+                  @if (space(); as sp) {
+                    <a [routerLink]="sp.fullPath | spaceRoute" class="btn btn-primary">
+                      <span translate="no" class="material-icons">home</span>
+                      Space overview
+                    </a>
+                    <a [routerLink]="sp.fullPath | spaceRoute: 'doc'" [queryParams]="{ folder: notFoundFolder() || null }" class="btn btn-secondary">
+                      <span translate="no" class="material-icons">add</span>
+                      New document{{ notFoundFolder() ? ' in ' + notFoundFolder() : '' }}
+                    </a>
+                  }
+                </div>
               </div>
             } @else {
               <!-- textarea, not input: a long title has to wrap, and an input
@@ -1207,6 +1225,44 @@ interface SheetView {
     }
 
     .text-muted { color: var(--text-muted); }
+
+    .doc-not-found {
+      text-align: center;
+      padding: 48px 16px;
+
+      h2 {
+        font-size: 22px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 8px;
+      }
+
+      p {
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin: 0 0 24px;
+        overflow-wrap: anywhere;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        color: var(--text-secondary);
+      }
+    }
+
+    .doc-not-found-icon {
+      font-size: 56px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .doc-not-found-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
     .editor-title {
       display: block;
@@ -2323,6 +2379,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   // A freshly-created document that has never been saved is editable even in a
   // git-backed space.
   isNewDocument = signal(false);
+  /** The linked path has no document (and nothing moved away from it). */
+  notFound = signal(false);
   private isMarkdownDoc = computed(() => {
     const ext = this.documentPathSignal().split('.').pop()?.toLowerCase() || '';
     return ext === 'md' || ext === 'markdown';
@@ -3296,6 +3354,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         // lands there instead of the default docs/ directory.
         this.newDocFolder = (params.get('folder') ?? '').replace(/^\/+|\/+$/g, '');
         this.isPreviewFile.set(false);
+        this.notFound.set(false);
         this.initializeNewDocument();
       }
     });
@@ -3344,6 +3403,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     if (!space || !this.documentPath) return;
 
     this.loading.set(true);
+    this.notFound.set(false);
     this.translationLang.set(null);
     this.availableLangs.set([]);
     this.viewingVersion.set(null);
@@ -3384,9 +3444,10 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
       },
       error: () => {
         // Nothing at this path — but it may have been moved rather than deleted,
-        // in which case an old link should land on the document, not on a blank
-        // new one. Only then fall back to creating.
-        this.forwardToMovedDocument(space.id, this.documentPath, () => this.initializeNewDocument());
+        // in which case an old link should land on the document. Otherwise the
+        // link is simply wrong: say so instead of opening a blank "Untitled"
+        // editor, which reads as if the document existed and were empty.
+        this.forwardToMovedDocument(space.id, this.documentPath, () => this.showNotFound());
       }
     });
   }
@@ -3471,6 +3532,22 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         },
         error: () => this.contentWidthPx.set(EditorComponent.CONTENT_WIDTH_DEFAULT)
       });
+  }
+
+  private showNotFound(): void {
+    this.document.set(null);
+    this.isNewDocument.set(false);
+    this.editMode.set(false);
+    this.markdownContent.set('');
+    this.documentTitle = '';
+    this.loading.set(false);
+    this.notFound.set(true);
+  }
+
+  /** Folder of the missing path, offered as the place to create a new document. */
+  notFoundFolder(): string {
+    const idx = this.documentPath.lastIndexOf('/');
+    return idx > 0 ? this.documentPath.substring(0, idx) : '';
   }
 
   initializeNewDocument(): void {
