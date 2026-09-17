@@ -23,11 +23,12 @@ export function loadEnv(): void {
   }
 }
 
-export async function launchBrowser(): Promise<Browser> {
+/** [extraArgs] adds Chrome flags, e.g. a fake microphone for voice input. */
+export async function launchBrowser(extraArgs: string[] = []): Promise<Browser> {
   const headless = process.env.HEADLESS !== 'false';
   return puppeteer.launch({
     headless: headless ? true : false,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,900'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,900', ...extraArgs],
     defaultViewport: { width: 1280, height: 900 },
   });
 }

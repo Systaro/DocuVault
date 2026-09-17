@@ -95,6 +95,8 @@ openai:
   api-key: ${OPENAI_API_KEY:}
   embedding-model: text-embedding-3-small
   chat-model: gpt-5.5
+  # Speech to text for voice input in the ask box and quick notes.
+  transcription-model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-transcribe}
   # Model for AI document edits. Editing has to reproduce a file's structure
   # exactly, which rewards a stronger model than chat does. Blank = use the
   # chat model; set it per install in Admin > Settings or via OPENAI_EDIT_MODEL.

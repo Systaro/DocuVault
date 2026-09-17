@@ -19,7 +19,8 @@ class CapabilitiesController(
             ai = AiCapabilities(
                 enabled = aiEnabled,
                 chat = aiEnabled,
-                inbox = aiEnabled
+                inbox = aiEnabled,
+                voice = aiEnabled
             ),
             // False means the client keeps using the browser's print dialog.
             pdfRenderer = pdfRenderService.isConfigured()
@@ -31,5 +32,7 @@ data class CapabilitiesResponse(val ai: AiCapabilities, val pdfRenderer: Boolean
 data class AiCapabilities(
     val enabled: Boolean,
     val chat: Boolean,
-    val inbox: Boolean
+    val inbox: Boolean,
+    /** Speech to text for the ask box and quick notes. */
+    val voice: Boolean
 )

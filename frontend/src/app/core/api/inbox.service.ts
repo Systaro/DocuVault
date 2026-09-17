@@ -6,6 +6,20 @@ export type NoteStatus = 'UNSORTED' | 'FILED' | 'DISMISSED';
 export type RuleType = 'CATEGORY' | 'PATTERN';
 export type RuleAction = 'APPEND_TO_DOCUMENT' | 'CREATE_DOCUMENT';
 
+export interface CaptureTask {
+  title: string;
+  dueDate?: string | null;
+  assigneeId?: string | null;
+  assigneeName?: string | null;
+}
+
+export interface CaptureSuggestion {
+  space: { id: string; name: string; fullPath: string } | null;
+  reason?: string | null;
+  tasks: CaptureTask[];
+  aiUsed: boolean;
+}
+
 export interface InboxNote {
   id: string;
   spaceId: string;
@@ -101,6 +115,11 @@ export class InboxService {
 
   getUnsortedCount(spaceId: string): Observable<{ count: number }> {
     return this.http.get<{ count: number }>(`/api/spaces/${spaceId}/inbox/count`);
+  }
+
+  /** Where a quick note belongs and which tasks it holds. Saves nothing. */
+  suggestPlace(content: string): Observable<CaptureSuggestion> {
+    return this.http.post<CaptureSuggestion>('/api/capture/suggest', { content });
   }
 
   createNote(spaceId: string, content: string): Observable<InboxNote> {

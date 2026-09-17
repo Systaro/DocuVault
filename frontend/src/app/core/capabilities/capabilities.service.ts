@@ -6,6 +6,8 @@ export interface AiCapabilities {
   enabled: boolean;
   chat: boolean;
   inbox: boolean;
+  /** Speech to text for the ask box and quick notes. */
+  voice?: boolean;
 }
 
 export interface Capabilities {
@@ -15,7 +17,7 @@ export interface Capabilities {
 }
 
 const FALLBACK: Capabilities = {
-  ai: { enabled: false, chat: false, inbox: false },
+  ai: { enabled: false, chat: false, inbox: false, voice: false },
   pdfRenderer: false
 };
 

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 import { Space } from '../../core/api/spaces.service';
+import { VoiceInputButtonComponent } from '../../shared/components/voice-input-button.component';
 
 export interface AskSubmission {
   message: string;
@@ -37,7 +38,7 @@ function rememberSpace(spaceId: string): void {
 @Component({
   selector: 'app-ask-composer',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent, VoiceInputButtonComponent],
   template: `
     <form class="ask-composer" [class.busy]="busy()" (ngSubmit)="send()">
       <div class="composer-scope">
@@ -80,6 +81,7 @@ function rememberSpace(spaceId: string): void {
           [disabled]="busy()"
           aria-label="Your question"
         ></textarea>
+        <app-voice-input-button (transcribed)="appendSpoken($event)" />
         <button type="submit" class="send-btn" [disabled]="!canSend()" title="Send (Enter)">
           <span translate="no" class="material-icons">{{ busy() ? 'hourglass_top' : 'arrow_upward' }}</span>
         </button>
@@ -260,6 +262,14 @@ export class AskComposerComponent implements AfterViewInit {
     this.submitted.emit({ message: this.text.trim(), spaceId, documentPath: this.documentPath() });
     this.text = '';
     setTimeout(() => this.autoGrow());
+  }
+
+  appendSpoken(text: string): void {
+    this.text = this.text.trim() ? `${this.text.trim()} ${text}` : text;
+    setTimeout(() => {
+      this.autoGrow();
+      this.focus();
+    });
   }
 
   onKeydown(event: KeyboardEvent): void {
