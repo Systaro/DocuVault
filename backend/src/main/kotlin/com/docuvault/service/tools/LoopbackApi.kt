@@ -43,6 +43,15 @@ class LoopbackApi(
     fun putState(spaceId: String, key: String, value: String): JsonNode =
         call(HttpMethod.PUT, "/spaces/$spaceId/state/${UriUtils.encodePathSegment(key, StandardCharsets.UTF_8)}", mapOf("value" to value))
 
+    fun myTasks(): JsonNode = call(HttpMethod.GET, "/tasks/mine")
+    fun spaceTasks(spaceId: String, status: String?): JsonNode =
+        call(HttpMethod.GET, "/spaces/$spaceId/tasks" + (status?.let { "?status=${UriUtils.encodeQueryParam(it, StandardCharsets.UTF_8)}" } ?: ""))
+    fun taskAssignees(spaceId: String): JsonNode = call(HttpMethod.GET, "/spaces/$spaceId/tasks/assignees")
+    fun createTask(spaceId: String, body: Map<String, Any?>): JsonNode = call(HttpMethod.POST, "/spaces/$spaceId/tasks", body)
+    fun getTask(taskId: String): JsonNode = call(HttpMethod.GET, "/tasks/${UriUtils.encodePathSegment(taskId, StandardCharsets.UTF_8)}")
+    fun patchTask(taskId: String, body: Map<String, Any?>): JsonNode =
+        call(HttpMethod.PATCH, "/tasks/${UriUtils.encodePathSegment(taskId, StandardCharsets.UTF_8)}", body)
+
     /** Null when the document does not exist; any other failure still throws. */
     fun readDocumentOrNull(spaceId: String, path: String): JsonNode? = try {
         readDocument(spaceId, path)

@@ -8,6 +8,7 @@ import com.docuvault.infrastructure.repository.MeetingInviteRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.inbox.InboxService
+import com.docuvault.service.task.TaskService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,7 +28,8 @@ class MeetingService(
     private val meetingInviteRepository: MeetingInviteRepository,
     private val spaceRepository: SpaceRepository,
     private val userRepository: UserRepository,
-    private val inboxService: InboxService
+    private val inboxService: InboxService,
+    private val taskService: TaskService
 ) {
     companion object {
         const val TOKEN_PREFIX = "dvm_"
@@ -193,7 +195,11 @@ class MeetingService(
 
         val accepted = notes.filter { it.isNotBlank() }
         accepted.forEach { content ->
-            inboxService.createNote(invite.space.id!!, invite.createdBy.email, content)
+            val note = inboxService.createNote(invite.space.id!!, invite.createdBy.email, content)
+            // The action items become suggestions for whoever invited the bot. A
+            // transcript has no checkboxes, so only the meeting note yields any.
+            runCatching { taskService.suggestFromMeetingNote(note) }
+                .onFailure { logger.warn("Could not suggest tasks from meeting note ${note.id}: ${it.message}") }
         }
 
         invite.status = MeetingInviteStatus.COMPLETED

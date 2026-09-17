@@ -74,6 +74,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
   },
   {
+    path: 'tasks',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/tasks/my-tasks.component').then(m => m.MyTasksComponent)
+  },
+  {
     // /ask and /ask/:id share one route so the page survives the URL change
     // when a new conversation gets its id while its answer is still streaming.
     matcher: askMatcher,
@@ -114,6 +119,10 @@ export const routes: Routes = [
           {
             path: 'inbox',
             loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
+          },
+          {
+            path: 'tasks',
+            loadComponent: () => import('./features/tasks/space-tasks.component').then(m => m.SpaceTasksComponent)
           }
         ]
       },
@@ -146,6 +155,10 @@ export const routes: Routes = [
           {
             path: 'inbox',
             loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
+          },
+          {
+            path: 'tasks',
+            loadComponent: () => import('./features/tasks/space-tasks.component').then(m => m.SpaceTasksComponent)
           }
         ]
       },
@@ -178,6 +191,10 @@ export const routes: Routes = [
           {
             path: 'inbox',
             loadComponent: () => import('./features/inbox/inbox.component').then(m => m.InboxComponent)
+          },
+          {
+            path: 'tasks',
+            loadComponent: () => import('./features/tasks/space-tasks.component').then(m => m.SpaceTasksComponent)
           }
         ]
       }

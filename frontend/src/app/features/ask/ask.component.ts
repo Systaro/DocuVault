@@ -152,6 +152,16 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
                     }
                   </div>
                 }
+                @if (m.createdTasks.length) {
+                  <div class="doc-links created">
+                    <span class="links-label">Tasks</span>
+                    @for (t of m.createdTasks; track t.id) {
+                      <a class="doc-link" routerLink="/tasks">
+                        <span translate="no" class="material-icons">task_alt</span>{{ t.title }}
+                      </a>
+                    }
+                  </div>
+                }
                 @if (m.sources.length) {
                   <div class="doc-links">
                     <span class="links-label">Sources</span>
@@ -936,6 +946,7 @@ function localUserMessage(content: string): ConversationMessage {
     toolCalls: [],
     createdDocuments: [],
     proposals: [],
+    createdTasks: [],
     createdAt: new Date().toISOString()
   };
 }

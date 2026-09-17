@@ -52,7 +52,7 @@ interface SpaceGroup {
                 <div class="feed-group">
                   <div class="group-header">
                     <span class="group-space">{{ group.spaceName }}</span>
-                    <span class="group-count">{{ group.items.length }} {{ group.items.length === 1 ? 'change' : 'changes' }}</span>
+                    <span class="group-count">{{ group.items.length }} {{ group.items.length === 1 ? 'update' : 'updates' }}</span>
                   </div>
                   @for (item of group.items; track item.id) {
                     <button class="feed-item" [class.unseen]="item.unseen" (click)="openItem(item)">
@@ -60,7 +60,7 @@ interface SpaceGroup {
                         {{ changeIcon(item.changeType) }}
                       </span>
                       <span class="item-body">
-                        <span class="item-file">{{ fileName(item.filePath) }}</span>
+                        <span class="item-file">{{ item.changeType === 'TASK_ASSIGNED' ? item.filePath : fileName(item.filePath) }}</span>
                         <span class="item-meta">
                           {{ changeLabel(item.changeType) }}
                           @if (item.authorName) { <span>by {{ item.authorName }}</span> }
@@ -324,6 +324,10 @@ export class HeaderNotificationsComponent implements OnInit, OnDestroy {
 
   openItem(item: NotificationFeedItem): void {
     this.open.set(false);
+    if (item.changeType === 'TASK_ASSIGNED') {
+      this.router.navigate(['/tasks']);
+      return;
+    }
     if (item.changeType === 'DELETED') {
       this.router.navigate(['/spaces', ...item.spaceFullPath.split('/')]);
       return;
@@ -343,6 +347,7 @@ export class HeaderNotificationsComponent implements OnInit, OnDestroy {
       case 'ADDED': return 'add_circle';
       case 'DELETED': return 'remove_circle';
       case 'RENAMED': return 'drive_file_rename_outline';
+      case 'TASK_ASSIGNED': return 'task_alt';
       default: return 'edit';
     }
   }
@@ -352,6 +357,7 @@ export class HeaderNotificationsComponent implements OnInit, OnDestroy {
       case 'ADDED': return 'added';
       case 'DELETED': return 'deleted';
       case 'RENAMED': return 'renamed';
+      case 'TASK_ASSIGNED': return 'assigned to you';
       default: return 'modified';
     }
   }

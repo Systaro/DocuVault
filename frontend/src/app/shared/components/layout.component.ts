@@ -44,6 +44,10 @@ import { APP_VERSION } from '../version';
               Ask
             </a>
           }
+          <a routerLink="/tasks" routerLinkActive="active" class="nav-link">
+            <span translate="no" class="material-icons">task_alt</span>
+            Tasks
+          </a>
           @if (authService.isAdmin()) {
             <a
               routerLink="/admin"

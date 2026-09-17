@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, signal } from '@angular/core';
+import { Component, HostListener, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
@@ -12,6 +12,9 @@ import { InboxService, SpaceUnsortedCount } from '../../core/api/inbox.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { AskComposerComponent, AskSubmission } from '../ask/ask-composer.component';
+import { TaskListComponent } from '../tasks/task-list.component';
+import { TaskListState } from '../tasks/task-list-state';
+import { TasksService } from '../../core/api/tasks.service';
 
 interface BreadcrumbItem {
   id: string;
@@ -22,7 +25,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent, SpaceRoutePipe, AskComposerComponent],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent, SpaceRoutePipe, AskComposerComponent, TaskListComponent],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -60,6 +63,26 @@ interface BreadcrumbItem {
               <a routerLink="/ask" class="dashboard-ask-history">
                 <span translate="no" class="material-icons">forum</span>Your conversations
               </a>
+            </section>
+          }
+          @if (myTasks.items().length || toConfirmCount()) {
+            <section class="dashboard-tasks" aria-labelledby="dashboard-tasks-title">
+              <div class="dashboard-tasks-header">
+                <h2 id="dashboard-tasks-title">My tasks</h2>
+                @if (toConfirmCount()) {
+                  <a routerLink="/tasks" class="to-confirm">
+                    <span translate="no" class="material-icons">lightbulb</span>{{ toConfirmCount() }} to confirm
+                  </a>
+                }
+                <a routerLink="/tasks" class="all-tasks">All tasks</a>
+              </div>
+              <app-task-list
+                [tasks]="myTasks.items().slice(0, 5)"
+                [showSpace]="true"
+                [busyId]="taskState.busyId()"
+                (open)="openTasks()"
+                (toggleDone)="taskState.toggleDone($event, [myTasks], true)"
+              />
             </section>
           }
           <div class="workspace-header">
@@ -812,6 +835,37 @@ interface BreadcrumbItem {
       margin-bottom: var(--spacing-xl);
     }
 
+    .dashboard-tasks {
+      margin-bottom: var(--spacing-xl);
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+    }
+
+    .dashboard-tasks-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      padding: 6px 10px;
+
+      h2 { margin: 0; font-size: 16px; color: var(--text-primary); }
+
+      a {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        text-decoration: none;
+
+        &:hover { color: var(--primary-dark); }
+        .material-icons { font-size: 16px; color: var(--warning); }
+      }
+
+      .all-tasks { margin-left: auto; }
+    }
+
     .dashboard-ask-history {
       display: inline-flex;
       align-items: center;
@@ -932,6 +986,10 @@ export class DashboardComponent implements OnInit {
   deleting = signal(false);
   /** Every space the user can reach, for the ask box; [spaces] only holds the current level. */
   askSpaces = signal<Space[]>([]);
+  private tasksService = inject(TasksService);
+  taskState = new TaskListState(this.tasksService, inject(ToastService), inject(AuthService));
+  myTasks = this.taskState.list();
+  toConfirmCount = signal(0);
   showCreateModal = signal(false);
 
   // Share dialog state
@@ -966,6 +1024,12 @@ export class DashboardComponent implements OnInit {
     if (this.caps.aiChat()) {
       this.spacesService.getSpaces().subscribe({ next: spaces => this.askSpaces.set(spaces) });
     }
+    this.tasksService.mine().subscribe({
+      next: mine => {
+        this.myTasks.items.set(mine.assigned);
+        this.toConfirmCount.set(mine.toConfirm.length);
+      }
+    });
     this.inboxService.getUnsortedCounts().subscribe({
       next: (counts) => this.unsortedCounts.set(counts),
       error: () => this.unsortedCounts.set([])
@@ -1031,6 +1095,10 @@ export class DashboardComponent implements OnInit {
   onSpaceCreated(space: Space): void {
     this.closeModal();
     this.loadSpaces();
+  }
+
+  openTasks(): void {
+    this.router.navigate(['/tasks']);
   }
 
   ask(submission: AskSubmission): void {

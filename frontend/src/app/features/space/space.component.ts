@@ -119,6 +119,14 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                     Ask
                   </a>
                 }
+                <a
+                  [routerLink]="spaceSignal()?.fullPath | spaceRoute:'tasks'"
+                  routerLinkActive="active"
+                  class="nav-item"
+                >
+                  <span translate="no" class="material-icons">task_alt</span>
+                  Tasks
+                </a>
                 @if (caps.aiInbox()) {
                   <a
                     [routerLink]="spaceSignal()?.fullPath | spaceRoute:'inbox'"

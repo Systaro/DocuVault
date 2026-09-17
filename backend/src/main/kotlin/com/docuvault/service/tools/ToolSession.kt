@@ -34,7 +34,9 @@ sealed interface ToolScope {
     data class Conversation(
         val spaceId: String,
         val spaceName: String,
-        val repositoryIds: Set<String>
+        val repositoryIds: Set<String>,
+        /** Recorded as the source of tasks the assistant creates. */
+        val conversationId: String? = null
     ) : ToolScope {
         /** A single repository needs no space argument; a group has to be told which one. */
         val defaultSpaceId: String? get() = repositoryIds.singleOrNull()
@@ -45,6 +47,8 @@ sealed interface ToolScope {
 open class ToolException(message: String) : RuntimeException(message)
 
 data class ToolSource(val spaceId: String, val path: String, val title: String?)
+
+data class ToolTask(val id: String, val spaceId: String, val title: String)
 
 data class ToolProposal(
     val id: UUID,
@@ -62,6 +66,7 @@ class ToolEffects {
     val sources = LinkedHashMap<String, ToolSource>()
     val created = mutableListOf<ToolSource>()
     val proposals = mutableListOf<ToolProposal>()
+    val createdTasks = mutableListOf<ToolTask>()
 
     fun read(source: ToolSource) {
         sources.putIfAbsent("${source.spaceId}:${source.path}", source)

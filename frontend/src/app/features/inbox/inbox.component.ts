@@ -1,19 +1,24 @@
-import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
 import { InboxService, InboxNote, AiSuggestion } from '../../core/api/inbox.service';
 import { SpacesService } from '../../core/api/spaces.service';
 import { MeetingService, MeetingInvite, meetingPhaseLabel } from '../../core/api/meeting.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { DiffViewComponent } from './diff-view.component';
 import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
+import { TaskListComponent } from '../tasks/task-list.component';
+import { TaskEditorDialogComponent, TaskDraft } from '../tasks/task-editor-dialog.component';
+import { TaskListState } from '../tasks/task-list-state';
+import { Task, TasksService } from '../../core/api/tasks.service';
+import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
   selector: 'app-inbox',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, DiffViewComponent, MeetingInviteModalComponent],
+  imports: [CommonModule, FormsModule, RouterLink, DiffViewComponent, MeetingInviteModalComponent, TaskListComponent, TaskEditorDialogComponent],
   template: `
     <div class="inbox-container">
       <!-- Header -->
@@ -100,6 +105,26 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
                 <div class="note-sheet">
                   <div class="note-full-content" [innerHTML]="selectedNote()!.content"></div>
                 </div>
+
+                <section class="note-tasks" aria-label="Tasks from this note">
+                  <div class="note-tasks-header">
+                    <span translate="no" class="material-icons">task_alt</span>
+                    <span class="note-tasks-title">Tasks from this note</span>
+                    <button type="button" class="btn btn-ghost" (click)="startTaskFromNote()">
+                      <span translate="no" class="material-icons">add</span>Make a task
+                    </button>
+                  </div>
+                  @if (noteTasks.items().length) {
+                    <app-task-list
+                      [tasks]="noteTasks.items()"
+                      [busyId]="taskState.busyId()"
+                      (open)="editingTask.set($event)"
+                      (toggleDone)="taskState.toggleDone($event, [noteTasks])"
+                      (confirm)="taskState.confirm($event, [noteTasks])"
+                      (dismiss)="taskState.dismiss($event, [noteTasks])"
+                    />
+                  }
+                </section>
 
                 <div class="suggestion-divider"></div>
 
@@ -269,6 +294,13 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
         (accept)="acceptDiff()"
         (close)="showDiff.set(false)"
       />
+    }
+
+    @if (taskDraft(); as draft) {
+      <app-task-editor-dialog [draft]="draft" (saved)="onTaskSaved($event)" (cancelled)="taskDraft.set(null)" />
+    }
+    @if (editingTask(); as task) {
+      <app-task-editor-dialog [task]="task" (saved)="onTaskSaved($event)" (deleted)="onTaskDeleted($event)" (cancelled)="editingTask.set(null)" />
     }
 
     <!-- Meeting transcription invites -->
@@ -493,6 +525,26 @@ import { MeetingInviteModalComponent } from './meeting-invite-modal.component';
       flex-direction: column;
       gap: 16px;
     }
+
+    .note-tasks {
+      margin: var(--spacing-md) 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+    }
+
+    .note-tasks-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 6px 6px 12px;
+
+      > .material-icons { font-size: 18px; color: var(--primary-dark); }
+      .btn { margin-left: auto; padding: 4px 10px; font-size: 13px; }
+      .btn .material-icons { font-size: 16px; }
+    }
+
+    .note-tasks-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 
     .note-sheet {
       background: #ffffff;
@@ -806,6 +858,12 @@ export class InboxComponent implements OnInit, OnDestroy {
   private streamSub?: Subscription;
 
   activeTab = signal<'unsorted' | 'filed'>('unsorted');
+
+  private tasksService = inject(TasksService);
+  taskState = new TaskListState(this.tasksService, inject(ToastService), inject(AuthService));
+  noteTasks = this.taskState.list();
+  taskDraft = signal<TaskDraft | null>(null);
+  editingTask = signal<Task | null>(null);
   loading = signal(false);
   filing = signal(false);
   suggestingNote = signal(false);
@@ -905,10 +963,51 @@ export class InboxComponent implements OnInit, OnDestroy {
     this.selectedNote.set(note);
     this.showDiff.set(false);
     this.suggestionHint = '';
+    this.loadNoteTasks(note);
 
     // Show existing suggestion if there is one, otherwise wait for the user
     // to click "Analyze where to put this" — AI runs only on demand.
     this.currentSuggestion.set(this.inboxService.parseSuggestion(note));
+  }
+
+  /** Tasks made from the note by hand, and those the meeting bot suggested from it. */
+  private loadNoteTasks(note: InboxNote): void {
+    this.noteTasks.items.set([]);
+    forkJoin([
+      this.tasksService.forSource('INBOX_NOTE', note.id),
+      this.tasksService.forSource('MEETING', note.id)
+    ]).subscribe({
+      next: ([made, suggested]) => {
+        if (this.selectedNote()?.id === note.id) this.noteTasks.items.set([...suggested, ...made]);
+      }
+    });
+  }
+
+  startTaskFromNote(): void {
+    const note = this.selectedNote();
+    if (!note) return;
+    // textContent runs block elements together, so each block's end becomes a line break first.
+    const withBreaks = note.content.replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|ul|ol|blockquote)>/gi, '$&\n');
+    const text = new DOMParser().parseFromString(withBreaks, 'text/html').body.textContent ?? '';
+    const firstLine = text.split('\n').map(line => line.trim()).find(line => line.length > 0) ?? '';
+    this.taskDraft.set({
+      spaceId: this.spaceId,
+      title: firstLine.slice(0, 120),
+      sourceType: 'INBOX_NOTE',
+      sourceId: note.id,
+      sourceLabel: 'Inbox note'
+    });
+  }
+
+  onTaskSaved(task: Task): void {
+    this.taskDraft.set(null);
+    this.editingTask.set(null);
+    this.noteTasks.upsert(task);
+  }
+
+  onTaskDeleted(task: Task): void {
+    this.editingTask.set(null);
+    this.noteTasks.remove(task);
   }
 
   requestSuggestion(): void {

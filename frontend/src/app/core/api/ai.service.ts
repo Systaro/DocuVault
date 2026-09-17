@@ -58,6 +58,7 @@ export interface ConversationMessage {
   toolCalls: MessageToolCall[];
   createdDocuments: MessageSource[];
   proposals: EditProposal[];
+  createdTasks: { id: string; spaceId: string; title: string }[];
   createdAt: string;
 }
 

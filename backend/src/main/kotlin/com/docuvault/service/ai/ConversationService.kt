@@ -13,6 +13,7 @@ import com.docuvault.domain.ai.Conversation
 import com.docuvault.domain.ai.ConversationMessage
 import com.docuvault.domain.ai.MessageProposal
 import com.docuvault.domain.ai.MessageSource
+import com.docuvault.domain.ai.MessageTask
 import com.docuvault.domain.ai.MessageToolCall
 import com.docuvault.domain.ai.ProposalStatus
 import com.docuvault.domain.space.Space
@@ -79,6 +80,7 @@ data class MessageDto(
     val toolCalls: List<MessageToolCall>,
     val createdDocuments: List<SourceDto>,
     val proposals: List<ProposalDto>,
+    val createdTasks: List<MessageTask>,
     val createdAt: Instant
 )
 
@@ -137,6 +139,7 @@ class ConversationService(
             - For a new document, call create_document. It writes and commits right away.
             - To change an existing document, read it, then call propose_edit. The change is only
               proposed: the user applies or discards it. Say that it is waiting for them.
+            - When the user asks for a task or a to-do, call create_task. It is created right away.
             - Never say you have created or changed something unless the tool call succeeded.
               If a call is refused, say so plainly and why.
         """.trimIndent()
@@ -244,9 +247,9 @@ class ConversationService(
             summary = conversation.toSummary(),
             userMessageId = userMessage.id!!,
             message = message,
-            scope = ToolScope.Conversation(space.id.toString(), space.name, repositoryIds.map { it.toString() }.toSet()),
+            scope = ToolScope.Conversation(space.id.toString(), space.name, repositoryIds.map { it.toString() }.toSet(), conversation.id.toString()),
             canWrite = canWrite,
-            systemPrompt = systemPrompt(space, repositories, docPath, documentContent, canWrite),
+            systemPrompt = systemPrompt(user, space, repositories, docPath, documentContent, canWrite),
             history = history,
             retrievalSpaceIds = if (docPath != null) emptyList() else repositoryIds,
             spacePaths = (repositories + space).associate { it.id!! to it.getFullPath() },
@@ -301,7 +304,8 @@ class ConversationService(
                 createdDocuments = effects.created.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) },
                 proposals = effects.proposals.map {
                     MessageProposal(it.id, UUID.fromString(it.spaceId), it.path, it.summary, it.oldText, it.newText, it.contextBefore, it.contextAfter)
-                }
+                },
+                createdTasks = effects.createdTasks.map { MessageTask(UUID.fromString(it.id), UUID.fromString(it.spaceId), it.title) }
             )
         )
         conversationRepository.touch(turn.conversationId, stored.createdAt)
@@ -317,7 +321,7 @@ class ConversationService(
         listener: TurnListener
     ): String {
         val tools = toolRegistry.conversationTools()
-            .filter { turn.canWrite || it.name !in setOf("create_document", "propose_edit") }
+            .filter { turn.canWrite || it.name !in setOf("create_document", "propose_edit", "create_task") }
         val openAiTools = tools.map { tool ->
             Tool.function(
                 name = tool.name,
@@ -407,6 +411,9 @@ class ConversationService(
             "read_document" -> "Read ${arg("path") ?: "a document"}"
             "create_document" -> "Created ${arg("path") ?: "a document"}"
             "propose_edit" -> "Proposed a change to ${arg("path") ?: "a document"}"
+            "list_tasks" -> if (args.get("assigned_to_me")?.asBoolean() == true) "Looked up your tasks" else "Listed the tasks"
+            "create_task" -> "Created the task \"${arg("title") ?: ""}\""
+            "update_task" -> "Updated a task"
             else -> name.replace('_', ' ').replaceFirstChar { it.uppercase() }
         }
     }
@@ -473,7 +480,7 @@ class ConversationService(
 
     // ---- Prompt ---------------------------------------------------------------------
 
-    private fun systemPrompt(space: Space, repositories: List<Space>, documentPath: String?, documentContent: String?, canWrite: Boolean): String {
+    private fun systemPrompt(user: User, space: Space, repositories: List<Space>, documentPath: String?, documentContent: String?, canWrite: Boolean): String {
         val overview = if (space.type == SpaceType.GROUP) {
             buildString {
                 appendLine("Group: ${space.name}")
@@ -498,6 +505,7 @@ class ConversationService(
         return """
             |You are the assistant inside DocuVault, a documentation tool where every space is a Git repository.
             |You help with the "${space.name}" space.
+            |You are talking to ${user.name} (${user.email}); when they say "me", they mean this person. Today is ${java.time.LocalDate.now()}.
             |
             |$overview
             |
@@ -595,6 +603,7 @@ class ConversationService(
         toolCalls = toolCalls,
         createdDocuments = createdDocuments.map { SourceDto(it.spaceId, paths[it.spaceId], it.path, it.title) },
         proposals = proposals.map { it.toDto(paths) },
+        createdTasks = createdTasks,
         createdAt = createdAt
     )
 

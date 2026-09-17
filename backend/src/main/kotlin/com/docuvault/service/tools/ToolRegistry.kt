@@ -537,6 +537,101 @@ A 404 means the ticket expired or was already used; call download_file again."""
             "State saved.\nKey: ${entry.text("key")}\nUpdated: ${entry.text("updatedAt")}"
         },
 
+        // ---- Tasks ------------------------------------------------------------------
+
+        sharedTool(
+            "list_tasks",
+            "List tasks. With assigned_to_me, the open tasks assigned to the user and suggestions waiting for them to confirm, across spaces. Otherwise the tasks of one space, optionally filtered by status.",
+            schema(
+                "spaceId" to str("The space (ID, full path or name). Not needed with assigned_to_me."),
+                "assigned_to_me" to bool("List the user's own tasks instead of a space's (default false)"),
+                "status" to enumStr("Only tasks with this status", listOf("OPEN", "IN_PROGRESS", "DONE")),
+                required = listOf()
+            )
+        ) { s, a ->
+            val scope = s.scope as? ToolScope.Conversation
+            if (a.optionalBoolean("assigned_to_me", false)) {
+                val mine = s.api.myTasks()
+                val inScope = { t: JsonNode -> scope == null || t.text("spaceId") in scope.repositoryIds }
+                val assigned = mine.get("assigned").filter(inScope)
+                val toConfirm = mine.get("toConfirm").filter(inScope)
+                buildString {
+                    append(if (assigned.isEmpty()) "No open tasks are assigned to you." else "Assigned to you:\n" + assigned.joinToString("\n") { formatTask(it) })
+                    if (toConfirm.isNotEmpty()) append("\n\nSuggested, waiting for you to confirm:\n" + toConfirm.joinToString("\n") { formatTask(it) })
+                }
+            } else {
+                val spaceId = s.resolveSpaceId(a.optionalString("spaceId"))
+                val tasks = s.api.spaceTasks(spaceId, a.optionalString("status")).toList()
+                if (tasks.isEmpty()) "No tasks." else tasks.joinToString("\n") { formatTask(it) }
+            }
+        },
+
+        sharedTool(
+            "create_task",
+            "Create a task in a space. Use it when the user asks for a task or a to-do. The assignee must be a member of the space; give their name or email.",
+            schema(
+                "spaceId" to str("The space (ID, full path or name)"),
+                "title" to str("What has to be done, as a short imperative sentence"),
+                "description" to str("Optional details"),
+                "assignee" to str("Optional: name or email of the member who should do it"),
+                "due_date" to str("Optional due date, YYYY-MM-DD"),
+                "priority" to enumStr("Optional priority", listOf("LOW", "NORMAL", "HIGH")),
+                required = listOf("spaceId", "title")
+            )
+        ) { s, a ->
+            val spaceId = s.resolveSpaceId(a.optionalString("spaceId"))
+            val scope = s.scope as? ToolScope.Conversation
+            val task = s.api.createTask(
+                spaceId,
+                mapOf(
+                    "title" to a.requiredString("title"),
+                    "description" to a.optionalString("description"),
+                    "assigneeId" to a.optionalString("assignee")?.let { resolveAssignee(s, spaceId, it) },
+                    "dueDate" to a.optionalString("due_date")?.let { parseDate(it) },
+                    "priority" to a.optionalString("priority"),
+                    "sourceType" to scope?.conversationId?.let { "CONVERSATION" },
+                    "sourceId" to scope?.conversationId,
+                    "sourceLabel" to scope?.conversationId?.let { "Assistant conversation" }
+                )
+            )
+            s.effects.createdTasks += ToolTask(task.text("id")!!, spaceId, task.text("title") ?: "")
+            "Created the task.\n${formatTask(task)}"
+        },
+
+        sharedTool(
+            "update_task",
+            "Change a task: its status (e.g. mark it done), title, assignee or due date. Get the task id from list_tasks.",
+            schema(
+                "task_id" to str("The task id"),
+                "status" to enumStr("New status", listOf("OPEN", "IN_PROGRESS", "DONE")),
+                "title" to str("New title"),
+                "assignee" to str("Name or email of the new assignee"),
+                "due_date" to str("New due date, YYYY-MM-DD"),
+                "clear_assignee" to bool("Remove the assignee"),
+                "clear_due_date" to bool("Remove the due date"),
+                required = listOf("task_id")
+            )
+        ) { s, a ->
+            val current = s.api.getTask(a.requiredString("task_id"))
+            val spaceId = current.text("spaceId")!!
+            val scope = s.scope as? ToolScope.Conversation
+            if (scope != null && spaceId !in scope.repositoryIds) {
+                throw ToolException("That task is outside this conversation, which is limited to ${scope.spaceName}.")
+            }
+            val task = s.api.patchTask(
+                current.text("id")!!,
+                mapOf(
+                    "status" to a.optionalString("status"),
+                    "title" to a.optionalString("title"),
+                    "assigneeId" to a.optionalString("assignee")?.let { resolveAssignee(s, spaceId, it) },
+                    "dueDate" to a.optionalString("due_date")?.let { parseDate(it) },
+                    "clearAssignee" to a.optionalBoolean("clear_assignee", false),
+                    "clearDueDate" to a.optionalBoolean("clear_due_date", false)
+                )
+            )
+            "Updated the task.\n${formatTask(task)}"
+        },
+
         // ---- Conversation only: the assistant writes new documents directly and
         // proposes changes to existing ones for the user to apply.
 
@@ -626,6 +721,31 @@ WORKFLOW: call read_document first, then copy old_text exactly from its content 
     }
 
     // ---- Helpers ---------------------------------------------------------------------
+
+    private fun formatTask(task: JsonNode): String = buildString {
+        append("- [${task.text("status")}] ${task.text("title")} (id: ${task.text("id")}; space: ${task.text("spaceName")}")
+        task.get("assignee")?.takeIf { !it.isNull }?.let { append("; assignee: ${it.text("name")}") }
+        task.text("dueDate")?.let { append("; due: $it") }
+        task.text("priority")?.let { append("; priority: $it") }
+        append(")")
+    }
+
+    /** A member by exact name or email, or by a first name only one member has. */
+    private fun resolveAssignee(s: ToolSession, spaceId: String, wanted: String): String {
+        val members = s.api.taskAssignees(spaceId).toList()
+        val needle = wanted.trim().lowercase()
+        val match = members.firstOrNull { it.text("name")?.lowercase() == needle || it.text("email")?.lowercase() == needle }
+            ?: members.filter { it.text("name")?.substringBefore(' ')?.lowercase() == needle }.singleOrNull()
+        return match?.text("id") ?: throw ToolException(
+            "No single member of this space matches \"$wanted\". Members: " +
+                members.joinToString(", ") { "${it.text("name")} <${it.text("email")}>" }
+        )
+    }
+
+    private fun parseDate(value: String): String =
+        runCatching { java.time.LocalDate.parse(value.trim()).toString() }.getOrElse {
+            throw ToolException("\"$value\" is not a date in the form YYYY-MM-DD.")
+        }
 
     private fun buildSpaceCatalog(spaces: List<JsonNode>): String {
         val repoSpaces = spaces.filter { it.text("type") == "REPOSITORY" }

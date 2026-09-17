@@ -69,6 +69,10 @@ class ConversationMessage(
     @Column(columnDefinition = "jsonb")
     var proposals: List<MessageProposal> = emptyList(),
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "created_tasks", columnDefinition = "jsonb")
+    var createdTasks: List<MessageTask> = emptyList(),
+
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now()
 )
@@ -77,6 +81,12 @@ data class MessageSource(
     val spaceId: UUID,
     val path: String,
     val title: String? = null
+)
+
+data class MessageTask(
+    val id: UUID,
+    val spaceId: UUID,
+    val title: String
 )
 
 /** What the assistant did on the way to an answer, as the user should read it. */

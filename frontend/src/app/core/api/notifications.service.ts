@@ -8,7 +8,8 @@ export interface NotificationFeedItem {
   spaceName: string;
   spaceFullPath: string;
   filePath: string;
-  changeType: 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED';
+  /** TASK_ASSIGNED: someone gave the user a task; filePath then holds the task's title. */
+  changeType: 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED' | 'TASK_ASSIGNED';
   commitMessage: string | null;
   authorName: string | null;
   detectedAt: string;
