@@ -3176,14 +3176,11 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.showAiEditDialog.set(true);
   }
 
-  /** Opens the space AI chat pre-scoped to the current document. */
+  /** Opens the assistant with a new conversation about the current document. */
   openAiChat(): void {
     const space = this.space();
     if (!space) return;
-    this.router.navigate(
-      spaceRoute(space.fullPath, 'chat'),
-      { queryParams: { aboutDoc: this.documentPath } }
-    );
+    this.router.navigate(['/ask'], { queryParams: { space: space.id, doc: this.documentPath } });
   }
 
   onAiEditApplied(result: AiEditResult): void {

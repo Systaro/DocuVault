@@ -11,6 +11,7 @@ import { QuickShareDialogComponent } from '../../shared/components/quick-share-d
 import { InboxService, SpaceUnsortedCount } from '../../core/api/inbox.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
+import { AskComposerComponent, AskSubmission } from '../ask/ask-composer.component';
 
 interface BreadcrumbItem {
   id: string;
@@ -21,7 +22,7 @@ interface BreadcrumbItem {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent, SpaceRoutePipe],
+  imports: [CommonModule, RouterLink, LayoutComponent, CreateSpaceModalComponent, QuickShareDialogComponent, SpaceRoutePipe, AskComposerComponent],
   template: `
     <app-layout>
       <div class="dashboard-content">
@@ -49,6 +50,18 @@ interface BreadcrumbItem {
         </div>
 
         <div class="workspace-content">
+          @if (caps.aiChat()) {
+            <section class="dashboard-ask" aria-label="Ask about your documentation">
+              <app-ask-composer
+                [spaces]="askSpaces()"
+                placeholder="Ask a question about your documentation"
+                (submitted)="ask($event)"
+              />
+              <a routerLink="/ask" class="dashboard-ask-history">
+                <span translate="no" class="material-icons">forum</span>Your conversations
+              </a>
+            </section>
+          }
           <div class="workspace-header">
             <div>
               @if (currentParent()) {
@@ -297,50 +310,6 @@ interface BreadcrumbItem {
           }
         </div>
 
-        <!-- Floating AI Button -->
-        @if (!showSpacePicker() && caps.aiChat()) {
-          <button class="ai-fab" title="AI Assistant" (click)="onAiFabClick()">
-            <span translate="no" class="material-icons">auto_awesome</span>
-          </button>
-        }
-
-        @if (showSpacePicker()) {
-          <div class="space-picker-overlay" (click)="showSpacePicker.set(false)">
-            <div class="space-picker" (click)="$event.stopPropagation()">
-              <div class="space-picker-header">
-                <h3>Select a space to chat about</h3>
-                <button class="icon-btn" (click)="showSpacePicker.set(false)">
-                  <span translate="no" class="material-icons">close</span>
-                </button>
-              </div>
-              <div class="space-picker-list">
-                @for (space of spaces(); track space.id) {
-                  <button class="space-picker-item" (click)="selectSpaceForChat(space)">
-                    @if (space.logoUrl) {
-                      <img [src]="space.logoUrl" [alt]="space.name" class="space-picker-logo" />
-                    } @else if (space.type === 'GROUP') {
-                      <div class="space-picker-icon group">
-                        <span translate="no" class="material-icons">folder</span>
-                      </div>
-                    } @else {
-                      <div class="space-picker-icon">{{ space.name.charAt(0).toUpperCase() }}</div>
-                    }
-                    <div class="space-picker-info">
-                      <div class="space-picker-name">{{ space.name }}</div>
-                      <div class="space-picker-desc">
-                        @if (space.type === 'GROUP') {
-                          {{ space.childCount ?? 0 }} {{ (space.childCount ?? 0) === 1 ? 'space' : 'spaces' }}
-                        } @else {
-                          {{ space.documentCount ?? 0 }} documents
-                        }
-                      </div>
-                    </div>
-                  </button>
-                }
-              </div>
-            </div>
-          </div>
-        }
 
       </div>
 
@@ -839,139 +808,21 @@ interface BreadcrumbItem {
       }
     }
 
-    .ai-fab {
-      position: fixed;
-      bottom: var(--spacing-xl);
-      right: var(--spacing-xl);
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-      border: none;
-      color: white;
-      cursor: pointer;
-      box-shadow: var(--shadow-lg);
-      display: flex;
+    .dashboard-ask {
+      margin-bottom: var(--spacing-xl);
+    }
+
+    .dashboard-ask-history {
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
-      transition: all var(--transition);
+      gap: 6px;
+      margin-top: var(--spacing-sm);
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-decoration: none;
 
-      .material-icons {
-        font-size: 24px;
-      }
-
-      &:hover {
-        transform: scale(1.1);
-        box-shadow: var(--shadow-xl);
-      }
-    }
-
-    .space-picker-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.4);
-      display: flex;
-      align-items: flex-end;
-      justify-content: flex-end;
-      z-index: 999;
-      padding: var(--spacing-xl);
-      padding-bottom: 100px;
-      padding-right: var(--spacing-xl);
-    }
-
-    .space-picker {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      width: 320px;
-      max-height: 400px;
-      box-shadow: var(--shadow-xl);
-      overflow: hidden;
-    }
-
-    .space-picker-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--spacing-md) var(--spacing-lg);
-      border-bottom: 1px solid var(--border);
-
-      h3 {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--text-primary);
-      }
-    }
-
-    .space-picker-list {
-      overflow-y: auto;
-      max-height: 320px;
-      padding: var(--spacing-sm);
-    }
-
-    .space-picker-item {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-      width: 100%;
-      padding: var(--spacing-sm) var(--spacing-md);
-      border: none;
-      background: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      text-align: left;
-      transition: background var(--transition);
-
-      &:hover {
-        background: var(--bg-hover, rgba(0,0,0,0.05));
-      }
-    }
-
-    .space-picker-logo {
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-sm);
-      object-fit: cover;
-      flex-shrink: 0;
-    }
-
-    .space-picker-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-sm);
-      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 16px;
-      flex-shrink: 0;
-
-      &.group {
-        background: linear-gradient(135deg, var(--accent-400, #f0ad4e) 0%, var(--accent-500, #ec971f) 100%);
-
-        .material-icons {
-          font-size: 20px;
-        }
-      }
-    }
-
-    .space-picker-info {
-      min-width: 0;
-    }
-
-    .space-picker-name {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .space-picker-desc {
-      font-size: 12px;
-      color: var(--text-muted);
+      .material-icons { font-size: 16px; }
+      &:hover { color: var(--primary-dark); }
     }
 
     .modal-overlay {
@@ -1069,10 +920,6 @@ interface BreadcrumbItem {
         grid-template-columns: 1fr;
       }
 
-      .ai-fab {
-        bottom: var(--spacing-lg);
-        right: var(--spacing-lg);
-      }
     }
   `]
 })
@@ -1083,7 +930,8 @@ export class DashboardComponent implements OnInit {
   showDeleteConfirm = signal(false);
   spaceToDelete = signal<Space | null>(null);
   deleting = signal(false);
-  showSpacePicker = signal(false);
+  /** Every space the user can reach, for the ask box; [spaces] only holds the current level. */
+  askSpaces = signal<Space[]>([]);
   showCreateModal = signal(false);
 
   // Share dialog state
@@ -1115,6 +963,9 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadSpaces();
+    if (this.caps.aiChat()) {
+      this.spacesService.getSpaces().subscribe({ next: spaces => this.askSpaces.set(spaces) });
+    }
     this.inboxService.getUnsortedCounts().subscribe({
       next: (counts) => this.unsortedCounts.set(counts),
       error: () => this.unsortedCounts.set([])
@@ -1182,23 +1033,8 @@ export class DashboardComponent implements OnInit {
     this.loadSpaces();
   }
 
-  onAiFabClick(): void {
-    const allSpaces = this.spaces();
-    if (allSpaces.length === 0) return;
-    if (allSpaces.length === 1) {
-      this.navigateToChat(allSpaces[0]);
-      return;
-    }
-    this.showSpacePicker.set(true);
-  }
-
-  selectSpaceForChat(space: Space): void {
-    this.showSpacePicker.set(false);
-    this.navigateToChat(space);
-  }
-
-  private navigateToChat(space: Space): void {
-    this.router.navigate(spaceRoute(space.fullPath, 'chat'));
+  ask(submission: AskSubmission): void {
+    this.router.navigate(['/ask'], { queryParams: { space: submission.spaceId, q: submission.message } });
   }
 
   closeModal(): void {

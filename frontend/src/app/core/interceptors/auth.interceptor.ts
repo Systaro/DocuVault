@@ -2,32 +2,18 @@ import { HttpInterceptorFn, HttpErrorResponse, HttpResponse } from '@angular/com
 import { inject } from '@angular/core';
 import { catchError, tap, throwError } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
-import { NativeTokenStore } from '../auth/native-token.store';
-import { PlatformService } from '../platform/platform.service';
+import { ApiRequestService } from '../api/api-request.service';
 import { BackendHealthService } from '../services/backend-health.service';
-import { environment } from '../../../environments/environment';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-  const platform = inject(PlatformService);
-  const tokenStore = inject(NativeTokenStore);
+  const apiRequest = inject(ApiRequestService);
   const health = inject(BackendHealthService);
 
-  if (platform.isNative()) {
-    let url = req.url;
-    if (url.startsWith('/api/') && environment.apiUrl) {
-      url = environment.apiUrl + url;
-    }
-
-    const token = tokenStore.get();
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
+  if (apiRequest.isNative()) {
     req = req.clone({
-      url,
-      setHeaders: headers
+      url: apiRequest.url(req.url),
+      setHeaders: apiRequest.authHeaders()
     });
   } else {
     req = req.clone({ withCredentials: true });

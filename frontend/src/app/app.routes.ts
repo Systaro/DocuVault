@@ -1,6 +1,11 @@
-import { Routes } from '@angular/router';
+import { Routes, UrlMatchResult, UrlSegment } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
+
+export function askMatcher(segments: UrlSegment[]): UrlMatchResult | null {
+  if (segments[0]?.path !== 'ask' || segments.length > 2) return null;
+  return { consumed: segments, posParams: segments[1] ? { id: segments[1] } : {} };
+}
 
 export const routes: Routes = [
   {
@@ -68,6 +73,13 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
   },
+  {
+    // /ask and /ask/:id share one route so the page survives the URL change
+    // when a new conversation gets its id while its answer is still streaming.
+    matcher: askMatcher,
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/ask/ask.component').then(m => m.AskComponent)
+  },
   // Nested path routing for spaces - supports paths like /spaces/group/subgroup/repo
   {
     path: 'spaces',
@@ -95,8 +107,9 @@ export const routes: Routes = [
             canDeactivate: [unsavedChangesGuard]
           },
           {
+            // Old per-space chat links; the assistant now lives at /ask.
             path: 'chat',
-            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+            loadComponent: () => import('./features/ask/space-chat-redirect.component').then(m => m.SpaceChatRedirectComponent)
           },
           {
             path: 'inbox',
@@ -126,8 +139,9 @@ export const routes: Routes = [
             canDeactivate: [unsavedChangesGuard]
           },
           {
+            // Old per-space chat links; the assistant now lives at /ask.
             path: 'chat',
-            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+            loadComponent: () => import('./features/ask/space-chat-redirect.component').then(m => m.SpaceChatRedirectComponent)
           },
           {
             path: 'inbox',
@@ -157,8 +171,9 @@ export const routes: Routes = [
             canDeactivate: [unsavedChangesGuard]
           },
           {
+            // Old per-space chat links; the assistant now lives at /ask.
             path: 'chat',
-            loadComponent: () => import('./features/ai/space-chat.component').then(m => m.SpaceChatComponent)
+            loadComponent: () => import('./features/ask/space-chat-redirect.component').then(m => m.SpaceChatRedirectComponent)
           },
           {
             path: 'inbox',

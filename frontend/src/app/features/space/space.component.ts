@@ -111,12 +111,12 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
                 </a>
                 @if (caps.aiChat()) {
                   <a
-                    [routerLink]="spaceSignal()?.fullPath | spaceRoute:'chat'"
-                    routerLinkActive="active"
+                    routerLink="/ask"
+                    [queryParams]="{ space: spaceSignal()?.id }"
                     class="nav-item"
                   >
                     <span translate="no" class="material-icons">auto_awesome</span>
-                    AI Chat
+                    Ask
                   </a>
                 }
                 @if (caps.aiInbox()) {

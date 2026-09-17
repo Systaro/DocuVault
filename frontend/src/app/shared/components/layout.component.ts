@@ -9,12 +9,14 @@ import { HeaderSearchComponent } from './header-search.component';
 import { HeaderNotificationsComponent } from './header-notifications.component';
 import { ChangelogModalComponent } from './changelog-modal.component';
 import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-modal.component';
+import { CommandPaletteComponent } from '../../features/ask/command-palette.component';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { APP_VERSION } from '../version';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, ChangelogModalComponent, QuickCaptureModalComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, ChangelogModalComponent, QuickCaptureModalComponent, CommandPaletteComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
@@ -36,6 +38,12 @@ import { APP_VERSION } from '../version';
             <span translate="no" class="material-icons">dashboard</span>
             Dashboard
           </a>
+          @if (caps.aiChat()) {
+            <a routerLink="/ask" routerLinkActive="active" class="nav-link">
+              <span translate="no" class="material-icons">auto_awesome</span>
+              Ask
+            </a>
+          }
           @if (authService.isAdmin()) {
             <a
               routerLink="/admin"
@@ -50,7 +58,7 @@ import { APP_VERSION } from '../version';
 
         <div class="header-actions">
           <app-header-search class="desktop-search" />
-          <button class="quick-note-btn" title="Quick Note (⌘K)" (click)="showCapture.set(true)">
+          <button class="quick-note-btn" title="Quick Note" (click)="openCapture('')">
             <span translate="no" class="material-icons">add</span>
             <span class="quick-note-label">Quick Note</span>
           </button>
@@ -99,7 +107,11 @@ import { APP_VERSION } from '../version';
       }
 
       @if (showCapture()) {
-        <app-quick-capture-modal (close)="showCapture.set(false)" />
+        <app-quick-capture-modal [initialText]="captureText()" (close)="showCapture.set(false)" />
+      }
+
+      @if (showPalette()) {
+        <app-command-palette (closed)="showPalette.set(false)" (note)="openCapture($event)" />
       }
 
       @if (showChangelog()) {
@@ -405,6 +417,9 @@ export class LayoutComponent implements OnInit {
 
   showSearch = signal(false);
   showCapture = signal(false);
+  captureText = signal('');
+  showPalette = signal(false);
+  caps = inject(CapabilitiesService);
   showChangelog = signal(false);
   changelogReleases = signal<ChangelogRelease[]>([]);
   appVersion = APP_VERSION;
@@ -445,16 +460,20 @@ export class LayoutComponent implements OnInit {
     });
   }
 
+  /** Cmd+K toggles the command palette, which can also start a quick note. */
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
-      if (this.showCapture()) {
-        this.showCapture.set(false);
-      } else {
-        this.showCapture.set(true);
-      }
+      this.showCapture.set(false);
+      this.showPalette.update(open => !open);
     }
+  }
+
+  openCapture(text: string): void {
+    this.showPalette.set(false);
+    this.captureText.set(text);
+    this.showCapture.set(true);
   }
 
   getInitials(name: string | undefined): string {

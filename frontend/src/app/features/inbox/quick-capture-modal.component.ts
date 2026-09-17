@@ -1,4 +1,4 @@
-import { Component, OnInit, Output, EventEmitter, signal, computed, HostListener } from '@angular/core';
+import { Component, OnInit, AfterViewInit, Input, Output, EventEmitter, ViewChild, ElementRef, signal, computed, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SpacesService, Space } from '../../core/api/spaces.service';
@@ -19,7 +19,6 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             <span translate="no" class="material-icons">add</span>
           </div>
           <h2>New Note</h2>
-          <span class="shortcut">⌘ K</span>
           <button class="icon-btn" (click)="close.emit()">
             <span translate="no" class="material-icons">close</span>
           </button>
@@ -153,15 +152,6 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       .material-icons { font-size: 16px; }
     }
 
-    .shortcut {
-      font-size: 11px;
-      color: var(--text-muted);
-      background: var(--background);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-family: 'Monaco','Menlo',monospace;
-    }
 
     .space-selector {
       padding: 12px 18px;
@@ -263,7 +253,10 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
     }
   `]
 })
-export class QuickCaptureModalComponent implements OnInit {
+export class QuickCaptureModalComponent implements OnInit, AfterViewInit {
+  @ViewChild('editor') editorEl?: ElementRef<HTMLDivElement>;
+  /** Text typed elsewhere (the command palette) that the note starts with. */
+  @Input() initialText = '';
   @Output() close = new EventEmitter<void>();
   @Output() noteCreated = new EventEmitter<void>();
 
@@ -308,9 +301,21 @@ export class QuickCaptureModalComponent implements OnInit {
         this.spaces.set(repos);
         if (repos.length > 0) {
           this.selectedSpaceId = repos[0].id;
+          this.onSpaceChange();
         }
       }
     });
+  }
+
+  ngAfterViewInit(): void {
+    const editor = this.editorEl?.nativeElement;
+    if (!editor) return;
+    if (this.initialText) {
+      editor.innerText = this.initialText;
+      this.content = editor.innerHTML;
+      this.onSpaceChange();
+    }
+    editor.focus();
   }
 
   onSpaceChange(): void {

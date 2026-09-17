@@ -9,8 +9,5 @@ import com.docuvault.domain.user.User
  */
 data class McpContext(val user: User, val authorizationHeader: String)
 
-/** A tool ran and failed; reported as a result with `isError: true` so the model can react. */
-class McpToolException(message: String) : RuntimeException(message)
-
 /** The request itself is wrong (unknown tool, no tool name); reported as JSON-RPC error -32602. */
 class McpInvalidParamsException(message: String) : RuntimeException(message)

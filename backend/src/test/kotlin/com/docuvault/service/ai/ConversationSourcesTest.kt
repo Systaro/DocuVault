@@ -1,0 +1,44 @@
+package com.docuvault.service.ai
+
+import com.docuvault.config.OpenAIProvider
+import com.docuvault.infrastructure.repository.ConversationMessageRepository
+import com.docuvault.infrastructure.repository.ConversationRepository
+import com.docuvault.infrastructure.repository.SpaceRepository
+import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.PermissionService
+import com.docuvault.service.embedding.CrossSpaceChunk
+import com.docuvault.service.embedding.EmbeddingService
+import com.docuvault.service.git.GitService
+import com.docuvault.service.tools.ToolRegistry
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
+import java.util.*
+
+/** Retrieval always finds something; the sources under an answer should be what it used. */
+class ConversationSourcesTest {
+
+    private val service = ConversationService(
+        mock(OpenAIProvider::class.java), mock(EmbeddingService::class.java), mock(ConversationRepository::class.java),
+        mock(ConversationMessageRepository::class.java), mock(UserRepository::class.java), mock(SpaceRepository::class.java),
+        mock(PermissionService::class.java), mock(GitService::class.java), mock(ToolRegistry::class.java), ObjectMapper()
+    )
+
+    private val space = UUID.randomUUID()
+    private fun chunk(path: String, title: String?) = CrossSpaceChunk(UUID.randomUUID(), path, title, 0, "text", space)
+
+    private val fruit = chunk("ops/fruit-policy.md", "Fruit policy")
+    private val onboarding = chunk("ops/onboarding-checklist.md", "Onboarding Checklist")
+
+    @Test
+    fun `keeps the documents the answer names, by path or by title`() {
+        assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(onboarding, fruit), "See ops/fruit-policy.md").map { it.path })
+        assertEquals(listOf("ops/onboarding-checklist.md"), service.retrievalSources(listOf(fruit, onboarding), "The onboarding checklist says").map { it.path })
+    }
+
+    @Test
+    fun `falls back to the best match when the answer names nothing`() {
+        assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit, onboarding), "Mondays.").map { it.path })
+    }
+}

@@ -2,9 +2,6 @@ package com.docuvault.api.ai
 
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
-import com.docuvault.service.ai.ChatHistoryDto
-import com.docuvault.service.ai.ChatResponse
-import com.docuvault.service.ai.ChatService
 import com.docuvault.service.ai.SuggestionType
 import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
@@ -21,7 +18,6 @@ import java.util.*
 @RestController
 @RequestMapping("/ai")
 class AiController(
-    private val chatService: ChatService,
     private val embeddingService: EmbeddingService,
     private val writingAssistantService: WritingAssistantService,
     private val userRepository: UserRepository,
@@ -37,54 +33,6 @@ class AiController(
         val spaceIds = permissionService.readableRepositoryIds(user.id!!, user.role, request.spaceId)
         if (spaceIds.isEmpty()) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         return ResponseEntity.ok(embeddingService.findSimilar(spaceIds, request.query, request.limit ?: 5))
-    }
-
-    @PostMapping("/chat")
-    fun chat(
-        @AuthenticationPrincipal userDetails: UserDetails,
-        @Valid @RequestBody request: ChatRequest
-    ): ResponseEntity<ChatResponse> {
-        val response = chatService.chat(
-            userEmail = userDetails.username,
-            spaceId = request.spaceId,
-            message = request.message,
-            chatHistoryId = request.chatHistoryId
-        )
-        return ResponseEntity.ok(response)
-    }
-
-    @GetMapping("/chat/history")
-    fun getChatHistory(
-        @AuthenticationPrincipal userDetails: UserDetails,
-        @RequestParam spaceId: UUID?
-    ): ResponseEntity<List<ChatHistoryDto>> {
-        val histories = chatService.getChatHistory(userDetails.username, spaceId)
-        return ResponseEntity.ok(histories)
-    }
-
-    @GetMapping("/chat/history/{id}")
-    fun getChatHistoryById(
-        @AuthenticationPrincipal userDetails: UserDetails,
-        @PathVariable id: UUID
-    ): ResponseEntity<ChatHistoryDto> {
-        val history = chatService.getChatHistoryById(id)
-            ?: return ResponseEntity.notFound().build()
-        if (!chatService.isOwnedBy(id, userDetails.username)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
-        return ResponseEntity.ok(history)
-    }
-
-    @DeleteMapping("/chat/history/{id}")
-    fun deleteChatHistory(
-        @AuthenticationPrincipal userDetails: UserDetails,
-        @PathVariable id: UUID
-    ): ResponseEntity<Unit> {
-        if (!chatService.isOwnedBy(id, userDetails.username)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
-        chatService.deleteChatHistory(id)
-        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/suggest")
@@ -118,15 +66,6 @@ data class SearchRequest(
     val query: String,
 
     val limit: Int? = 5
-)
-
-data class ChatRequest(
-    val spaceId: UUID,
-
-    @field:NotBlank(message = "Message is required")
-    val message: String,
-
-    val chatHistoryId: UUID? = null
 )
 
 data class SuggestRequest(
