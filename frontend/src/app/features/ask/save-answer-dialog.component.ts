@@ -49,6 +49,10 @@ export interface SavedAnswer {
             <span>Path</span>
             <input class="input" name="path" [(ngModel)]="path" required placeholder="notes/answer.md" />
           </label>
+          <label class="field">
+            <span>Content</span>
+            <textarea class="input content-input" name="body" rows="12" [(ngModel)]="body" translate="no"></textarea>
+          </label>
           @if (error()) {
             <p class="field-error">{{ error() }}</p>
           }
@@ -73,6 +77,16 @@ export interface SavedAnswer {
     }
 
     .field-error { margin: 0; font-size: 13px; color: var(--error); }
+
+    .content-input {
+      min-height: 180px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .modal { width: 640px; }
   `]
 })
 export class SaveAnswerDialogComponent implements OnInit {
@@ -93,13 +107,18 @@ export class SaveAnswerDialogComponent implements OnInit {
   error = signal<string | null>(null);
   title = '';
   path = '';
+  body = '';
 
   spaceOptions = computed<SelectOption[]>(() =>
     this.spaces().filter(s => !s.inConflict).map(s => ({ value: s.id, label: s.name, sublabel: s.fullPath }))
   );
 
   ngOnInit(): void {
-    this.title = this.suggestedTitle();
+    // An answer that opens with a heading brings its own title; the heading is written back on save.
+    const content = this.content().trim();
+    const heading = content.match(/^#\s+(.+)\n?/);
+    this.title = heading ? heading[1].trim() : this.suggestedTitle();
+    this.body = heading ? content.slice(heading[0].length).trim() : content;
     this.path = `notes/${slugify(this.title) || 'answer'}.md`;
     this.spacesService.getWritableSpaces().subscribe({
       next: spaces => {
@@ -121,7 +140,7 @@ export class SaveAnswerDialogComponent implements OnInit {
     const space = this.spaces().find(s => s.id === spaceId);
     if (!space || !this.canSave()) return;
     const path = this.path.trim().replace(/^\/+/, '');
-    const content = `# ${this.title.trim()}\n\n${this.content().trim()}\n`;
+    const content = `# ${this.title.trim()}\n\n${this.body.trim()}\n`;
 
     this.saving.set(true);
     this.error.set(null);

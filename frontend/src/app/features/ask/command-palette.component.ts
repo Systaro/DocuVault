@@ -215,6 +215,7 @@ export class CommandPaletteComponent implements OnInit, AfterViewInit, OnDestroy
     if (!text) {
       if (this.aiChat()) {
         items.push({ icon: 'add_comment', label: 'New conversation', section: 'Start', run: () => this.go(['/ask']) });
+        items.push({ icon: 'edit_document', label: 'Write a draft', detail: 'Status report, protocol', section: 'Start', run: () => this.go(['/ask'], { draft: '1' }) });
       }
       items.push({ icon: 'edit_note', label: 'Quick note', section: 'Start', run: () => this.note.emit('') });
       for (const c of this.recent()) {

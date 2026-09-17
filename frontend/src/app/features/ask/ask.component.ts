@@ -15,6 +15,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
 import { AskComposerComponent, AskSubmission } from './ask-composer.component';
 import { ProposalCardComponent } from './proposal-card.component';
 import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.component';
+import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component';
 
 /**
  * The assistant. Every conversation of the user, whatever space it is about,
@@ -24,7 +25,7 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
 @Component({
   selector: 'app-ask',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LayoutComponent, AskComposerComponent, ProposalCardComponent, SaveAnswerDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LayoutComponent, AskComposerComponent, ProposalCardComponent, SaveAnswerDialogComponent, DraftDialogComponent],
   template: `
     <app-layout>
     <div class="ask-page">
@@ -107,6 +108,9 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
               <span class="header-space">Questions about your documentation, answered from the documents</span>
             </div>
           }
+          <button type="button" class="btn btn-secondary draft-btn" (click)="drafting.set(true)" [disabled]="streaming()">
+            <span translate="no" class="material-icons">edit_document</span><span class="draft-label">Write a draft</span>
+          </button>
         </header>
 
         <div class="messages" #scroller>
@@ -241,6 +245,15 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
           </div>
         </div>
       </div>
+    }
+
+    @if (drafting()) {
+      <app-draft-dialog
+        [spaces]="spaces()"
+        [initialSpaceId]="requestedSpaceId()"
+        (submitted)="startDraft($event)"
+        (cancelled)="drafting.set(false)"
+      />
     }
 
     @if (saving(); as m) {
@@ -410,6 +423,13 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
     }
 
     .sidebar-toggle, .sidebar-backdrop { display: none; }
+
+    .draft-btn {
+      flex-shrink: 0;
+      margin-left: auto;
+
+      .material-icons { font-size: 18px; }
+    }
 
     .header-text {
       min-width: 0;
@@ -594,6 +614,7 @@ import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.com
       }
 
       .item-actions { opacity: 1; }
+      .draft-label { display: none; }
       .sidebar-toggle { display: inline-flex; }
       .messages { padding: var(--spacing-md); }
       .composer-wrap { padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md); }
@@ -635,9 +656,12 @@ export class AskComponent implements OnInit, OnDestroy {
   renameText = '';
   toDelete = signal<ConversationSummary | null>(null);
   saving = signal<ConversationMessage | null>(null);
+  drafting = signal(false);
 
   active = computed(() => this.conversations().find(c => c.id === this.activeId()) ?? null);
 
+  /** A draft asked for while another conversation was open; it starts once the page is on a new one. */
+  private pendingDraft?: DraftSubmission;
   private queries = new Subject<string>();
   private subscriptions = new Subscription();
   private turn?: Subscription;
@@ -692,6 +716,16 @@ export class AskComponent implements OnInit, OnDestroy {
       this.requestedSpaceId.set(params.get('space'));
       this.requestedDocument.set(params.get('doc'));
       this.updateTitle();
+      if (params.get('draft')) {
+        this.router.navigate([], { queryParams: { draft: null }, queryParamsHandling: 'merge', replaceUrl: true });
+        this.drafting.set(true);
+      }
+      if (this.pendingDraft) {
+        const draft = this.pendingDraft;
+        this.pendingDraft = undefined;
+        this.send({ message: draft.message, spaceId: draft.spaceId, documentPath: null }, draft);
+        return;
+      }
       const question = params.get('q');
       if (question && params.get('space')) {
         // Arriving from the dashboard or the command palette with a question already typed.
@@ -729,7 +763,18 @@ export class AskComponent implements OnInit, OnDestroy {
     this.queries.next(value.trim());
   }
 
-  send(submission: AskSubmission): void {
+  /** A draft is a new conversation whose first answer is written from the space's recent material. */
+  startDraft(draft: DraftSubmission): void {
+    this.drafting.set(false);
+    if (this.activeId()) {
+      this.pendingDraft = draft;
+      this.router.navigate(['/ask']);
+      return;
+    }
+    this.send({ message: draft.message, spaceId: draft.spaceId, documentPath: null }, draft);
+  }
+
+  send(submission: AskSubmission, draft?: DraftSubmission): void {
     if (this.streaming()) return;
     const conversationId = this.activeId();
     this.turnError.set(null);
@@ -742,7 +787,13 @@ export class AskComponent implements OnInit, OnDestroy {
 
     const request = conversationId
       ? { conversationId, message: submission.message }
-      : { spaceId: submission.spaceId, documentPath: submission.documentPath ?? undefined, message: submission.message };
+      : {
+          spaceId: submission.spaceId,
+          documentPath: submission.documentPath ?? undefined,
+          message: submission.message,
+          draftTemplate: draft?.template,
+          draftDays: draft?.days
+        };
 
     this.turn = this.ai.sendTurn(request).subscribe({
       next: event => {

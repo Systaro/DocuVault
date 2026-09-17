@@ -3,6 +3,8 @@ package com.docuvault.api.ai
 import com.docuvault.service.ai.ConversationDto
 import com.docuvault.service.ai.ConversationService
 import com.docuvault.service.ai.ConversationSummaryDto
+import com.docuvault.service.ai.DraftRequest
+import com.docuvault.service.ai.DraftTemplate
 import com.docuvault.service.ai.ProposalDto
 import com.docuvault.service.tools.ToolCredential
 import jakarta.annotation.PreDestroy
@@ -86,7 +88,8 @@ class ConversationController(private val conversationService: ConversationServic
         val credential = ToolCredential.of(servletRequest)
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         val prepared = conversationService.prepareTurn(
-            userDetails.username, request.spaceId, request.conversationId, request.documentPath, request.message
+            userDetails.username, request.spaceId, request.conversationId, request.documentPath, request.message,
+            request.draftTemplate?.let { DraftRequest(it, request.draftDays ?: 7) }
         )
 
         // nginx would otherwise hold the events back until the buffer fills.
@@ -165,6 +168,9 @@ data class TurnRequest(
     val conversationId: UUID? = null,
     /** Scopes a new conversation to one document of a repository space. */
     val documentPath: String? = null,
+    /** Makes a new conversation write a draft from the space's recent notes, tasks and documents. */
+    val draftTemplate: DraftTemplate? = null,
+    val draftDays: Int? = null,
     @field:NotBlank(message = "Message is required")
     val message: String
 )

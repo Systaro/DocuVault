@@ -22,7 +22,8 @@ class ConversationSourcesTest {
     private val service = ConversationService(
         mock(OpenAIProvider::class.java), mock(EmbeddingService::class.java), mock(ConversationRepository::class.java),
         mock(ConversationMessageRepository::class.java), mock(UserRepository::class.java), mock(SpaceRepository::class.java),
-        mock(PermissionService::class.java), mock(GitService::class.java), mock(ToolRegistry::class.java), ObjectMapper()
+        mock(PermissionService::class.java), mock(GitService::class.java), mock(ToolRegistry::class.java), ObjectMapper(),
+        mock(DraftMaterialService::class.java)
     )
 
     private val space = UUID.randomUUID()

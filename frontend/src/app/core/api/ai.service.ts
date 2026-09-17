@@ -67,11 +67,16 @@ export interface ConversationDetail {
   messages: ConversationMessage[];
 }
 
+export type DraftTemplate = 'STATUS_REPORT' | 'MEETING_PROTOCOL' | 'CUSTOM';
+
 export interface TurnRequest {
   spaceId?: string;
   conversationId?: string;
   documentPath?: string;
   message: string;
+  /** Starts a conversation that writes a draft from the space's recent material. */
+  draftTemplate?: DraftTemplate;
+  draftDays?: number;
 }
 
 /** What arrives while an answer is being written. */

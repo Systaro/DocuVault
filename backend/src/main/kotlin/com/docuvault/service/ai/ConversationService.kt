@@ -86,6 +86,9 @@ data class MessageDto(
 
 data class ConversationDto(val conversation: ConversationSummaryDto, val messages: List<MessageDto>)
 
+/** Starts a conversation that writes a draft from what happened in the space. */
+data class DraftRequest(val template: DraftTemplate, val days: Int)
+
 /** Receives what happens during a turn, in order; the controller turns these into server-sent events. */
 fun interface TurnListener {
     fun onEvent(name: String, data: Any)
@@ -105,7 +108,9 @@ data class PreparedTurn(
     val retrievalSpaceIds: List<UUID>,
     val spacePaths: Map<UUID, String>,
     /** The document a document conversation is about; always a source of its answers. */
-    val documentSource: MessageSource? = null
+    val documentSource: MessageSource? = null,
+    /** The turn writes a draft: the text goes into the answer for the user to edit and save, never straight into Git. */
+    val drafting: Boolean = false
 )
 
 @Service
@@ -119,7 +124,8 @@ class ConversationService(
     private val permissionService: PermissionService,
     private val gitService: GitService,
     private val toolRegistry: ToolRegistry,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val draftMaterialService: DraftMaterialService
 ) {
     private val logger = LoggerFactory.getLogger(ConversationService::class.java)
 
@@ -142,6 +148,11 @@ class ConversationService(
             - When the user asks for a task or a to-do, call create_task. It is created right away.
             - Never say you have created or changed something unless the tool call succeeded.
               If a call is refused, say so plainly and why.
+        """.trimIndent()
+
+        private val DRAFT_INSTRUCTIONS = """
+            Drafting: write the complete draft as your answer, in Markdown, starting with a # heading.
+            Do not save it anywhere and do not create tasks; the user edits the draft and saves it themselves.
         """.trimIndent()
 
         private val READ_ONLY_INSTRUCTIONS = """
@@ -203,7 +214,14 @@ class ConversationService(
      * conversation belongs to someone else.
      */
     @Transactional
-    fun prepareTurn(userEmail: String, spaceId: UUID?, conversationId: UUID?, documentPath: String?, message: String): PreparedTurn {
+    fun prepareTurn(
+        userEmail: String,
+        spaceId: UUID?,
+        conversationId: UUID?,
+        documentPath: String?,
+        message: String,
+        draft: DraftRequest? = null
+    ): PreparedTurn {
         if (message.isBlank()) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "The message is empty")
         if (!openAIProvider.isConfigured()) {
             throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI features are not configured. Please set up your OpenAI API key in Admin Settings.")
@@ -241,6 +259,9 @@ class ConversationService(
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found")
         }
 
+        // A draft starts a conversation with what happened in the space; follow-ups refine it from the history.
+        val draftMaterial = draft?.takeIf { existing == null }?.let { draftMaterialService.material(repositoryIds, it.template, it.days) }
+
         return PreparedTurn(
             conversationId = conversation.id!!,
             created = existing == null,
@@ -249,11 +270,19 @@ class ConversationService(
             message = message,
             scope = ToolScope.Conversation(space.id.toString(), space.name, repositoryIds.map { it.toString() }.toSet(), conversation.id.toString()),
             canWrite = canWrite,
-            systemPrompt = systemPrompt(user, space, repositories, docPath, documentContent, canWrite),
+            systemPrompt = systemPrompt(
+                user, space, repositories, docPath, documentContent,
+                writing = when {
+                    draftMaterial != null -> DRAFT_INSTRUCTIONS
+                    canWrite -> WRITE_INSTRUCTIONS
+                    else -> READ_ONLY_INSTRUCTIONS
+                }
+            ) + (draftMaterial?.let { "\n\nMaterial for the draft (write from this, do not invent anything beyond it):\n$it" } ?: ""),
             history = history,
-            retrievalSpaceIds = if (docPath != null) emptyList() else repositoryIds,
+            retrievalSpaceIds = if (docPath != null || draftMaterial != null) emptyList() else repositoryIds,
             spacePaths = (repositories + space).associate { it.id!! to it.getFullPath() },
-            documentSource = docPath?.let { MessageSource(repositories.single().id!!, it) }
+            documentSource = docPath?.let { MessageSource(repositories.single().id!!, it) },
+            drafting = draftMaterial != null
         )
     }
 
@@ -321,7 +350,7 @@ class ConversationService(
         listener: TurnListener
     ): String {
         val tools = toolRegistry.conversationTools()
-            .filter { turn.canWrite || it.name !in setOf("create_document", "propose_edit", "create_task") }
+            .filter { (turn.canWrite && !turn.drafting) || it.name !in setOf("create_document", "propose_edit", "create_task") }
         val openAiTools = tools.map { tool ->
             Tool.function(
                 name = tool.name,
@@ -480,7 +509,7 @@ class ConversationService(
 
     // ---- Prompt ---------------------------------------------------------------------
 
-    private fun systemPrompt(user: User, space: Space, repositories: List<Space>, documentPath: String?, documentContent: String?, canWrite: Boolean): String {
+    private fun systemPrompt(user: User, space: Space, repositories: List<Space>, documentPath: String?, documentContent: String?, writing: String): String {
         val overview = if (space.type == SpaceType.GROUP) {
             buildString {
                 appendLine("Group: ${space.name}")
@@ -515,7 +544,7 @@ class ConversationService(
             |  before answering. If the documents do not say, say that instead of guessing.
             |- Name the documents you used by their path.
             |
-            |${if (canWrite) WRITE_INSTRUCTIONS else READ_ONLY_INSTRUCTIONS}
+            |$writing
             |
             |$focus
         """.trimMargin().trim()

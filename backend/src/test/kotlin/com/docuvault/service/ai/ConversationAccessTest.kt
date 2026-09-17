@@ -50,7 +50,8 @@ class ConversationAccessTest {
         permissionService,
         mock(GitService::class.java),
         mock(ToolRegistry::class.java),
-        ObjectMapper()
+        ObjectMapper(),
+        mock(DraftMaterialService::class.java)
     )
 
     private val user = User(id = UUID.randomUUID(), email = "u@x.io", passwordHash = "h", name = "User", role = UserRole.VIEWER)

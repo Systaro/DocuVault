@@ -17,6 +17,8 @@ interface InboxNoteRepository : JpaRepository<InboxNote, UUID> {
     fun findBySpaceIdAndStatusOrderByCreatedAtDesc(spaceId: UUID, status: NoteStatus): List<InboxNote>
     fun countBySpaceIdAndStatus(spaceId: UUID, status: NoteStatus): Long
 
+    fun findBySpaceIdAndCreatedAtAfterOrderByCreatedAtAsc(spaceId: UUID, after: java.time.Instant): List<InboxNote>
+
     @Query(
         """
         SELECT n.space.id AS spaceId, COUNT(n) AS count
