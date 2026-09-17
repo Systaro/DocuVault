@@ -39,13 +39,12 @@ Each rule specifies an action (append to existing doc, or create new doc), a tar
 ## User Flows
 
 ### Quick Capture (Global)
-1. User clicks **Quick Note** button in the top nav (or presses `⌘K`)
-2. A modal appears with:
-   - Space selector (defaults to most recently active space)
-   - Rich text editor
-   - Attach file / Add image buttons
-3. User types freely
-4. Clicks **Add to Inbox** — note lands in the selected space's inbox as UNSORTED
+1. User clicks **Quick Note** in the top nav, or picks "Quick note" in the command palette (Cmd+K).
+2. User writes the note, or records it with the microphone button.
+3. With AI, **Find a place** suggests the space (among spaces the user can write to), gives a reason and lists the tasks the note names. Without AI the space is picked by hand.
+4. User checks the space and the tasks and clicks **Save to inbox**. The note lands in that space's inbox as UNSORTED, and the ticked tasks are created with the note as their source.
+
+Details: [Assistant](assistant.md#quick-note).
 
 ### Triage (Unsorted Tab)
 1. User opens **Inbox** from the space sidebar (badge shows unsorted count)

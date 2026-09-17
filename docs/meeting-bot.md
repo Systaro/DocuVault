@@ -6,6 +6,10 @@ The meeting bot joins a meeting, transcribes it, and files the result into a
 space's [Inbox](space-inbox.md) as two notes — a structured meeting note and the
 raw transcript. From there the existing inbox AI routes the notes onto documents.
 
+The action items of the meeting note become suggested [tasks](tasks.md) for the
+person who invited the bot. They appear under "To confirm" on My tasks and on the
+note in the inbox, and reach nobody else until they are confirmed.
+
 Two platforms are supported:
 
 - **Discord** — the bot joins a voice call. Discord delivers a separate audio

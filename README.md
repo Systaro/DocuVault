@@ -19,8 +19,9 @@ For developers and AI tools, the same files are available locally — clone the 
 - **Role-based permissions.** Super Admin, Org Admin, Editor, Viewer, plus fine-grained per-space permissions.
 - **Teams.** Group users into teams (a user can be in several) and grant space access once per team instead of once per person. Members inherit every grant of every team they're in; the strongest grant — personal or inherited — wins.
 - **Public share links.** Optional password protection, view-only or comment access. Renders rich markdown including embedded HTML and JavaScript (deliberate — see [SECURITY.md](SECURITY.md)).
-- **Optional AI.** Semantic search (pgvector + OpenAI embeddings), per-space chat, writing assistance. UI hides AI features when no API key is configured.
-- **Inbox / quick capture.** Drop notes into an inbox and file them into spaces later. AI-assisted routing is optional.
+- **Optional AI.** Ask questions about your documentation and find your conversations again across spaces, with answers that name their sources, create documents and propose edits you apply. Drafts of status reports and meeting protocols from a space's recent notes and tasks. Voice input, semantic search (pgvector + OpenAI embeddings) and writing assistance. The UI hides AI features when no API key is configured. See [docs/assistant.md](docs/assistant.md).
+- **Tasks.** Tasks in spaces with assignee, due date and status, created by hand, from inbox notes, by the assistant, over MCP, or suggested from meeting action items. See [docs/tasks.md](docs/tasks.md).
+- **Inbox / quick capture.** Write or speak a note first; the assistant suggests the space and the tasks in it, and you confirm. Notes are filed into documents later, with optional AI-assisted routing.
 - **Email notifications.** Per-user instant or digest mode for space changes; password reset; invitations.
 - **First-boot setup wizard.** No `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars to fumble — visit the URL, create the admin, done.
 - **Admin settings UI.** Configure SMTP, OpenAI, and GitLab from the browser; values stored encrypted in the database.
@@ -78,8 +79,9 @@ take the same URL:
 }
 ```
 
-The server exposes 16 tools covering search/list/read/create/edit/share for
-documents, spaces and space state, plus `upload_file` / `download_file` for
+The server exposes 19 tools covering search/list/read/create/edit/share for
+documents, spaces and space state, tasks (`list_tasks`, `create_task`,
+`update_task`), plus `upload_file` / `download_file` for
 binaries and large files: they hand out a one-time URL and the agent moves the
 bytes with `curl` (or `Invoke-WebRequest` on Windows), so nothing binary
 passes through the model. Every call runs as the signed-in user with that
