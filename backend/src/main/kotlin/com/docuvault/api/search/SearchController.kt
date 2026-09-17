@@ -138,12 +138,13 @@ class SearchController(
         val limit = request.limit ?: 10
 
         if (request.spaceId != null) {
-            // Search within specific space (handles groups -> child repos internally)
-            if (!permissionService.hasAccess(user.id!!, request.spaceId, user.role)) {
+            // A group searches only the child repositories this user can read.
+            val spaceIds = permissionService.readableRepositoryIds(user.id!!, user.role, request.spaceId)
+            if (spaceIds.isEmpty()) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
             }
 
-            val chunks = embeddingService.findSimilar(request.spaceId, request.query, limit)
+            val chunks = embeddingService.findSimilar(spaceIds, request.query, limit)
             val results = chunks.map { chunk ->
                 SemanticSearchResultDto(
                     documentPath = chunk.documentPath,

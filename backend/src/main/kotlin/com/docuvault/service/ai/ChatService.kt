@@ -24,7 +24,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.*
 import com.docuvault.domain.ai.ChatMessage as DomainChatMessage
@@ -88,17 +90,29 @@ class ChatService(
         val user = userRepository.findByEmail(userEmail)
             ?: throw IllegalArgumentException("User not found")
 
+        // Checked before anything is loaded or retrieved: an unreadable space
+        // must look exactly like a missing one.
+        val readableSpaceIds = permissionService.readableRepositoryIds(user.id!!, user.role, spaceId)
+        if (readableSpaceIds.isEmpty()) throw ResponseStatusException(HttpStatus.NOT_FOUND, "Space not found")
         val space = spaceRepository.findById(spaceId).orElse(null)
-            ?: throw IllegalArgumentException("Space not found")
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Space not found")
+
+        // A conversation is continued only by its owner and only in its own space,
+        // otherwise its earlier messages would be sent to the model on someone else's behalf.
+        val existing = chatHistoryId?.let { id ->
+            chatHistoryRepository.findById(id).orElse(null)
+                ?.takeIf { it.user.id == user.id && it.space?.id == space.id }
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found")
+        }
 
         // Retrieve relevant context using semantic search
-        val relevantChunks = embeddingService.findSimilar(spaceId, message, limit = 5)
+        val relevantChunks = embeddingService.findSimilar(readableSpaceIds, message, limit = 5)
         val context = relevantChunks.joinToString("\n\n") { chunk ->
             "From ${chunk.documentPath}:\n${chunk.content}"
         }
 
         // Load or create chat history
-        val chatHistory = chatHistoryId?.let { chatHistoryRepository.findById(it).orElse(null) }
+        val chatHistory = existing
             ?: ChatHistory(
                 user = user,
                 space = space,

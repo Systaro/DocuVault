@@ -749,12 +749,14 @@ export class SettingsComponent implements OnInit {
 
   // OpenAI form
   openaiApiKey = '';
-  chatModel = 'gpt-4o';
+  chatModel = 'gpt-5.5';
   editModel = '';
   embeddingModel = 'text-embedding-3-small';
 
   readonly chatModelOptions: SelectOption[] = [
-    { value: 'gpt-5.1', label: 'GPT-5.1 (Recommended)' },
+    { value: 'gpt-5.5', label: 'GPT-5.5 (Recommended)' },
+    { value: 'gpt-5.4', label: 'GPT-5.4' },
+    { value: 'gpt-5.1', label: 'GPT-5.1' },
     { value: 'gpt-5', label: 'GPT-5' },
     { value: 'gpt-5-nano', label: 'GPT-5 Nano (Budget)' },
     { value: 'gpt-4.1', label: 'GPT-4.1' },
@@ -777,7 +779,6 @@ export class SettingsComponent implements OnInit {
 
   readonly embeddingModelOptions: SelectOption[] = [
     { value: 'text-embedding-3-small', label: 'text-embedding-3-small (Recommended)' },
-    { value: 'text-embedding-3-large', label: 'text-embedding-3-large (Higher quality)' },
     { value: 'text-embedding-ada-002', label: 'text-embedding-ada-002 (Legacy)' }
   ];
   testingOpenai = signal(false);
@@ -818,7 +819,7 @@ export class SettingsComponent implements OnInit {
       next: (settings) => {
         this.settings.set(settings);
         this.gitlabUrl = settings['gitlab.url']?.value || '';
-        this.chatModel = settings['openai.chat-model']?.value || 'gpt-4o';
+        this.chatModel = settings['openai.chat-model']?.value || 'gpt-5.5';
         this.editModel = settings['openai.edit-model']?.value || '';
         this.embeddingModel = settings['openai.embedding-model']?.value || 'text-embedding-3-small';
         this.mailHost = settings['mail.host']?.value || '';

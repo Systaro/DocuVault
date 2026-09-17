@@ -1,5 +1,7 @@
 package com.docuvault.api.ai
 
+import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.PermissionService
 import com.docuvault.service.ai.ChatHistoryDto
 import com.docuvault.service.ai.ChatResponse
 import com.docuvault.service.ai.ChatService
@@ -9,6 +11,7 @@ import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.embedding.SimilarChunk
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
@@ -20,18 +23,20 @@ import java.util.*
 class AiController(
     private val chatService: ChatService,
     private val embeddingService: EmbeddingService,
-    private val writingAssistantService: WritingAssistantService
+    private val writingAssistantService: WritingAssistantService,
+    private val userRepository: UserRepository,
+    private val permissionService: PermissionService
 ) {
     @PostMapping("/search")
     fun semanticSearch(
+        @AuthenticationPrincipal userDetails: UserDetails,
         @Valid @RequestBody request: SearchRequest
     ): ResponseEntity<List<SimilarChunk>> {
-        val results = embeddingService.findSimilar(
-            spaceId = request.spaceId,
-            query = request.query,
-            limit = request.limit ?: 5
-        )
-        return ResponseEntity.ok(results)
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val spaceIds = permissionService.readableRepositoryIds(user.id!!, user.role, request.spaceId)
+        if (spaceIds.isEmpty()) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        return ResponseEntity.ok(embeddingService.findSimilar(spaceIds, request.query, request.limit ?: 5))
     }
 
     @PostMapping("/chat")
@@ -65,7 +70,7 @@ class AiController(
         val history = chatService.getChatHistoryById(id)
             ?: return ResponseEntity.notFound().build()
         if (!chatService.isOwnedBy(id, userDetails.username)) {
-            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build()
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
         return ResponseEntity.ok(history)
     }
@@ -76,7 +81,7 @@ class AiController(
         @PathVariable id: UUID
     ): ResponseEntity<Unit> {
         if (!chatService.isOwnedBy(id, userDetails.username)) {
-            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN).build()
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
         chatService.deleteChatHistory(id)
         return ResponseEntity.noContent().build()

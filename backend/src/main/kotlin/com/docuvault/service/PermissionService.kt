@@ -2,6 +2,7 @@ package com.docuvault.service
 
 import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
+import com.docuvault.domain.space.SpaceType
 import com.docuvault.domain.team.Team
 import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
@@ -136,6 +137,32 @@ class PermissionService(
         }
 
         return allAccessible.toList()
+    }
+
+    /**
+     * The repositories behind [spaceId] that the user may actually read: the
+     * space itself for a repository, or every readable descendant repository
+     * for a group.
+     *
+     * [hasAccess] alone is not enough for a group. It answers yes as soon as the
+     * user can reach any one child, and expanding such a group to all of its
+     * children would hand out the siblings too. Empty means no access.
+     */
+    @Transactional(readOnly = true)
+    fun readableRepositoryIds(userId: UUID, userRole: UserRole, spaceId: UUID): List<UUID> {
+        val accessible = getAccessibleSpaces(userId, userRole)
+        val space = accessible.firstOrNull { it.id == spaceId } ?: return emptyList()
+        if (space.type != SpaceType.GROUP) return listOf(spaceId)
+
+        val childrenByParent = accessible.groupBy { it.parent?.id }
+        val repositoryIds = mutableListOf<UUID>()
+        fun collect(parentId: UUID) {
+            childrenByParent[parentId].orEmpty().forEach { child ->
+                if (child.type == SpaceType.GROUP) collect(child.id!!) else repositoryIds.add(child.id!!)
+            }
+        }
+        collect(spaceId)
+        return repositoryIds
     }
 
     /**

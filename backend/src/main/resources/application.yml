@@ -94,7 +94,7 @@ encryption:
 openai:
   api-key: ${OPENAI_API_KEY:}
   embedding-model: text-embedding-3-small
-  chat-model: gpt-4o
+  chat-model: gpt-5.5
   # Model for AI document edits. Editing has to reproduce a file's structure
   # exactly, which rewards a stronger model than chat does. Blank = use the
   # chat model; set it per install in Admin > Settings or via OPENAI_EDIT_MODEL.
