@@ -81,7 +81,7 @@ interface RenderGroup {
                 [class.selected]="isSelected(option)"
                 [class.active]="flatFiltered()[activeIndex()] === option"
                 [disabled]="option.disabled"
-                (click)="select(option)"
+                (click)="select(option, $event)"
                 (mouseenter)="activeIndex.set(flatFiltered().indexOf(option))"
               >
                 <span class="option-main">
@@ -421,7 +421,9 @@ export class SearchableSelectComponent implements ControlValueAccessor, OnDestro
     return option.value === this.value();
   }
 
-  select(option: SelectOption): void {
+  select(option: SelectOption, event?: MouseEvent): void {
+    // Inside a <label>, the click would otherwise be passed on to the trigger and reopen the panel.
+    event?.preventDefault();
     this.value.set(option.value);
     this.onChange(option.value);
     this.close();
