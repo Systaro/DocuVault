@@ -3,3 +3,4 @@ node_modules/
 screenshots/
 reports/
 dist/
+.auth-session.json

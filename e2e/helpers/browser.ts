@@ -42,8 +42,29 @@ export async function takeScreenshot(page: Page, name: string): Promise<string> 
   return filepath;
 }
 
+/** Where the admin session is kept between test files; git-ignored. */
+const sessionFile = path.join(__dirname, '..', '.auth-session.json');
+
+/**
+ * Logs in as the admin, reusing the session of an earlier test file while it
+ * is still valid. The backend allows ten login attempts per address in
+ * fifteen minutes, and the suite as a whole would otherwise use them up.
+ */
 export async function loginAsAdmin(page: Page): Promise<void> {
   const baseUrl = process.env.BASE_URL!;
+  const saved = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf-8')) : [];
+  if (saved.length) {
+    await page.setCookie(...saved);
+    await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'networkidle2' });
+    const valid = await page.evaluate(async (email: string) => {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!res.ok) return false;
+      const body = await res.json().catch(() => null);
+      return (body?.user?.email ?? body?.email) === email;
+    }, process.env.ADMIN_EMAIL!);
+    if (valid && new URL(page.url()).pathname === '/dashboard') return;
+  }
+
   await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle2' });
   await page.waitForSelector('input[name="email"]', { timeout: 10000 });
 
@@ -57,6 +78,9 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     () => window.location.pathname === '/dashboard',
     { timeout: 15000 }
   );
+  // The session cookie is scoped to /api/, so it is only listed for an API URL.
+  const cookies = await page.cookies(`${baseUrl}/api/`);
+  if (cookies.length) fs.writeFileSync(sessionFile, JSON.stringify(cookies));
 }
 
 /**
