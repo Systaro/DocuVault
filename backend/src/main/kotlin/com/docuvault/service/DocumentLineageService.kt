@@ -98,12 +98,13 @@ class DocumentLineageService(
         // A folder needs a row per file on top of its own, since attribution is
         // per document and the folder row carries none.
         if (!keepsHistory && isDirectory) {
+            val origins = originsOf(sourceSpace, containedFiles)
             for (file in containedFiles) {
                 rows += moveRow(
                     sourceSpace, file,
                     targetSpace, targetPath + file.removePrefix(sourcePath),
                     isDirectory = false,
-                    origin = originOf(sourceSpace, file),
+                    origin = origins[file],
                     user = user
                 )
             }
@@ -223,5 +224,14 @@ class DocumentLineageService(
     } catch (e: Exception) {
         logger.warn("Could not read origin of '$path' in space '${sourceSpace.name}': ${e.message}")
         null
+    }
+
+    /** [originOf] for every file of a folder, with one history walk for all of them. */
+    private fun originsOf(sourceSpace: Space, paths: List<String>): Map<String, FileVersion> = try {
+        val recorded = paths.mapNotNull { path -> originCreated(sourceSpace.id!!, path)?.let { path to it } }.toMap()
+        gitDiffService.createdMany(sourceSpace, paths.filterNot { it in recorded }) + recorded
+    } catch (e: Exception) {
+        logger.warn("Could not read the origins of ${paths.size} files in space '${sourceSpace.name}': ${e.message}")
+        emptyMap()
     }
 }

@@ -172,6 +172,61 @@ class GitVersioningTest {
         assertEquals("Alice", diffService.fileMeta(space, "archive/one.md").created?.authorName)
     }
 
+    /**
+     * Commits stage only what status reports as changed rather than `add .`, so
+     * each kind of change has to make it in: new, modified and deleted files.
+     */
+    @Test
+    fun `a commit picks up new, changed and deleted files`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "keep.md", "one\n")
+        gitService.writeFile(space, "drop.md", "gone soon\n")
+        gitService.commitAndPush(space, "Add two", "Alice", "alice@example.com")
+
+        gitService.writeFile(space, "keep.md", "two\n")
+        gitService.writeFile(space, "docs/new.md", "fresh\n")
+        assertTrue(gitService.removeItem(space, "drop.md"))
+        gitService.commitAndPush(space, "Change all three ways", "Bob", "bob@example.com")
+
+        assertEquals(emptyList<String>(), gitService.getUncommittedFiles(space.id!!))
+        assertEquals("Change all three ways", diffService.fileHistory(space, "keep.md").first().message)
+        assertEquals("Change all three ways", diffService.fileHistory(space, "docs/new.md").single().message)
+        assertEquals("Change all three ways", diffService.fileHistory(space, "drop.md").first().message)
+    }
+
+    /**
+     * The batch lookup a cross-space folder move uses must answer exactly what
+     * the per-file walk answers — including through a folder rename, where the
+     * oldest commit on the current path is the rename, not the creation.
+     */
+    @Test
+    fun `creation of many files at once matches the per-file answer`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+
+        gitService.writeFile(space, "notes/a.md", "a\n")
+        gitService.writeFile(space, "notes/b.md", "b\n")
+        gitService.commitAndPush(space, "Add a and b", "Alice", "alice@example.com")
+        gitService.writeFile(space, "notes/a.md", "a, edited\n")
+        gitService.commitAndPush(space, "Edit a", "Bob", "bob@example.com")
+        gitService.writeFile(space, "notes/c.md", "c\n")
+        gitService.commitAndPush(space, "Add c", "Carol", "carol@example.com")
+        assertTrue(gitService.renameItem(space, "notes", "archive"))
+        gitService.commitAndPush(space, "Rename notes to archive", "Dave", "dave@example.com")
+
+        val paths = listOf("archive/a.md", "archive/b.md", "archive/c.md")
+        val created = diffService.createdMany(space, paths)
+
+        assertEquals(mapOf("archive/a.md" to "Alice", "archive/b.md" to "Alice", "archive/c.md" to "Carol"),
+            created.mapValues { it.value.authorName })
+        for (path in paths) {
+            assertEquals(diffService.fileMeta(space, path).created, created[path], path)
+        }
+        assertEquals("notes/c.md", created["archive/c.md"]?.path)
+    }
+
     @Test
     fun `commit with no changes is a no-op instead of an empty commit`() {
         val (gitService, diffService) = services()
