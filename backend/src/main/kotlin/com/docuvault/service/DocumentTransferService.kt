@@ -42,7 +42,8 @@ class DocumentTransferService(
         targetSpace: Space,
         targetFolder: String,
         mode: TransferMode,
-        user: User
+        user: User,
+        onProgress: (ProgressUpdate) -> Unit = {}
     ): TransferResult {
         val sameSpace = sourceSpace.id == targetSpace.id
         val name = sourcePath.substringAfterLast('/')
@@ -67,14 +68,25 @@ class DocumentTransferService(
         val targetPath = freePath(targetSpace, requested)
         val containedFiles = gitService.listFilesUnder(sourceSpace, sourcePath)
         val fileCount = containedFiles.size
+        val leavesSource = mode == TransferMode.MOVE && !sameSpace
+        val progress = OperationProgress(
+            steps = 2 + (if (mode == TransferMode.MOVE) 2 else 0) +
+                gitSteps(targetSpace) + (if (leavesSource) gitSteps(sourceSpace) else 0),
+            listener = onProgress
+        )
 
-        if (!gitService.copyItemAcrossSpaces(sourceSpace, sourcePath, targetSpace, targetPath)) {
+        progress.next("Copying files", fileCount)
+        if (!gitService.copyItemAcrossSpaces(sourceSpace, sourcePath, targetSpace, targetPath) { progress.advance() }) {
             return TransferResult.Failed("Could not write into ${targetSpace.name}.")
         }
 
-        registerDocuments(sourceSpace, sourcePath, targetSpace, targetPath, isDirectory)
+        progress.next("Updating the file index", fileCount)
+        registerDocuments(sourceSpace, sourcePath, targetSpace, targetPath, isDirectory, containedFiles) {
+            progress.advance()
+        }
 
         if (mode == TransferMode.MOVE) {
+            progress.next("Removing the originals")
             if (!gitService.removeItem(sourceSpace, sourcePath)) {
                 // The copy is already in place, so the safe report is a copy —
                 // saying "moved" while the original is still there would be a lie.
@@ -89,6 +101,7 @@ class DocumentTransferService(
             // Only once the original is really gone: this record forwards the old
             // URL and carries the creator across the space boundary. Deleting the
             // file does not erase its git history, so the origin is still readable.
+            progress.next("Recording the new location")
             documentLineageService.recordTransfer(
                 sourceSpace = sourceSpace,
                 sourcePath = sourcePath,
@@ -101,18 +114,87 @@ class DocumentTransferService(
         }
 
         val verb = if (mode == TransferMode.MOVE) "Move" else "Copy"
-        documentPersistService.commitIfRequested(
-            targetSpace, autoCommit = true,
-            message = "$verb $sourcePath from ${sourceSpace.name} to $targetPath", user = user
+        commit(
+            targetSpace, "$verb $sourcePath from ${sourceSpace.name} to $targetPath", user, progress,
+            named = !sameSpace
         )
-        if (mode == TransferMode.MOVE && !sameSpace) {
-            documentPersistService.commitIfRequested(
-                sourceSpace, autoCommit = true,
-                message = "$verb $sourcePath to ${targetSpace.name}", user = user
-            )
+        if (leavesSource) {
+            commit(sourceSpace, "$verb $sourcePath to ${targetSpace.name}", user, progress, named = true)
         }
 
+        logger.info(
+            "$verb '$sourcePath' ($fileCount files) from '${sourceSpace.name}' to '$targetPath' " +
+                "in '${targetSpace.name}': ${progress.summary()}"
+        )
         return TransferResult.Ok(targetPath, renamed = targetPath != requested, fileCount = fileCount)
+    }
+
+    /**
+     * Renames or moves an item within its space. Unlike [transfer] the item is
+     * renamed on disk rather than copied, so its Document rows keep their ids and
+     * everything attached to them. Returns false when the rename itself failed.
+     */
+    fun rename(
+        space: Space,
+        oldPath: String,
+        newPath: String,
+        user: User,
+        onProgress: (ProgressUpdate) -> Unit = {}
+    ): Boolean {
+        val progress = OperationProgress(steps = 2 + gitSteps(space), listener = onProgress)
+        val isDirectory = gitService.isDirectory(space, oldPath)
+
+        progress.next("Moving")
+        if (!gitService.renameItem(space, oldPath, newPath)) return false
+
+        val prefix = "$oldPath/"
+        val documents = if (isDirectory) {
+            documentRepository.findBySpaceId(space.id!!).filter { it.path.startsWith(prefix) }
+        } else {
+            listOfNotNull(documentRepository.findBySpaceIdAndPath(space.id!!, oldPath))
+        }
+        progress.next("Updating the file index", documents.size)
+        for (document in documents) {
+            val path = if (isDirectory) "$newPath/${document.path.removePrefix(prefix)}" else newPath
+            documentRepository.save(document.copy(path = path))
+            progress.advance()
+        }
+
+        // Comments are addressed by (space, path), so they have to follow the
+        // file — otherwise a rename strands every thread on it for good.
+        annotationService.repointToNewPath(
+            sourceSpaceId = space.id!!,
+            sourcePath = oldPath,
+            targetSpace = space,
+            targetPath = newPath,
+            isDirectory = isDirectory
+        )
+
+        // Links people already shared point at the old path; this forwards them.
+        documentLineageService.recordRename(space, oldPath, newPath, isDirectory, user)
+
+        commit(space, "Rename $oldPath to $newPath", user, progress, named = false)
+
+        logger.info("Rename '$oldPath' to '$newPath' in '${space.name}': ${progress.summary()}")
+        return true
+    }
+
+    /** Committing, plus pushing when the space has a remote — see [commit]. */
+    private fun gitSteps(space: Space) = if (space.gitlabUrl.isNullOrBlank()) 1 else 2
+
+    /**
+     * Versions the change in [space] as one or two progress steps: the commit,
+     * then the push if there is a remote. [named] puts the space in the labels,
+     * for a transfer that commits in two spaces.
+     */
+    private fun commit(space: Space, message: String, user: User, progress: OperationProgress, named: Boolean) {
+        progress.next(if (named) "Saving to Git in ${space.name}" else "Saving to Git")
+        documentPersistService.commitIfRequested(
+            space, autoCommit = true, message = message, user = user,
+            beforePush = {
+                progress.next(if (named) "Pushing ${space.name} to its Git remote" else "Pushing to the Git remote")
+            }
+        )
     }
 
     /**
@@ -138,34 +220,42 @@ class DocumentTransferService(
         return requested
     }
 
-    /** Give the arrived files Document rows so search and the tree see them. */
+    /**
+     * Give the arrived [files] Document rows so search and the tree see them.
+     * Both spaces' rows are read once up front rather than twice per file.
+     */
     private fun registerDocuments(
         sourceSpace: Space,
         sourcePath: String,
         targetSpace: Space,
         targetPath: String,
-        isDirectory: Boolean
+        isDirectory: Boolean,
+        files: List<String>,
+        onFile: () -> Unit
     ) {
         val now = Instant.now()
-        for (file in gitService.listFilesUnder(sourceSpace, sourcePath)) {
+        val taken = documentRepository.findBySpaceId(targetSpace.id!!).mapTo(HashSet()) { it.path }
+        val sources = documentRepository.findBySpaceId(sourceSpace.id!!).associateBy { it.path }
+        for (file in files) {
             val destination = if (isDirectory) {
                 targetPath + file.removePrefix(sourcePath)
             } else {
                 targetPath
             }
-            if (documentRepository.findBySpaceIdAndPath(targetSpace.id!!, destination) != null) continue
-
-            val source = documentRepository.findBySpaceIdAndPath(sourceSpace.id!!, file)
-            documentRepository.save(
-                Document(
-                    space = targetSpace,
-                    path = destination,
-                    title = source?.title,
-                    contentHash = source?.contentHash,
-                    lastSyncedAt = now,
-                    updatedAt = now
+            if (destination !in taken) {
+                val source = sources[file]
+                documentRepository.save(
+                    Document(
+                        space = targetSpace,
+                        path = destination,
+                        title = source?.title,
+                        contentHash = source?.contentHash,
+                        lastSyncedAt = now,
+                        updatedAt = now
+                    )
                 )
-            )
+            }
+            onFile()
         }
     }
 

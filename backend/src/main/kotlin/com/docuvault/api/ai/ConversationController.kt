@@ -1,5 +1,6 @@
 package com.docuvault.api.ai
 
+import com.docuvault.api.EventStreams
 import com.docuvault.service.ai.ConversationDto
 import com.docuvault.service.ai.ConversationService
 import com.docuvault.service.ai.ConversationSummaryDto
@@ -7,7 +8,6 @@ import com.docuvault.service.ai.DraftRequest
 import com.docuvault.service.ai.DraftTemplate
 import com.docuvault.service.ai.ProposalDto
 import com.docuvault.service.tools.ToolCredential
-import jakarta.annotation.PreDestroy
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
@@ -21,32 +21,17 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import java.io.IOException
 import java.util.*
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** The in-app assistant: conversations across all of a user's spaces, answered as a stream. */
 @RestController
 @RequestMapping("/ai/conversations")
-class ConversationController(private val conversationService: ConversationService) {
+class ConversationController(
+    private val conversationService: ConversationService,
+    private val eventStreams: EventStreams
+) {
 
     private val logger = LoggerFactory.getLogger(ConversationController::class.java)
-
-    // Turns wait on a model for tens of seconds; they must not occupy request threads or the @Async pool.
-    private val turns = Executors.newCachedThreadPool { runnable ->
-        Thread(runnable, "assistant-turn").apply { isDaemon = true }
-    }
-    private val heartbeats = Executors.newSingleThreadScheduledExecutor { runnable ->
-        Thread(runnable, "assistant-heartbeat").apply { isDaemon = true }
-    }
-
-    @PreDestroy
-    fun shutdown() {
-        turns.shutdownNow()
-        heartbeats.shutdownNow()
-    }
 
     @GetMapping
     fun list(
@@ -92,48 +77,16 @@ class ConversationController(private val conversationService: ConversationServic
             request.draftTemplate?.let { DraftRequest(it, request.draftDays ?: 7) }
         )
 
-        // nginx would otherwise hold the events back until the buffer fills.
-        servletResponse.setHeader("X-Accel-Buffering", "no")
-        servletResponse.setHeader("Cache-Control", "no-cache")
-
-        val emitter = SseEmitter(TURN_TIMEOUT_MS)
-        val open = AtomicBoolean(true)
-        emitter.onCompletion { open.set(false) }
-        emitter.onTimeout { open.set(false) }
-        emitter.onError { open.set(false) }
-
-        fun send(event: SseEmitter.SseEventBuilder) {
-            if (!open.get()) return
+        // If the client goes away the turn still finishes and is stored.
+        return eventStreams.open(servletResponse, TURN_TIMEOUT_MS) { stream ->
+            stream.send("conversation", prepared.summary)
             try {
-                synchronized(emitter) { emitter.send(event) }
-            } catch (e: IOException) {
-                // The client went away. The turn still finishes and is stored.
-                open.set(false)
-            } catch (e: IllegalStateException) {
-                open.set(false)
-            }
-        }
-
-        // Keeps proxies with idle timeouts from cutting the stream while a model thinks.
-        val heartbeat = heartbeats.scheduleAtFixedRate(
-            { send(SseEmitter.event().comment("keep-alive")) }, HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS
-        )
-
-        send(SseEmitter.event().name("conversation").data(prepared.summary, MediaType.APPLICATION_JSON))
-        turns.execute {
-            try {
-                conversationService.runTurn(prepared, credential) { name, data ->
-                    send(SseEmitter.event().name(name).data(data, MediaType.APPLICATION_JSON))
-                }
+                conversationService.runTurn(prepared, credential) { name, data -> stream.send(name, data) }
             } catch (e: Exception) {
                 logger.error("Assistant turn crashed for conversation ${prepared.conversationId}", e)
-                send(SseEmitter.event().name("error").data(mapOf("message" to "The answer could not be stored."), MediaType.APPLICATION_JSON))
-            } finally {
-                heartbeat.cancel(false)
-                if (open.getAndSet(false)) emitter.complete()
+                stream.send("error", mapOf("message" to "The answer could not be stored."))
             }
         }
-        return emitter
     }
 
     @PostMapping("/{id}/messages/{messageId}/proposals/{proposalId}/apply")
@@ -158,7 +111,6 @@ class ConversationController(private val conversationService: ConversationServic
 
     companion object {
         private const val TURN_TIMEOUT_MS = 10L * 60 * 1000
-        private const val HEARTBEAT_SECONDS = 15L
     }
 }
 

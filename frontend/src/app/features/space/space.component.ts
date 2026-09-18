@@ -4,9 +4,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Title } from '@angular/platform-browser';
+import { Observable } from 'rxjs';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space, SpaceMember } from '../../core/api/spaces.service';
-import { DocumentsService, FileNode, Document } from '../../core/api/documents.service';
+import { DocumentsService, FileNode, Document, MoveEvent, MoveProgress, TransferRequest, TransferResult } from '../../core/api/documents.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { SharedLinksService, SharedLink } from '../../core/api/shared-links.service';
 import { InboxService } from '../../core/api/inbox.service';
@@ -23,12 +24,13 @@ import { getInitials, avatarHue } from '../../shared/utils/user-utils';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
 import { FileActionsService } from '../../shared/services/file-actions.service';
-import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/move-item-dialog.component';
+import { MoveItemDialogComponent } from '../../shared/components/move-item-dialog.component';
+import { MoveProgressDialogComponent } from '../../shared/components/move-progress-dialog.component';
 
 @Component({
   selector: 'app-space',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, MoveItemDialogComponent, SpaceRoutePipe],
+  imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, MoveItemDialogComponent, MoveProgressDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
       @if (spaceSignal()) {
@@ -344,9 +346,15 @@ import { MoveItemDialogComponent, MoveOutcome } from '../../shared/components/mo
             <app-move-item-dialog
               [node]="node"
               [sourceSpaceId]="currentSpace.id"
-              (done)="onMoveDone($event)"
+              (confirmed)="onMoveConfirmed($event)"
               (cancelled)="cancelMoveFile()"
             />
+          }
+        }
+
+        @if (moveRun(); as run) {
+          @if (!run.hidden) {
+            <app-move-progress-dialog [title]="run.title" [progress]="run.progress" (hide)="hideMoveProgress()" />
           }
         }
       }
@@ -2573,20 +2581,63 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     // The no-op and folder-into-itself cases were already ruled out in
     // requestMoveToFolder, before the user was asked.
     const newPath = targetFolder ? `${targetFolder}/${node.name}` : node.name;
-    const wasActive = this.currentDocPath() === node.path;
-    this.documentsService.rename(space.id, node.path, newPath).subscribe({
-      next: () => {
+    this.runWithProgress(
+      `Moving ${node.isDirectory ? 'folder' : 'file'} "${node.name}"`,
+      'Move failed',
+      this.documentsService.renameWithProgress(space.id, node.path, newPath),
+      () => {
         this.toastService.success('Moved', `"${node.name}" → ${targetFolder || 'space root'}`);
         if (targetFolder) this.expandedFolders.update(set => new Set(set).add(targetFolder));
         this.treeSync.notify(space.id);
-        if (wasActive) {
+        if (this.isViewing(space.id, node.path)) {
           this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: newPath } });
         }
+      }
+    );
+  }
+
+  /**
+   * The move under way, if any. Its dialog can be hidden: the move carries on
+   * and its toast still reports how it went.
+   */
+  moveRun = signal<{ id: number; title: string; progress: MoveProgress | null; hidden: boolean } | null>(null);
+  private moveRuns = 0;
+
+  /** Runs a streamed move behind the progress dialog, then hands its result to `onDone`. */
+  private runWithProgress<T>(
+    title: string,
+    failureTitle: string,
+    events: Observable<MoveEvent<T>>,
+    onDone: (result: T) => void
+  ): void {
+    const id = ++this.moveRuns;
+    this.moveRun.set({ id, title, progress: null, hidden: false });
+    // Only ever touch this run's state, in case a hidden one ends after a newer one began.
+    const finish = () => this.moveRun.update(run => run?.id === id ? null : run);
+
+    events.subscribe({
+      next: (event) => {
+        if (event.type === 'progress') {
+          this.moveRun.update(run => run?.id === id ? { ...run, progress: event.progress } : run);
+        } else {
+          finish();
+          onDone(event.result);
+        }
       },
-      error: (err) => {
-        this.toastService.error('Move failed', err?.error?.message ?? 'Could not move the item.');
+      error: (err: Error) => {
+        finish();
+        this.toastService.error(failureTitle, err.message);
       }
     });
+  }
+
+  hideMoveProgress(): void {
+    this.moveRun.update(run => run ? { ...run, hidden: true } : run);
+  }
+
+  /** Whether the editor is still showing `path` of that space — checked when a move lands, not when it starts. */
+  private isViewing(spaceId: string, path: string): boolean {
+    return this.spaceSignal()?.id === spaceId && this.currentDocPath() === path;
   }
 
   startMoveFile(node: FileNode): void {
@@ -2594,19 +2645,29 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.openMenuPath.set(null);
   }
 
-  /**
-   * The dialog has already done the transfer; all that's left is to reflect it.
-   * A move out of this space takes the open document with it, so the editor
-   * follows the file to its new home rather than sitting on a dead path.
-   */
-  onMoveDone({ mode, result }: MoveOutcome): void {
+  /** The dialog picked a destination; carry the move or copy out behind the progress dialog. */
+  onMoveConfirmed(request: TransferRequest): void {
     const node = this.movingNode();
     const space = this.spaceSignal();
     this.movingNode.set(null);
     if (!node || !space) return;
 
+    const copying = request.mode === 'COPY';
+    this.runWithProgress(
+      `${copying ? 'Copying' : 'Moving'} ${node.isDirectory ? 'folder' : 'file'} "${node.name}"`,
+      copying ? 'Copy failed' : 'Move failed',
+      this.documentsService.transferWithProgress(space.id, request),
+      result => this.onMoveDone(node, space, request.mode === 'MOVE', result)
+    );
+  }
+
+  /**
+   * Reflects a finished transfer. A move out of this space takes the open
+   * document with it, so the editor follows the file to its new home rather
+   * than sitting on a dead path.
+   */
+  private onMoveDone(node: FileNode, space: Space, wasMove: boolean, result: TransferResult): void {
     const leftThisSpace = result.targetSpaceId !== space.id;
-    const wasMove = mode === 'MOVE';
     const detail = result.renamed
       ? `"${node.name}" → ${result.targetPath} (renamed — the name was taken)`
       : `"${node.name}" → ${result.targetSpaceFullPath} / ${result.targetPath}`;
@@ -2615,8 +2676,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     this.treeSync.notify(space.id);
     if (leftThisSpace) this.treeSync.notify(result.targetSpaceId);
 
-    const wasActive = this.currentDocPath() === node.path;
-    if (wasActive && wasMove) {
+    if (wasMove && this.isViewing(space.id, node.path)) {
       const route = leftThisSpace
         ? spaceRoute(result.targetSpaceFullPath, 'doc')
         : spaceRoute(space.fullPath, 'doc');
