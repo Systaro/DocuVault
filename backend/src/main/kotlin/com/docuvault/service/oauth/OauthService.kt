@@ -94,8 +94,19 @@ class OauthService(
         val SUPPORTED_AUTH_METHODS = listOf("none", "client_secret_basic", "client_secret_post")
         val SUPPORTED_GRANT_TYPES = listOf("authorization_code", "refresh_token")
         val CODE_TTL: Duration = Duration.ofMinutes(10)
-        val ACCESS_TOKEN_TTL: Duration = Duration.ofHours(2)
-        val REFRESH_TOKEN_TTL: Duration = Duration.ofDays(30)
+
+        /**
+         * Deliberately long. A short access token is only harmless when the client
+         * silently exchanges the refresh token for a new one, and Claude Code does
+         * not do that reliably: it answers a 401 by registering a new client and
+         * asking the user to sign in again, even with a valid refresh token in hand
+         * (seven sign-ins in five days with a two-hour token, verified in the prod
+         * logs on 2026-09-18). Tokens stay hashed here and can be revoked, so the
+         * cost of a long one is bounded, while re-authenticating every two hours
+         * costs the user something every working day.
+         */
+        val ACCESS_TOKEN_TTL: Duration = Duration.ofDays(30)
+        val REFRESH_TOKEN_TTL: Duration = Duration.ofDays(90)
         private const val MAX_CLIENT_NAME_LENGTH = 100
 
         fun pkceChallenge(verifier: String): String {

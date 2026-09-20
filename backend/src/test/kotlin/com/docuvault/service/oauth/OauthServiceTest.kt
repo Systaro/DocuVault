@@ -165,7 +165,7 @@ class OauthServiceTest {
         val tokens = service.exchangeAuthorizationCode(ClientAuth("client-1", null), rawCode, verifier, pending.redirectUri)
         assertTrue(tokens.accessToken.startsWith("dvo_"))
         assertTrue(tokens.refreshToken.startsWith("dvr_"))
-        assertEquals(7200, tokens.expiresIn)
+        assertEquals(OauthService.ACCESS_TOKEN_TTL.seconds, tokens.expiresIn)
         assertNotNull(savedCodes.single().usedAt)
         assertEquals(1, savedTokens.size)
 
