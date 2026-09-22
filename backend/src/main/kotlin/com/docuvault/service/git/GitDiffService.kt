@@ -5,10 +5,17 @@ import com.docuvault.domain.space.Space
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.RenameDetector
+import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
+import org.eclipse.jgit.treewalk.EmptyTreeIterator
+import org.eclipse.jgit.treewalk.TreeWalk
+import org.eclipse.jgit.treewalk.filter.AndTreeFilter
+import org.eclipse.jgit.treewalk.filter.PathFilterGroup
+import org.eclipse.jgit.treewalk.filter.TreeFilter
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
@@ -142,6 +149,81 @@ class GitDiffService(
     }
 
     /**
+     * Where each of [paths] was created — [fileMeta]'s `created`, for many files
+     * at once. A folder that moves to another space needs it for every file
+     * inside, and a full log per file costs 50–80 ms each on a repository with a
+     * thousand commits, so a 200-file folder spent longer on this than on the
+     * move itself.
+     *
+     * Renames are followed as in [followRenames], but the history is walked once
+     * per rename hop for all paths together, and each commit's renames are
+     * detected once rather than once per file. Paths with no history are absent.
+     */
+    fun createdMany(space: Space, paths: Collection<String>): Map<String, FileVersion> {
+        val repoDir = gitService.getRepoPath(space.id!!).toFile()
+        if (!repoDir.exists() || paths.isEmpty()) return emptyMap()
+
+        return try {
+            Git.open(repoDir).use { git ->
+                val repo = git.repository
+                val head = repo.resolve(Constants.HEAD) ?: return emptyMap()
+                val created = mutableMapOf<String, FileVersion>()
+                val renamesByCommit = mutableMapOf<ObjectId, Map<String, RenameHop>>()
+                // Commit to walk back from → path to look for there → the path the
+                // file is known by today.
+                var pending: Map<ObjectId, Map<String, String>> = mapOf(head to paths.associateWith { it })
+                var hops = 0
+
+                while (pending.isNotEmpty() && hops++ < MAX_RENAME_HOPS) {
+                    val next = mutableMapOf<ObjectId, MutableMap<String, String>>()
+                    for ((start, tracked) in pending) {
+                        for ((pathThen, commit) in oldestCommits(repo, start, tracked.keys)) {
+                            val current = tracked.getValue(pathThen)
+                            created[current] = commit.toFileVersion(pathThen)
+                            val id = commit.toObjectId()
+                            val hop = renamesByCommit.getOrPut(id) { renamesIn(repo, id) }[pathThen] ?: continue
+                            next.getOrPut(hop.parent) { mutableMapOf() }[hop.fromPath] = current
+                        }
+                    }
+                    pending = next
+                }
+                created
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to read where ${paths.size} files were created in space '${space.name}': ${e.message}")
+            emptyMap()
+        }
+    }
+
+    /**
+     * The oldest commit reachable from [start] that touched each of [paths] — the
+     * batch form of reading `git log <path>` to its end, in one walk. Each commit
+     * is compared with its first parent; paths nothing touched are absent.
+     */
+    private fun oldestCommits(repo: Repository, start: ObjectId, paths: Set<String>): Map<String, RevCommit> {
+        val oldest = mutableMapOf<String, RevCommit>()
+        RevWalk(repo).use { walk ->
+            walk.markStart(walk.parseCommit(start))
+            TreeWalk(repo).use { tree ->
+                tree.isRecursive = true
+                tree.filter = AndTreeFilter.create(PathFilterGroup.createFromStrings(paths), TreeFilter.ANY_DIFF)
+                for (commit in walk) {
+                    tree.reset()
+                    if (commit.parentCount > 0) {
+                        tree.addTree(walk.parseCommit(commit.getParent(0)).tree)
+                    } else {
+                        tree.addTree(EmptyTreeIterator())
+                    }
+                    tree.addTree(commit.tree)
+                    // Newest first, so the last commit seen for a path is its oldest.
+                    while (tree.next()) oldest[tree.pathString] = commit
+                }
+            }
+        }
+        return oldest
+    }
+
+    /**
      * Commits that touched the file, newest first, paired with the path the file
      * had at that commit — the equivalent of `git log --follow`.
      *
@@ -194,37 +276,41 @@ class GitDiffService(
     /**
      * Whether the commit [commitId] got [path] by renaming something else, and
      * if so from where. Null when it created the file outright.
+     */
+    private fun renameHop(repo: Repository, commitId: ObjectId, path: String): RenameHop? =
+        renamesIn(repo, commitId)[path]
+
+    /**
+     * Every path the commit [commitId] got by renaming or copying something else,
+     * keyed by that path. Empty for a commit that renamed nothing.
      *
      * The commit is re-read in a plain [RevWalk] on purpose: a path-filtered log
      * rewrites parents to simplify history, so the commit handed in may claim to
      * have no parent at all, and its real parent's tree is unparsed.
      */
-    private fun renameHop(repo: Repository, commitId: org.eclipse.jgit.lib.ObjectId, path: String): RenameHop? {
+    private fun renamesIn(repo: Repository, commitId: ObjectId): Map<String, RenameHop> {
         return try {
             RevWalk(repo).use { walk ->
                 val self = walk.parseCommit(commitId)
-                if (self.parentCount == 0) return null
+                if (self.parentCount == 0) return emptyMap()
                 val parent = walk.parseCommit(self.getParent(0).id)
 
                 val reader = repo.newObjectReader()
                 val newTree = CanonicalTreeParser().also { it.reset(reader, self.tree) }
                 val oldTree = CanonicalTreeParser().also { it.reset(reader, parent.tree) }
-                val from = Git.wrap(repo).use { git ->
+                Git.wrap(repo).use { git ->
                     val raw = git.diff().setNewTree(newTree).setOldTree(oldTree).call()
                     RenameDetector(repo).apply { addAll(raw) }.compute()
-                        .firstOrNull {
-                            it.newPath == path &&
-                                (it.changeType == DiffEntry.ChangeType.RENAME ||
-                                    it.changeType == DiffEntry.ChangeType.COPY)
+                        .filter {
+                            it.changeType == DiffEntry.ChangeType.RENAME ||
+                                it.changeType == DiffEntry.ChangeType.COPY
                         }
-                        ?.oldPath
-                } ?: return null
-
-                RenameHop(from, parent.id)
+                        .associate { it.newPath to RenameHop(it.oldPath, parent.id) }
+                }
             }
         } catch (e: Exception) {
-            logger.warn("Rename detection failed for '$path' at ${commitId.name}: ${e.message}")
-            null
+            logger.warn("Rename detection failed at ${commitId.name}: ${e.message}")
+            emptyMap()
         }
     }
 

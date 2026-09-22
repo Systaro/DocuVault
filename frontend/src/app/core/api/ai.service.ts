@@ -1,7 +1,7 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { ApiRequestService } from './api-request.service';
+import { Observable, catchError, filter, map, of } from 'rxjs';
+import { EventStreamService, ServerEvent, StreamRejectedError } from './event-stream.service';
 
 export interface SearchResult {
   documentId: string;
@@ -109,8 +109,7 @@ export interface AiEditResult {
 
 @Injectable({ providedIn: 'root' })
 export class AiService {
-  private zone = inject(NgZone);
-  private apiRequest = inject(ApiRequestService);
+  private eventStream = inject(EventStreamService);
 
   constructor(private http: HttpClient) {}
 
@@ -152,55 +151,24 @@ export class AiService {
   }
 
   /**
-   * Sends a message and streams the answer. HttpClient cannot hand out a body
-   * while it is still arriving, so this reads the server-sent events with fetch.
-   * Unsubscribing stops reading; the server still finishes and stores the answer.
+   * Sends a message and streams the answer. Unsubscribing stops reading; the
+   * server still finishes and stores the answer.
    */
   sendTurn(request: TurnRequest): Observable<TurnEvent> {
-    return new Observable<TurnEvent>(subscriber => {
-      const abort = new AbortController();
-      const emit = (event: TurnEvent) => this.zone.run(() => subscriber.next(event));
-
-      (async () => {
-        const response = await fetch(this.apiRequest.url('/api/ai/conversations/turns'), this.apiRequest.fetchInit({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-          body: JSON.stringify(request),
-          signal: abort.signal
-        }));
-        if (!response.ok || !response.body) {
-          const body = await response.json().catch(() => null);
-          emit({ type: 'error', message: body?.message || `The assistant could not be reached (${response.status}).` });
-          return;
-        }
-
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-        let buffer = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += value;
-          let boundary: number;
-          while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
-            const block = buffer.slice(0, boundary);
-            buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, '');
-            const event = parseTurnEvent(block);
-            if (event) emit(event);
-          }
-        }
-      })()
-        .then(() => this.zone.run(() => subscriber.complete()))
-        .catch(error => {
-          if (abort.signal.aborted) return;
-          this.zone.run(() => {
-            subscriber.next({ type: 'error', message: 'The connection to the assistant was lost.' });
-            subscriber.complete();
+    return this.eventStream.post('/api/ai/conversations/turns', request).pipe(
+      map(toTurnEvent),
+      filter((event): event is TurnEvent => event !== null),
+      catchError(error => {
+        if (error instanceof StreamRejectedError) {
+          return of<TurnEvent>({
+            type: 'error',
+            message: error.body?.message || `The assistant could not be reached (${error.status}).`
           });
-          console.error('Assistant stream failed', error);
-        });
-
-      return () => abort.abort();
-    });
+        }
+        console.error('Assistant stream failed', error);
+        return of<TurnEvent>({ type: 'error', message: 'The connection to the assistant was lost.' });
+      })
+    );
   }
 
   suggest(context: string, type: string, cursorPosition?: number): Observable<{ suggestion?: string }> {
@@ -226,16 +194,8 @@ export class AiService {
   }
 }
 
-/** One `event:` / `data:` block of the stream; comments (keep-alives) yield nothing. */
-export function parseTurnEvent(block: string): TurnEvent | null {
-  let name = 'message';
-  const data: string[] = [];
-  for (const line of block.split(/\r?\n/)) {
-    if (line.startsWith('event:')) name = line.slice(6).trim();
-    else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
-  }
-  if (!data.length) return null;
-  const payload = JSON.parse(data.join('\n'));
+/** One event of the answer stream as the assistant view uses it; unknown names yield nothing. */
+function toTurnEvent({ name, data: payload }: ServerEvent): TurnEvent | null {
   switch (name) {
     case 'conversation': return { type: 'conversation', conversation: payload };
     case 'status': return { type: 'status', label: payload.label };

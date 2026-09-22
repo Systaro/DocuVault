@@ -1,6 +1,9 @@
 package com.docuvault.api.documents
 
+import com.docuvault.api.EventStreams
 import com.docuvault.domain.space.Document
+import com.docuvault.domain.space.Space
+import com.docuvault.domain.user.User
 import com.docuvault.infrastructure.repository.DocumentRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
@@ -12,6 +15,7 @@ import com.docuvault.service.DocumentPersistService
 import com.docuvault.service.DocumentTransferService
 import com.docuvault.service.PatchOperation
 import com.docuvault.service.PermissionService
+import com.docuvault.service.ProgressUpdate
 import com.docuvault.service.TransferMode
 import com.docuvault.service.TransferResult
 import com.docuvault.service.ai.DocumentEditResult
@@ -22,6 +26,7 @@ import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.FileVersion
 import com.docuvault.service.git.GitDiffService
 import com.docuvault.service.git.GitService
+import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -31,6 +36,8 @@ import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
+import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
@@ -52,7 +59,8 @@ class DocumentController(
     private val annotationService: AnnotationService,
     private val documentPatchService: DocumentPatchService,
     private val documentLineageService: DocumentLineageService,
-    private val fileUploadService: FileUploadService
+    private val fileUploadService: FileUploadService,
+    private val eventStreams: EventStreams
 ) {
     private fun extractTitle(content: String, path: String) = documentPersistService.extractTitle(content, path)
     private fun hashContent(content: String) = documentPersistService.hashContent(content)
@@ -600,55 +608,49 @@ class DocumentController(
         @AuthenticationPrincipal userDetails: UserDetails,
         @RequestBody request: RenameRequest
     ): ResponseEntity<Unit> {
-        val user = userRepository.findByEmail(userDetails.username)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val space = spaceRepository.findById(spaceId).orElse(null)
-            ?: return ResponseEntity.notFound().build()
-
-        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
-
-        requireSpaceWritable(space)
-
-        val isDir = gitService.isDirectory(space, request.oldPath)
-
-        if (!gitService.renameItem(space, request.oldPath, request.newPath)) {
+        val (space, user) = authorizeRename(spaceId, userDetails)
+        if (!documentTransferService.rename(space, request.oldPath, request.newPath, user)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
-
-        // Update database records
-        if (isDir) {
-            val prefix = request.oldPath + "/"
-            val docs = documentRepository.findBySpaceId(spaceId)
-            docs.filter { it.path.startsWith(prefix) }.forEach { doc ->
-                documentRepository.save(doc.copy(path = request.newPath + "/" + doc.path.removePrefix(prefix)))
-            }
-        } else {
-            val doc = documentRepository.findBySpaceIdAndPath(spaceId, request.oldPath)
-            doc?.let { documentRepository.save(it.copy(path = request.newPath)) }
-        }
-
-        // Comments are addressed by (space, path), so they have to follow the
-        // file — otherwise a rename strands every thread on it for good.
-        annotationService.repointToNewPath(
-            sourceSpaceId = spaceId,
-            sourcePath = request.oldPath,
-            targetSpace = space,
-            targetPath = request.newPath,
-            isDirectory = isDir
-        )
-
-        // Links people already shared point at the old path; this forwards them.
-        documentLineageService.recordRename(space, request.oldPath, request.newPath, isDir, user)
-
-        documentPersistService.commitIfRequested(
-            space, autoCommit = true,
-            message = "Rename ${request.oldPath} to ${request.newPath}", user = user
-        )
-
         return ResponseEntity.ok().build()
+    }
+
+    /**
+     * [renameItem], streamed for the move progress dialog: `progress` events while
+     * it runs, then `done` or `error` with a message. Access problems are ordinary
+     * HTTP errors before the stream starts.
+     */
+    @PostMapping("/rename/stream")
+    fun renameItemStreamed(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @RequestBody request: RenameRequest,
+        response: HttpServletResponse
+    ): SseEmitter {
+        val (space, user) = authorizeRename(spaceId, userDetails)
+        return eventStreams.open(response, MOVE_STREAM_TIMEOUT_MS) { stream ->
+            val renamed = documentTransferService.rename(space, request.oldPath, request.newPath, user) {
+                stream.send("progress", it)
+            }
+            if (renamed) {
+                stream.send("done", mapOf("path" to request.newPath))
+            } else {
+                stream.send("error", mapOf("message" to "Could not move '${request.oldPath}'."))
+            }
+        }
+    }
+
+    /** The space and acting user of a rename; throws the HTTP error when the user may not rename there. */
+    private fun authorizeRename(spaceId: UUID, userDetails: UserDetails): Pair<Space, User> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "That space no longer exists.")
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have edit rights in this space.")
+        }
+        requireSpaceWritable(space)
+        return space to user
     }
 
     /**
@@ -720,10 +722,6 @@ class DocumentController(
     /**
      * Move or copy an item into another space — or into another folder of this
      * one. `spaceId` is always the source; the destination travels in the body.
-     *
-     * A move needs edit rights on both ends, because it writes to one and
-     * removes from the other. A copy only reads the source, so view rights there
-     * are enough as long as the user can write to the destination.
      */
     @PostMapping("/transfer")
     fun transferItem(
@@ -731,16 +729,83 @@ class DocumentController(
         @AuthenticationPrincipal userDetails: UserDetails,
         @Valid @RequestBody request: TransferRequest
     ): ResponseEntity<Any> {
+        val transfer = authorizeTransfer(spaceId, userDetails, request)
+        return when (val result = transfer.run()) {
+            is TransferResult.Ok -> ResponseEntity.ok(transfer.response(result))
+            is TransferResult.Failed -> ResponseEntity.badRequest().body(mapOf("message" to result.reason))
+        }
+    }
+
+    /**
+     * [transferItem], streamed for the move progress dialog: `progress` events
+     * while it runs, then `done` with the body [transferItem] answers with, or
+     * `error` with a message. Access problems are ordinary HTTP errors before the
+     * stream starts.
+     */
+    @PostMapping("/transfer/stream")
+    fun transferItemStreamed(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: TransferRequest,
+        response: HttpServletResponse
+    ): SseEmitter {
+        val transfer = authorizeTransfer(spaceId, userDetails, request)
+        return eventStreams.open(response, MOVE_STREAM_TIMEOUT_MS) { stream ->
+            when (val result = transfer.run { stream.send("progress", it) }) {
+                is TransferResult.Ok -> stream.send("done", transfer.response(result))
+                is TransferResult.Failed -> stream.send("error", mapOf("message" to result.reason))
+            }
+        }
+    }
+
+    /** A transfer the user has been cleared for, ready to run. */
+    private inner class AuthorizedTransfer(
+        val request: TransferRequest,
+        val mode: TransferMode,
+        val sourceSpace: Space,
+        val targetSpace: Space,
+        val user: User
+    ) {
+        fun run(onProgress: (ProgressUpdate) -> Unit = {}): TransferResult = documentTransferService.transfer(
+            sourceSpace = sourceSpace,
+            sourcePath = request.sourcePath,
+            targetSpace = targetSpace,
+            targetFolder = request.targetFolder,
+            mode = mode,
+            user = user,
+            onProgress = onProgress
+        )
+
+        fun response(result: TransferResult.Ok) = TransferResponse(
+            targetSpaceId = targetSpace.id!!,
+            targetSpaceFullPath = targetSpace.getFullPath(),
+            targetPath = result.targetPath,
+            renamed = result.renamed,
+            fileCount = result.fileCount
+        )
+    }
+
+    /**
+     * Settles whether the user may carry out [request]; throws the HTTP error
+     * when not. A move needs edit rights on both ends, because it writes to one
+     * and removes from the other. A copy only reads the source, so view rights
+     * there are enough as long as the user can write to the destination.
+     */
+    private fun authorizeTransfer(
+        spaceId: UUID,
+        userDetails: UserDetails,
+        request: TransferRequest
+    ): AuthorizedTransfer {
         val user = userRepository.findByEmail(userDetails.username)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
 
         val mode = runCatching { TransferMode.valueOf(request.mode.uppercase()) }.getOrNull()
-            ?: return ResponseEntity.badRequest().body(mapOf("message" to "Unknown mode '${request.mode}'."))
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown mode '${request.mode}'.")
 
         val sourceSpace = spaceRepository.findById(spaceId).orElse(null)
-            ?: return ResponseEntity.notFound().build()
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "That space no longer exists.")
         val targetSpace = spaceRepository.findById(request.targetSpaceId).orElse(null)
-            ?: return ResponseEntity.badRequest().body(mapOf("message" to "That space no longer exists."))
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "That space no longer exists.")
 
         val sourceOk = if (mode == TransferMode.MOVE) {
             permissionService.hasEditAccess(user.id!!, sourceSpace.id!!, user.role)
@@ -748,34 +813,19 @@ class DocumentController(
             permissionService.hasAccess(user.id!!, sourceSpace.id!!, user.role)
         }
         if (!sourceOk || !permissionService.hasEditAccess(user.id!!, targetSpace.id!!, user.role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have the rights for this in one of the two spaces.")
         }
 
         requireSpaceWritable(targetSpace)
         if (mode == TransferMode.MOVE) requireSpaceWritable(sourceSpace)
 
-        return when (val result = documentTransferService.transfer(
-            sourceSpace = sourceSpace,
-            sourcePath = request.sourcePath,
-            targetSpace = targetSpace,
-            targetFolder = request.targetFolder,
-            mode = mode,
-            user = user
-        )) {
-            is TransferResult.Ok -> ResponseEntity.ok(
-                TransferResponse(
-                    targetSpaceId = targetSpace.id!!,
-                    targetSpaceFullPath = targetSpace.getFullPath(),
-                    targetPath = result.targetPath,
-                    renamed = result.renamed,
-                    fileCount = result.fileCount
-                )
-            )
-            is TransferResult.Failed ->
-                ResponseEntity.badRequest().body(mapOf("message" to result.reason))
-        }
+        return AuthorizedTransfer(request, mode, sourceSpace, targetSpace, user)
     }
 
+    private companion object {
+        /** A big folder into a remote-backed space can take a while; the heartbeat keeps the proxy patient. */
+        const val MOVE_STREAM_TIMEOUT_MS = 10L * 60 * 1000
+    }
 }
 
 data class ResolvedLocationDto(

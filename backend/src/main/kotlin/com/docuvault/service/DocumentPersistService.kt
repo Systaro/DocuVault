@@ -88,14 +88,21 @@ class DocumentPersistService(
      * staged workflow and only commit+push when the client asked for it. Failures are
      * stored on the space (surfaced in the UI) instead of failing the write.
      */
-    fun commitIfRequested(space: Space, autoCommit: Boolean, message: String, user: User) {
+    fun commitIfRequested(
+        space: Space,
+        autoCommit: Boolean,
+        message: String,
+        user: User,
+        beforePush: () -> Unit = {}
+    ) {
         if (!autoCommit && !space.gitlabUrl.isNullOrBlank()) return
         try {
             gitService.commitAndPush(
                 space = space,
                 message = message,
                 authorName = user.name,
-                authorEmail = user.email
+                authorEmail = user.email,
+                beforePush = beforePush
             )
         } catch (e: Exception) {
             space.lastPushError = e.message?.take(1000) ?: "Failed to push changes"

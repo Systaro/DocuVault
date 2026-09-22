@@ -1,19 +1,14 @@
 import { Component, computed, input, output, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DocumentsService, FileNode, TransferMode, TransferResult } from '../../core/api/documents.service';
+import { DocumentsService, FileNode, TransferMode, TransferRequest } from '../../core/api/documents.service';
 import { SpacesService, WritableSpace } from '../../core/api/spaces.service';
 import { ToastService } from '../services/toast.service';
 
-/** What the dialog carried out, so the caller can report and navigate correctly. */
-export interface MoveOutcome {
-  mode: TransferMode;
-  result: TransferResult;
-}
-
 /**
  * Destination picker for moving or copying a document or folder — within the
- * current space or into any other space the user can write to.
+ * current space or into any other space the user can write to. It only picks:
+ * the caller carries the move out, so it can show the move's progress.
  *
  * The folder list belongs to whichever space is selected, so switching spaces
  * fetches that space's tree rather than showing the source space's folders
@@ -76,7 +71,7 @@ export interface MoveOutcome {
             class="move-select"
             [ngModel]="targetSpaceId()"
             (ngModelChange)="onSpaceChange($event)"
-            [disabled]="spacesLoading() || busy()"
+            [disabled]="spacesLoading()"
           >
             @for (space of spaces(); track space.id) {
               <option [value]="space.id" [disabled]="space.inConflict">
@@ -140,14 +135,14 @@ export interface MoveOutcome {
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" (click)="requestClose()" [disabled]="busy()">Cancel</button>
+          <button type="button" class="btn btn-secondary" (click)="requestClose()">Cancel</button>
           <button
             type="button"
             class="btn btn-primary"
             (click)="confirm()"
-            [disabled]="busy() || isNoop() || !targetSpaceId() || isBlockedFolder(targetFolder())"
+            [disabled]="isNoop() || !targetSpaceId() || isBlockedFolder(targetFolder())"
           >
-            {{ busy() ? 'Working…' : (mode() === 'COPY' ? 'Copy' : 'Move') }}
+            {{ mode() === 'COPY' ? 'Copy' : 'Move' }}
           </button>
         </div>
       </div>
@@ -328,13 +323,12 @@ export class MoveItemDialogComponent implements OnInit {
   node = input.required<FileNode>();
   sourceSpaceId = input.required<string>();
 
-  readonly done = output<MoveOutcome>();
+  readonly confirmed = output<TransferRequest>();
   readonly cancelled = output<void>();
 
   spaces = signal<WritableSpace[]>([]);
   spacesLoading = signal(true);
   foldersLoading = signal(false);
-  busy = signal(false);
 
   mode = signal<TransferMode>('MOVE');
   targetSpaceId = signal('');
@@ -454,30 +448,16 @@ export class MoveItemDialogComponent implements OnInit {
   }
 
   confirm(): void {
-    if (this.busy() || this.isNoop()) return;
-    this.busy.set(true);
-    this.documentsService.transfer(this.sourceSpaceId(), {
+    if (this.isNoop()) return;
+    this.confirmed.emit({
       sourcePath: this.node().path,
       targetSpaceId: this.targetSpaceId(),
       targetFolder: this.targetFolder(),
       mode: this.mode()
-    }).subscribe({
-      next: (result) => {
-        this.busy.set(false);
-        this.done.emit({ mode: this.mode(), result });
-      },
-      error: (err) => {
-        this.busy.set(false);
-        this.toastService.error(
-          this.mode() === 'COPY' ? 'Copy failed' : 'Move failed',
-          err?.error?.message ?? 'Could not complete that.'
-        );
-      }
     });
   }
 
   requestClose(): void {
-    if (this.busy()) return;
     this.cancelled.emit();
   }
 }

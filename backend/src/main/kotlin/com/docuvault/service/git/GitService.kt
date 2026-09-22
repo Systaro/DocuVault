@@ -178,12 +178,7 @@ class GitService(
      * working tree was already clean (nothing to commit).
      */
     private fun snapshotDirtyWorkingTree(git: Git, space: Space, message: String): Boolean {
-        val status = git.status().call()
-        if (status.isClean) return false
-
-        // Stage everything: new files + modifications, then deletions.
-        git.add().addFilepattern(".").call()
-        git.add().addFilepattern(".").setUpdate(true).call()
+        if (!stageChanges(git)) return false
 
         git.commit()
             .setMessage(message)
@@ -193,12 +188,47 @@ class GitService(
     }
 
     /**
+     * Stages what changed in the working tree — new and modified files are added,
+     * deleted ones removed — and returns false when there is nothing to commit.
+     *
+     * Only the changed paths are handed to `add`. JGit's `add .` reads and hashes
+     * every file in the tree whether it changed or not, which on a space with a
+     * couple of hundred megabytes of attachments cost ~6 s on every single commit.
+     * Status compares file metadata first, so finding the changes is cheap.
+     */
+    private fun stageChanges(git: Git): Boolean {
+        val status = git.status().call()
+        if (status.isClean) return false
+
+        val changed = status.untracked + status.modified + status.conflicting
+        if (changed.isNotEmpty()) {
+            val add = git.add()
+            changed.forEach { add.addFilepattern(it) }
+            add.call()
+        }
+        if (status.missing.isNotEmpty()) {
+            val rm = git.rm()
+            status.missing.forEach { rm.addFilepattern(it) }
+            rm.call()
+        }
+        return true
+    }
+
+    /**
      * Commits pending changes and, when the space has a remote configured, pushes
      * them. Spaces without a remote commit into their lazily-initialized local
      * repository — every space is versioned, only the push is conditional.
+     * [beforePush] runs once the commit is in, so a progress display can tell the
+     * two apart — the push is usually the slower half.
      * @throws GitOperationException with specific error codes on failure
      */
-    fun commitAndPush(space: Space, message: String, authorName: String, authorEmail: String) {
+    fun commitAndPush(
+        space: Space,
+        message: String,
+        authorName: String,
+        authorEmail: String,
+        beforePush: () -> Unit = {}
+    ) {
         val hasRemote = !space.gitlabUrl.isNullOrBlank()
         if (hasRemote) validateConfiguration(space)
 
@@ -217,33 +247,31 @@ class GitService(
         logger.info("Committing changes for space '${space.name}' by $authorName (push: $hasRemote)")
 
         try {
+            val started = System.nanoTime()
+            var committedAt: Long
             synchronized(lockFor(space.id!!)) {
                 Git.open(repoDir).use { git ->
-                    git.add().addFilepattern(".").call()
-
-                    val status = git.status().call()
-                    val removed = status.missing + status.removed
-                    if (removed.isNotEmpty()) {
-                        val rm = git.rm()
-                        removed.forEach { rm.addFilepattern(it) }
-                        rm.call()
-                    }
-
-                    if (!git.status().call().isClean) {
+                    if (stageChanges(git)) {
                         git.commit()
                             .setMessage(message)
                             .setAuthor(authorName, authorEmail)
                             .call()
                     }
+                    committedAt = System.nanoTime()
 
                     if (hasRemote) {
+                        beforePush()
                         git.push()
                             .setCredentialsProvider(getCredentialsProvider())
                             .call()
                     }
                 }
             }
-            logger.info("Successfully committed changes for space '${space.name}'")
+            val done = System.nanoTime()
+            logger.info(
+                "Successfully committed changes for space '${space.name}' " +
+                    "(commit ${(committedAt - started) / 1_000_000} ms, push ${(done - committedAt) / 1_000_000} ms)"
+            )
         } catch (e: Exception) {
             logger.error("Failed to commit/push changes for space '${space.name}': ${e.message}", e)
             throw mapException(e, GitErrorCode.PUSH_FAILED, "push changes")
@@ -446,13 +474,15 @@ class GitService(
      * would corrupt every image, PDF and archive in the tree.
      *
      * Both endpoints are validated against their own repository root, so neither
-     * side of the transfer can be talked into escaping its space.
+     * side of the transfer can be talked into escaping its space. [onFileCopied]
+     * runs after each file, for a progress display.
      */
     fun copyItemAcrossSpaces(
         sourceSpace: Space,
         sourcePath: String,
         targetSpace: Space,
-        targetPath: String
+        targetPath: String,
+        onFileCopied: () -> Unit = {}
     ): Boolean {
         ensureVersionedBeforeMutation(targetSpace)
         val from = validatePath(getRepoPath(sourceSpace.id!!), sourcePath)
@@ -470,11 +500,13 @@ class GitService(
                         } else {
                             Files.createDirectories(destination.parent)
                             Files.copy(entry, destination, StandardCopyOption.REPLACE_EXISTING)
+                            onFileCopied()
                         }
                     }
                 }
             } else {
                 Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING)
+                onFileCopied()
             }
             true
         } catch (e: Exception) {

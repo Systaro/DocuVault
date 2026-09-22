@@ -1,6 +1,7 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpEvent } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { EventStreamService, StreamRejectedError } from './event-stream.service';
 
 export interface FileNode {
   name: string;
@@ -84,6 +85,23 @@ export interface TransferResult {
   fileCount: number;
 }
 
+/**
+ * How far a move, copy or rename has got: step `step` of `steps` is under way,
+ * `done` of `total` items through it (0 of 0 for a step with nothing to count).
+ */
+export interface MoveProgress {
+  step: number;
+  steps: number;
+  label: string;
+  done: number;
+  total: number;
+}
+
+/** What a streamed move reports: progress while it runs, then its result. */
+export type MoveEvent<T> =
+  | { type: 'progress'; progress: MoveProgress }
+  | { type: 'done'; result: T };
+
 /** The current home of a document whose old path someone still links to. */
 export interface ResolvedLocation {
   spaceId: string;
@@ -107,6 +125,8 @@ export interface FileVersion {
 
 @Injectable({ providedIn: 'root' })
 export class DocumentsService {
+  private eventStream = inject(EventStreamService);
+
   constructor(private http: HttpClient) {}
 
   getFileTree(spaceId: string): Observable<FileNode[]> {
@@ -168,12 +188,46 @@ export class DocumentsService {
     return this.http.post<void>(`/api/spaces/${spaceId}/documents/rename`, { oldPath, newPath });
   }
 
+  /** [rename], reporting its progress while it runs. */
+  renameWithProgress(spaceId: string, oldPath: string, newPath: string): Observable<MoveEvent<{ path: string }>> {
+    return this.moveStream(`/api/spaces/${spaceId}/documents/rename/stream`, { oldPath, newPath });
+  }
+
   /**
    * Move or copy an item into `targetSpaceId` — which may be the space it is
-   * already in. `spaceId` is always where it comes from.
+   * already in — reporting its progress while it runs. `spaceId` is always
+   * where it comes from.
    */
-  transfer(spaceId: string, request: TransferRequest): Observable<TransferResult> {
-    return this.http.post<TransferResult>(`/api/spaces/${spaceId}/documents/transfer`, request);
+  transferWithProgress(spaceId: string, request: TransferRequest): Observable<MoveEvent<TransferResult>> {
+    return this.moveStream(`/api/spaces/${spaceId}/documents/transfer/stream`, request);
+  }
+
+  /**
+   * Emits progress, then the result, then completes — or errors with a message
+   * fit for a toast. A stream that ends without either was cut off on the way;
+   * the server finishes the move regardless, so the message says it may still land.
+   */
+  private moveStream<T>(url: string, body: unknown): Observable<MoveEvent<T>> {
+    const lost = 'The connection to the server was lost. The move may still finish, reload to see where things stand.';
+    return new Observable<MoveEvent<T>>(subscriber => {
+      let answered = false;
+      const subscription = this.eventStream.post(url, body).subscribe({
+        next: ({ name, data }) => {
+          if (name === 'progress') {
+            subscriber.next({ type: 'progress', progress: data });
+          } else if (name === 'done') {
+            answered = true;
+            subscriber.next({ type: 'done', result: data });
+          } else if (name === 'error') {
+            answered = true;
+            subscriber.error(new Error(data?.message || 'The move could not be completed.'));
+          }
+        },
+        error: (error) => subscriber.error(new Error(error instanceof StreamRejectedError ? error.message : lost)),
+        complete: () => answered ? subscriber.complete() : subscriber.error(new Error(lost))
+      });
+      return () => subscription.unsubscribe();
+    });
   }
 
   /**

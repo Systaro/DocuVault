@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, NgZone } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -13,6 +13,11 @@ import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension, sharedFileUrl } from '../../shared/utils/file-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
 
+/** Near the top of a document the bar always shows. */
+const HEADER_REVEAL_ZONE_PX = 40;
+/** Smaller movements (a touch settling, rubber-banding) leave the bar as it is. */
+const SCROLL_JITTER_PX = 4;
+
 @Component({
   selector: 'app-public-viewer',
   standalone: true,
@@ -20,7 +25,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
   template: `
     <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error() && !maintenanceMode()">
       <!-- Header -->
-      <header class="viewer-header">
+      <header class="viewer-header" [class.tucked]="headerOffset() < 0" [style.margin-top.px]="headerOffset() || null">
         <div class="header-brand">
           <span translate="no" class="brand-icon material-icons">menu_book</span>
           <span class="brand-name">DocuVault</span>
@@ -182,6 +187,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
                 [src]="safeRawUrl()"
                 sandbox="allow-scripts allow-same-origin allow-popups"
                 class="html-iframe"
+                (load)="followFrameScroll($event)"
               ></iframe>
               <app-annotation-overlay
                 [filePath]="currentFilePath()"
@@ -260,6 +266,7 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
                 [src]="safeRawUrl()"
                 sandbox="allow-scripts allow-same-origin allow-popups"
                 class="html-iframe"
+                (load)="followFrameScroll($event)"
               ></iframe>
               <app-annotation-overlay
                 [filePath]="currentFilePath()"
@@ -407,6 +414,18 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
       background: white;
       border-bottom: 1px solid #e5e7eb;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: margin-top 0.25s ease;
+    }
+
+    /* Slid up out of view while an HTML document is scrolled down; the shadow
+       would otherwise still show as a line along the top edge. */
+    .viewer-header.tucked {
+      box-shadow: none;
+      border-bottom-color: transparent;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .viewer-header { transition: none; }
     }
 
     .header-brand {
@@ -917,6 +936,9 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   sidebarWidth = signal(280);
   private resizing = false;
 
+  /** Negative while the header is slid up out of view, 0 while it shows. */
+  headerOffset = signal(0);
+
   /** FileNode list at currentFolderPath() inside fileTree(). Empty if not found. */
   currentFolderItems = computed<FileNode[]>(() => {
     const path = this.currentFolderPath();
@@ -1009,7 +1031,8 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     private titleService: Title,
     private metaService: Meta,
     private markdownService: MarkdownRenderService,
-    private elementRef: ElementRef<HTMLElement>
+    private elementRef: ElementRef<HTMLElement>,
+    private zone: NgZone
   ) {
     // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
     effect(() => {
@@ -1057,6 +1080,51 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       }
     });
+  }
+
+  /**
+   * An HTML document scrolls inside its iframe, so the DocuVault bar above it
+   * would stay put and take a slice of a phone's screen for good. Scrolling the
+   * document down slides the bar away; scrolling up, or getting back near the
+   * top, brings it back, the way a mobile browser's address bar behaves.
+   *
+   * The iframe is same-origin (its sandbox allows it), so its scrolling can be
+   * watched directly. Listening in the capture phase also catches pages that
+   * scroll an inner element instead of the window. Each new document starts
+   * with the bar showing.
+   */
+  followFrameScroll(event: Event): void {
+    this.setHeaderTucked(false);
+    let doc: Document | null = null;
+    try {
+      doc = (event.target as HTMLIFrameElement).contentDocument;
+    } catch {
+      return;
+    }
+    if (!doc) return;
+
+    const frameDoc = doc;
+    const lastTop = new WeakMap<Element, number>();
+    frameDoc.addEventListener('scroll', (e) => {
+      // Nodes of the iframe belong to its own realm, so no instanceof checks here.
+      const node = e.target as Node;
+      const scroller = node.nodeType === Node.DOCUMENT_NODE ? frameDoc.scrollingElement : node as Element;
+      if (!scroller) return;
+      const top = scroller.scrollTop;
+      const delta = top - (lastTop.get(scroller) ?? 0);
+      lastTop.set(scroller, top);
+      // A sideways scroll (a carousel, a wide table) says nothing about reading on.
+      if (delta === 0) return;
+      if (top <= HEADER_REVEAL_ZONE_PX) this.setHeaderTucked(false);
+      else if (Math.abs(delta) >= SCROLL_JITTER_PX) this.setHeaderTucked(delta > 0);
+    }, { capture: true, passive: true });
+  }
+
+  private setHeaderTucked(tucked: boolean): void {
+    if (tucked === this.headerOffset() < 0) return;
+    const header = this.elementRef.nativeElement.querySelector<HTMLElement>('.viewer-header');
+    // The iframe's events run outside Angular's zone.
+    this.zone.run(() => this.headerOffset.set(tucked && header ? -header.offsetHeight : 0));
   }
 
   ngOnDestroy(): void {
