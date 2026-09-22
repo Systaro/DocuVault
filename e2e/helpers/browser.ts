@@ -103,3 +103,19 @@ export async function clickButtonByText(page: Page, text: string): Promise<void>
     throw new Error(`Button/link with text "${text}" not found on the page`);
   }
 }
+
+/** Picks the space an ask box sends its question to, through the space picker. */
+export async function chooseAskSpace(page: Page, name: string, scope = 'app-ask-composer'): Promise<void> {
+  await page.click(`${scope} .space-trigger`);
+  await page.waitForSelector('.space-panel input', { timeout: 5000 });
+  await page.type('.space-panel input', name);
+  const picked = await page.evaluate((label: string) => {
+    const row = Array.from(document.querySelectorAll('.space-panel .panel-row'))
+      .find((r) => r.querySelector('.row-name')?.textContent?.trim() === label);
+    (row as HTMLElement | undefined)?.click();
+    return !!row;
+  }, name);
+  if (!picked) throw new Error(`Space "${name}" is not in the picker`);
+  await page.waitForFunction(() => !document.querySelector('.space-panel'), { timeout: 5000 });
+}
+

@@ -702,6 +702,25 @@ WORKFLOW: call read_document first, then copy old_text exactly from its content 
             s.effects.read(ToolSource(spaceId, docPath, doc.text("title")))
             "Proposed a change to '$docPath'. It is NOT applied: the user reviews it and applies or discards it. Tell them it is waiting for them."
         },
+
+        ToolDef(
+            "save_attachment",
+            "Keep a file the user attached to this conversation (a photo, scan, PDF or text file) in the space, as the original file, and commit it. Only when the user asks to keep or file it. To keep a transcription or summary instead, use create_document.",
+            schema(
+                "attachment_id" to str("The attachment_id listed for the file"),
+                "spaceId" to str(CONVERSATION_SPACE),
+                "path" to str("Target path including the file name, e.g. 'notes/2026-09-18-whiteboard.jpg'. Defaults to attachments/<file name>."),
+                required = listOf("attachment_id")
+            ),
+            Audience.CONVERSATION
+        ) { s, a ->
+            val spaceId = s.resolveSpaceId(a.optionalString("spaceId"))
+            val saved = s.api.saveAttachment(a.requiredString("attachment_id"), mapOf("spaceId" to spaceId, "path" to a.optionalString("path")))
+            val path = saved.text("path")!!
+            val source = ToolSource(spaceId, path, saved.text("name"))
+            s.effects.created += source
+            "Saved '$path' in the space and committed it.${s.urlLine(spaceId, path)}"
+        },
     )
 
     private val conversationToolList: List<ToolDef> = tools

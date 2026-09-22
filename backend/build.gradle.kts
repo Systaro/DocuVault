@@ -53,7 +53,7 @@ dependencies {
     implementation("org.gitlab4j:gitlab4j-api:6.0.0-rc.6")
 
     // OpenAI API
-    implementation("com.aallam.openai:openai-client:3.7.0")
+    implementation("com.aallam.openai:openai-client:3.7.2")
     implementation("io.ktor:ktor-client-okhttp:2.3.9")
 
     // Coroutines for OpenAI client
@@ -65,6 +65,9 @@ dependencies {
 
     // HTML parsing (strip tags for indexing)
     implementation("org.jsoup:jsoup:1.17.2")
+
+    // PDF text and page images for files attached to the assistant
+    implementation("org.apache.pdfbox:pdfbox:3.0.3")
 
     // AWS S3 SDK (for MinIO)
     implementation(platform("software.amazon.awssdk:bom:2.25.16"))

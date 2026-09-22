@@ -1,14 +1,19 @@
-import { Component, ElementRef, ViewChild, computed, effect, input, output, signal, AfterViewInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { AfterViewInit, Component, ElementRef, OnDestroy, ViewChild, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 import { Space } from '../../core/api/spaces.service';
+import { ATTACHMENT_ACCEPT, Attachment, AttachmentsService } from '../../core/api/attachments.service';
 import { VoiceInputButtonComponent } from '../../shared/components/voice-input-button.component';
+import { AttachmentTrayComponent } from '../../shared/components/attachment-tray.component';
+import { SpaceAvatarComponent } from '../../shared/components/space-avatar.component';
+import { AttachmentQueue } from '../../shared/services/attachment-queue';
+import { ToastService } from '../../shared/services/toast.service';
+import { SpacePickerComponent } from './space-picker.component';
 
 export interface AskSubmission {
   message: string;
   spaceId: string;
   documentPath: string | null;
+  attachments?: Attachment[];
 }
 
 const LAST_SPACE_KEY = 'docuvault.ask.lastSpace';
@@ -31,115 +36,181 @@ function rememberSpace(spaceId: string): void {
 }
 
 /**
- * The ask box: pick a space, optionally keep a document in scope, type a
- * question. A conversation that already exists shows its space instead of
- * the picker, since its space cannot change.
+ * The ask box, on one line: the space (with its logo), the question, files,
+ * voice and send. Photos, scans, PDFs and text files can be attached with the
+ * paperclip, dropped onto the box or pasted. A conversation that already
+ * exists shows its space instead of the picker, since its space cannot change.
  */
 @Component({
   selector: 'app-ask-composer',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent, VoiceInputButtonComponent],
+  imports: [FormsModule, VoiceInputButtonComponent, AttachmentTrayComponent, SpaceAvatarComponent, SpacePickerComponent],
   template: `
-    <form class="ask-composer" [class.busy]="busy()" (ngSubmit)="send()">
-      <div class="composer-scope">
-        @if (fixedSpaceName(); as name) {
-          <span class="scope-chip" [title]="'This conversation is about ' + name">
-            <span translate="no" class="material-icons">menu_book</span>{{ name }}
-          </span>
-        } @else {
-          <app-searchable-select
-            class="scope-select"
-            name="space"
-            [options]="spaceOptions()"
-            [ngModel]="selectedSpaceId()"
-            (ngModelChange)="selectSpace($event)"
-            placeholder="Choose a space"
-            searchPlaceholder="Find a space"
-          />
+    <form
+      class="ask-composer"
+      [class.busy]="busy()"
+      [class.dragging]="dragging()"
+      (ngSubmit)="send()"
+      (dragenter)="onDragOver($event)"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+    >
+      <div class="glow" aria-hidden="true"></div>
+      <div class="shell">
+        @if (queue.items().length) {
+          <app-attachment-tray class="tray" [items]="queue.items()" (removed)="queue.remove($event)" />
         }
-        @if (documentPath(); as doc) {
-          <span class="scope-chip doc" [title]="'Answers focus on ' + doc">
-            <span translate="no" class="material-icons">description</span>
-            <span class="chip-text">{{ doc }}</span>
-            @if (!fixedSpaceName()) {
-              <button type="button" class="chip-remove" (click)="clearDocument.emit()" title="Ask about the whole space instead">
-                <span translate="no" class="material-icons">close</span>
-              </button>
-            }
-          </span>
-        }
+        <div class="line">
+          @if (fixedSpaceName(); as name) {
+            <span class="fixed-space" [title]="'This conversation is about ' + name">
+              @if (fixedSpace(); as space) {
+                <app-space-avatar [space]="space" size="sm" />
+              } @else {
+                <span translate="no" class="material-icons">workspaces</span>
+              }
+              <span class="fixed-name">{{ name }}</span>
+            </span>
+          } @else {
+            <app-space-picker [spaces]="spaces()" [value]="selectedSpaceId()" (changed)="selectSpace($event)" />
+          }
+          @if (documentPath(); as doc) {
+            <span class="doc-chip" [title]="'Answers focus on ' + doc">
+              <span translate="no" class="material-icons">description</span>
+              <span class="chip-text">{{ doc }}</span>
+              @if (!fixedSpaceName()) {
+                <button type="button" class="chip-remove" (click)="clearDocument.emit()" title="Ask about the whole space instead">
+                  <span translate="no" class="material-icons">close</span>
+                </button>
+              }
+            </span>
+          }
+          <textarea
+            #field
+            name="message"
+            rows="1"
+            [placeholder]="placeholder()"
+            [(ngModel)]="text"
+            (input)="autoGrow()"
+            (keydown)="onKeydown($event)"
+            (paste)="onPaste($event)"
+            [disabled]="busy()"
+            aria-label="Your question"
+          ></textarea>
+          <div class="actions">
+            <button type="button" class="icon-action" (click)="picker.click()" [disabled]="busy()" title="Attach photos, scans, PDFs or text files" aria-label="Attach files">
+              <span translate="no" class="material-icons">attach_file</span>
+            </button>
+            <app-voice-input-button (transcribed)="appendSpoken($event)" />
+            <button type="submit" class="send-btn" [disabled]="!canSend()" [title]="queue.uploading() ? 'Waiting for the files to upload' : 'Send (Enter)'" aria-label="Send">
+              <span translate="no" class="material-icons">{{ busy() ? 'hourglass_top' : 'arrow_upward' }}</span>
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="composer-input">
-        <textarea
-          #field
-          name="message"
-          rows="1"
-          [placeholder]="placeholder()"
-          [(ngModel)]="text"
-          (input)="autoGrow()"
-          (keydown)="onKeydown($event)"
-          [disabled]="busy()"
-          aria-label="Your question"
-        ></textarea>
-        <app-voice-input-button (transcribed)="appendSpoken($event)" />
-        <button type="submit" class="send-btn" [disabled]="!canSend()" title="Send (Enter)">
-          <span translate="no" class="material-icons">{{ busy() ? 'hourglass_top' : 'arrow_upward' }}</span>
-        </button>
-      </div>
+      @if (dragging()) {
+        <div class="drop-hint" aria-hidden="true">
+          <span translate="no" class="material-icons">upload_file</span>Drop photos, scans or files to ask about them
+        </div>
+      }
+      <input #picker type="file" class="file-input" multiple [accept]="accept" (change)="onPicked($event)" tabindex="-1" aria-hidden="true" />
     </form>
   `,
   styles: [`
+    @property --glow-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: true;
+    }
+
+    :host { display: block; }
+
     .ask-composer {
+      --glow-colors: #6fb3b8, #38bdf8, #8b5cf6, #ec4899, #f59e0b, #6fb3b8;
+      position: relative;
+      isolation: isolate;
+      animation: glow-spin 7s linear infinite;
+    }
+
+    /* The halo: the same colours, blurred, behind the box. It brightens when the box wants attention. */
+    .glow {
+      position: absolute;
+      inset: 2px;
+      z-index: -1;
+      border-radius: 24px;
+      background: conic-gradient(from var(--glow-angle), var(--glow-colors));
+      filter: blur(16px);
+      opacity: 0.4;
+      transition: opacity 0.35s ease, inset 0.35s ease;
+    }
+
+    .ask-composer:hover .glow { opacity: 0.52; }
+    .ask-composer:focus-within .glow { opacity: 0.68; inset: -2px; }
+    .ask-composer.dragging .glow { opacity: 0.95; inset: -6px; }
+    .ask-composer.dragging { animation-duration: 2s; }
+    .ask-composer.busy { animation-duration: 2.4s; }
+    .ask-composer.busy .glow { animation: glow-breathe 1.6s ease-in-out infinite; }
+
+    /* The box: a hairline of moving colour around a calm surface. */
+    .shell {
       display: flex;
       flex-direction: column;
-      gap: var(--spacing-sm);
-      padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) var(--spacing-md);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-
-      &:focus-within {
-        border-color: var(--primary);
-        box-shadow: var(--shadow-md);
-      }
+      gap: 8px;
+      padding: 7px 7px 7px 8px;
+      border: 1.5px solid transparent;
+      border-radius: 22px;
+      background:
+        linear-gradient(var(--surface), var(--surface)) padding-box,
+        conic-gradient(from var(--glow-angle), var(--glow-colors)) border-box;
     }
 
-    .composer-scope {
+    .tray { padding: 3px 2px 0; }
+
+    .line {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--spacing-sm);
-      padding-top: var(--spacing-xs);
+      align-items: flex-end;
+      gap: 8px;
+      min-width: 0;
+      container-type: inline-size;
     }
 
-    .scope-select {
-      min-width: 200px;
-      max-width: 320px;
-    }
-
-    .scope-chip {
+    .fixed-space {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      max-width: 100%;
-      padding: 4px 10px;
+      gap: 7px;
+      flex-shrink: 0;
+      max-width: 220px;
+      height: 34px;
+      padding: 0 12px 0 5px;
       border-radius: var(--radius-full);
       background: var(--background-darker);
       color: var(--text-secondary);
+      font-size: 13.5px;
+      font-weight: 600;
+
+      .material-icons { font-size: 18px; margin-left: 4px; }
+    }
+
+    .fixed-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .doc-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 1;
+      min-width: 0;
+      max-width: 220px;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: var(--radius-full);
+      background: var(--primary-light);
+      color: var(--text-primary);
       font-size: 13px;
 
       .material-icons { font-size: 16px; }
-
-      &.doc { background: var(--primary-light); color: var(--text-primary); }
     }
 
-    .chip-text {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .chip-remove {
       display: inline-flex;
@@ -152,73 +223,134 @@ function rememberSpace(spaceId: string): void {
       .material-icons { font-size: 15px; }
     }
 
-    .composer-input {
-      display: flex;
-      align-items: flex-end;
-      gap: var(--spacing-sm);
+    textarea {
+      flex: 1;
+      min-width: 120px;
+      min-height: 34px;
+      max-height: 220px;
+      padding: 7px 4px;
+      border: 0;
+      outline: none;
+      resize: none;
+      background: transparent;
+      color: var(--text-primary);
+      font: inherit;
+      font-size: 15px;
+      line-height: 1.35;
 
-      textarea {
-        flex: 1;
-        min-height: 40px;
-        max-height: 220px;
-        padding: 8px 0;
-        border: 0;
-        outline: none;
-        resize: none;
-        background: transparent;
-        color: var(--text-primary);
-        font: inherit;
-        font-size: 15px;
-        line-height: 1.5;
+      &::placeholder {
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
     }
 
-    .send-btn {
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
       flex-shrink: 0;
+    }
+
+    .icon-action {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 38px;
-      height: 38px;
+      width: 34px;
+      height: 34px;
       border: 0;
       border-radius: var(--radius-full);
-      background: var(--primary-dark);
-      color: #fff;
+      background: transparent;
+      color: var(--text-muted);
       cursor: pointer;
 
-      &:disabled { opacity: 0.4; cursor: default; }
+      .material-icons { font-size: 20px; transform: rotate(45deg); }
+      &:hover:not(:disabled) { background: var(--background-darker); color: var(--primary-dark); }
+      &:disabled { opacity: 0.5; cursor: default; }
+    }
+
+    .send-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      margin-left: 2px;
+      border: 0;
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, var(--primary-dark), #7c5cf0 70%, #d946ef);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 4px 14px color-mix(in srgb, #8b5cf6 35%, transparent);
+      transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast);
+
+      .material-icons { font-size: 20px; }
+      &:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px color-mix(in srgb, #8b5cf6 45%, transparent); }
+      &:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+    }
+
+    .drop-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 22px;
+      background: color-mix(in srgb, var(--surface) 86%, transparent);
+      backdrop-filter: blur(2px);
+      color: var(--primary-dark);
+      font-size: 14px;
+      font-weight: 600;
+      pointer-events: none;
+
+      .material-icons { font-size: 22px; }
+    }
+
+    .file-input { display: none; }
+
+    @container (max-width: 520px) {
+      .fixed-name { display: none; }
+      .fixed-space { padding-right: 5px; }
+      .doc-chip { max-width: 110px; }
+    }
+
+    @keyframes glow-spin { to { --glow-angle: 360deg; } }
+    @keyframes glow-breathe { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ask-composer, .ask-composer.busy .glow { animation: none; }
     }
   `]
 })
-export class AskComposerComponent implements AfterViewInit {
+export class AskComposerComponent implements AfterViewInit, OnDestroy {
   @ViewChild('field') field?: ElementRef<HTMLTextAreaElement>;
+
+  private attachmentsService = inject(AttachmentsService);
+  private toast = inject(ToastService);
 
   spaces = input<Space[]>([]);
   /** Set for an existing conversation: its space is shown, not chosen. */
   fixedSpaceName = input<string | null>(null);
+  fixedSpaceId = input<string | null>(null);
   initialSpaceId = input<string | null>(null);
   documentPath = input<string | null>(null);
   busy = input(false);
   autofocus = input(false);
-  placeholder = input('Ask about your documentation');
+  placeholder = input('Ask anything, or drop photos, scans and PDFs');
 
   submitted = output<AskSubmission>();
   clearDocument = output<void>();
 
+  readonly accept = ATTACHMENT_ACCEPT;
+  readonly queue = new AttachmentQueue(this.attachmentsService, this.toast);
+
   text = '';
   selectedSpaceId = signal<string | null>(null);
+  dragging = signal(false);
 
-  spaceOptions = computed<SelectOption[]>(() => {
-    const byId = new Map(this.spaces().map(s => [s.id, s]));
-    return [...this.spaces()]
-      .sort((a, b) => a.fullPath.localeCompare(b.fullPath))
-      .map(space => ({
-        value: space.id,
-        label: space.name,
-        group: space.parentId ? byId.get(space.parentId)?.name : undefined,
-        sublabel: space.type === 'GROUP' ? 'All spaces in this group' : undefined
-      }));
-  });
+  fixedSpace = computed(() => this.spaces().find(s => s.id === this.fixedSpaceId()) ?? null);
 
   constructor() {
     // Pick a sensible space once the list arrives: the one asked for, else the last used, else the first repository.
@@ -242,6 +374,10 @@ export class AskComposerComponent implements AfterViewInit {
     if (this.autofocus()) setTimeout(() => this.focus());
   }
 
+  ngOnDestroy(): void {
+    this.queue.destroy();
+  }
+
   focus(): void {
     this.field?.nativeElement.focus();
   }
@@ -249,18 +385,26 @@ export class AskComposerComponent implements AfterViewInit {
   selectSpace(spaceId: string): void {
     this.selectedSpaceId.set(spaceId);
     rememberSpace(spaceId);
+    this.focus();
   }
 
   canSend(): boolean {
-    return !this.busy() && this.text.trim().length > 0 && (!!this.fixedSpaceName() || !!this.selectedSpaceId());
+    const hasContent = this.text.trim().length > 0 || this.queue.ready().length > 0;
+    return !this.busy() && !this.queue.uploading() && hasContent && (!!this.fixedSpaceName() || !!this.selectedSpaceId());
   }
 
   send(): void {
     if (!this.canSend()) return;
     const spaceId = this.selectedSpaceId() ?? '';
     if (spaceId) rememberSpace(spaceId);
-    this.submitted.emit({ message: this.text.trim(), spaceId, documentPath: this.documentPath() });
+    this.submitted.emit({
+      message: this.text.trim(),
+      spaceId,
+      documentPath: this.documentPath(),
+      attachments: this.queue.ready()
+    });
     this.text = '';
+    this.queue.clear();
     setTimeout(() => this.autoGrow());
   }
 
@@ -277,6 +421,42 @@ export class AskComposerComponent implements AfterViewInit {
       event.preventDefault();
       this.send();
     }
+  }
+
+  onPicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files?.length) this.queue.add(input.files);
+    input.value = '';
+    this.focus();
+  }
+
+  /** A screenshot or photo on the clipboard is attached; pasted text stays text. */
+  onPaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (!files.length || this.busy()) return;
+    event.preventDefault();
+    this.queue.add(files);
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (this.busy() || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    this.dragging.set(true);
+  }
+
+  onDragLeave(event: DragEvent): void {
+    const next = event.relatedTarget as Node | null;
+    if (!next || !(event.currentTarget as HTMLElement).contains(next)) this.dragging.set(false);
+  }
+
+  onDrop(event: DragEvent): void {
+    this.dragging.set(false);
+    const files = event.dataTransfer?.files;
+    if (!files?.length || this.busy()) return;
+    event.preventDefault();
+    this.queue.add(files);
+    this.focus();
   }
 
   autoGrow(): void {

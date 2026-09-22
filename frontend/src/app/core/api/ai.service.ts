@@ -59,7 +59,17 @@ export interface ConversationMessage {
   createdDocuments: MessageSource[];
   proposals: EditProposal[];
   createdTasks: { id: string; spaceId: string; title: string }[];
+  /** Files the user sent with this message. */
+  attachments: MessageAttachment[];
   createdAt: string;
+}
+
+export interface MessageAttachment {
+  id: string;
+  fileName: string;
+  contentType: string;
+  kind: 'IMAGE' | 'PDF' | 'TEXT';
+  sizeBytes: number;
 }
 
 export interface ConversationDetail {
@@ -77,6 +87,8 @@ export interface TurnRequest {
   /** Starts a conversation that writes a draft from the space's recent material. */
   draftTemplate?: DraftTemplate;
   draftDays?: number;
+  /** Uploaded through AttachmentsService; a message may be files alone. */
+  attachmentIds?: string[];
 }
 
 /** What arrives while an answer is being written. */

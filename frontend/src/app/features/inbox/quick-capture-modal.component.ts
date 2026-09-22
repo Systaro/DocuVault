@@ -1,6 +1,8 @@
 import {
-  Component, OnInit, AfterViewInit, Input, Output, EventEmitter, ViewChild, ElementRef, signal, computed, HostListener, inject
+  Component, OnInit, AfterViewInit, OnDestroy, Input, Output, EventEmitter, ViewChild, ElementRef, signal, computed, HostListener, inject,
+  SecurityContext
 } from '@angular/core';
+import { DomSanitizer } from '@angular/platform-browser';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -13,6 +15,10 @@ import { CapabilitiesService } from '../../core/capabilities/capabilities.servic
 import { ToastService } from '../../shared/services/toast.service';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
 import { VoiceInputButtonComponent } from '../../shared/components/voice-input-button.component';
+import { AttachmentTrayComponent } from '../../shared/components/attachment-tray.component';
+import { ATTACHMENT_ACCEPT, AttachmentsService } from '../../core/api/attachments.service';
+import { AttachmentQueue, PendingAttachment } from '../../shared/services/attachment-queue';
+import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
 
 /**
@@ -23,7 +29,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
 @Component({
   selector: 'app-quick-capture-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent, VoiceInputButtonComponent],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent, VoiceInputButtonComponent, AttachmentTrayComponent],
   template: `
     <div class="capture-overlay" (click)="closeIfOutside($event)">
       <div class="capture-modal" role="dialog" aria-labelledby="capture-title">
@@ -56,10 +62,29 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             <span translate="no" class="material-icons">code</span>
           </button>
           <span class="toolbar-spacer"></span>
+          @if (aiInbox) {
+            <button class="t-btn" (click)="filePicker.click()" title="Add a photo of a handwritten note, a scan or a file" aria-label="Add photos or files">
+              <span translate="no" class="material-icons">add_photo_alternate</span>
+            </button>
+            <input #filePicker type="file" class="file-input" multiple [accept]="accept" (change)="onPicked($event)" tabindex="-1" aria-hidden="true" />
+          }
           <app-voice-input-button (transcribed)="insertSpoken($event)" />
         </div>
 
-        <div class="capture-editor">
+        @if (files.items().length) {
+          <div class="capture-files">
+            <app-attachment-tray [items]="files.items()" (removed)="files.remove($event)" />
+            <p class="files-hint">Photos and files are read into the note. The files themselves are not kept.</p>
+          </div>
+        }
+
+        <div
+          class="capture-editor"
+          [class.dragging]="dragging()"
+          (dragover)="onDragOver($event)"
+          (dragleave)="dragging.set(false)"
+          (drop)="onDrop($event)"
+        >
           <div
             #editor
             class="editor-content"
@@ -68,7 +93,11 @@ import { spaceRoute } from '../../shared/utils/route-utils';
             [attr.data-placeholder]="'Write or speak a note. Where it goes is decided after.'"
             (input)="onInput($event)"
             (keydown)="onKeydown($event)"
+            (paste)="onPaste($event)"
           ></div>
+          @if (dragging()) {
+            <div class="drop-hint"><span translate="no" class="material-icons">upload_file</span>Drop a photo of your note, a scan or a file</div>
+          }
         </div>
 
         @if (suggesting()) {
@@ -124,7 +153,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
           <div class="capture-actions">
             <button class="btn btn-secondary" (click)="close.emit()">Cancel</button>
             @if (needsSuggestion()) {
-              <button class="btn btn-primary" [disabled]="!hasText() || suggesting()" (click)="suggest()">
+              <button class="btn btn-primary" [disabled]="!hasText() || suggesting() || reading()" (click)="suggest()">
                 <span translate="no" class="material-icons">auto_awesome</span>Find a place
               </button>
             } @else {
@@ -235,8 +264,36 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     }
 
     .capture-editor {
+      position: relative;
       flex: 1;
       overflow-y: auto;
+
+      &.dragging { outline: 2px dashed var(--primary); outline-offset: -8px; }
+    }
+
+    .capture-files {
+      padding: 10px 14px 0;
+    }
+
+    .files-hint {
+      margin: 6px 2px 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .file-input { display: none; }
+
+    .drop-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      color: var(--primary-dark);
+      font-weight: 600;
+      pointer-events: none;
     }
 
     .editor-content {
@@ -252,6 +309,18 @@ import { spaceRoute } from '../../shared/utils/route-utils';
         content: attr(data-placeholder);
         color: var(--text-muted);
         pointer-events: none;
+      }
+
+      /* The editor's content is not part of this template, so it needs ::ng-deep; the global reset flattens lists and headings. */
+      ::ng-deep {
+        h1, h2, h3 { margin: 0.4em 0 0.2em; font-weight: 700; line-height: 1.35; }
+        h1 { font-size: 17px; }
+        h2 { font-size: 15.5px; }
+        h3 { font-size: 14.5px; }
+        p { margin: 0.2em 0; }
+        ul, ol { margin: 0.2em 0; padding-left: 22px; }
+        ul { list-style: disc; }
+        ol { list-style: decimal; }
       }
     }
 
@@ -362,7 +431,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
     }
   `]
 })
-export class QuickCaptureModalComponent implements OnInit, AfterViewInit {
+export class QuickCaptureModalComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('editor') editorEl?: ElementRef<HTMLDivElement>;
   /** Text typed elsewhere (the command palette) that the note starts with. */
   @Input() initialText = '';
@@ -374,7 +443,16 @@ export class QuickCaptureModalComponent implements OnInit, AfterViewInit {
   private tasksService = inject(TasksService);
   private toastService = inject(ToastService);
   private router = inject(Router);
+  private attachmentsService = inject(AttachmentsService);
+  private markdown = inject(MarkdownRenderService);
+  private sanitizer = inject(DomSanitizer);
   readonly aiInbox = inject(CapabilitiesService).aiInbox();
+  readonly accept = ATTACHMENT_ACCEPT;
+  /** Photos and files are read into the note as soon as they are uploaded. */
+  readonly files = new AttachmentQueue(this.attachmentsService, this.toastService, item => this.readIntoNote(item));
+  private readingCount = signal(0);
+  reading = computed(() => this.readingCount() > 0 || this.files.uploading());
+  dragging = signal(false);
 
   spaces = signal<WritableSpace[]>([]);
   spaceId = signal<string | null>(null);
@@ -422,6 +500,69 @@ export class QuickCaptureModalComponent implements OnInit, AfterViewInit {
     if (!editor) return;
     const existing = editor.innerText.trim();
     editor.innerText = existing ? `${existing}\n${text}` : text;
+    this.syncContent(editor);
+    if (this.suggestion()) this.stale.set(true);
+  }
+
+  ngOnDestroy(): void {
+    this.files.destroy();
+  }
+
+  onPicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files?.length) this.files.add(input.files);
+    input.value = '';
+  }
+
+  /** A photo on the clipboard is read into the note; pasted text stays as typed. */
+  onPaste(event: ClipboardEvent): void {
+    const pasted = Array.from(event.clipboardData?.files ?? []);
+    if (!pasted.length || !this.aiInbox) return;
+    event.preventDefault();
+    this.files.add(pasted);
+  }
+
+  onDragOver(event: DragEvent): void {
+    if (!this.aiInbox || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    this.dragging.set(true);
+  }
+
+  onDrop(event: DragEvent): void {
+    this.dragging.set(false);
+    if (!this.aiInbox || !event.dataTransfer?.files.length) return;
+    event.preventDefault();
+    this.files.add(event.dataTransfer.files);
+  }
+
+  private readIntoNote(item: PendingAttachment): void {
+    this.files.note(item.localId, 'Reading');
+    this.readingCount.update(n => n + 1);
+    this.attachmentsService.read([item.attachment!.id]).subscribe({
+      next: ({ text }) => {
+        this.readingCount.update(n => n - 1);
+        if (!text.trim()) {
+          this.files.note(item.localId, 'Nothing readable found');
+          return;
+        }
+        this.appendMarkdown(text);
+        this.files.note(item.localId, 'Added to the note');
+      },
+      error: (err: HttpErrorResponse) => {
+        this.readingCount.update(n => n - 1);
+        this.files.note(item.localId, 'Could not be read');
+        this.toastService.error(`${item.name} could not be read`, err.error?.message || 'Please try again.');
+      }
+    });
+  }
+
+  /** Model output goes through the sanitizer like any other untrusted HTML; checkboxes become symbols it keeps. */
+  private appendMarkdown(markdown: string): void {
+    const editor = this.editorEl?.nativeElement;
+    if (!editor) return;
+    const withBoxes = markdown.replace(/^(\s*)[-*] \[ \] /gm, '$1- ☐ ').replace(/^(\s*)[-*] \[[xX]\] /gm, '$1- ☑ ');
+    const html = this.sanitizer.sanitize(SecurityContext.HTML, this.markdown.renderToHtml(withBoxes)) ?? '';
+    editor.insertAdjacentHTML('beforeend', html);
     this.syncContent(editor);
     if (this.suggestion()) this.stale.set(true);
   }

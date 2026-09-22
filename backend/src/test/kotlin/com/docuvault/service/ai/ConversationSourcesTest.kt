@@ -23,7 +23,7 @@ class ConversationSourcesTest {
         mock(OpenAIProvider::class.java), mock(EmbeddingService::class.java), mock(ConversationRepository::class.java),
         mock(ConversationMessageRepository::class.java), mock(UserRepository::class.java), mock(SpaceRepository::class.java),
         mock(PermissionService::class.java), mock(GitService::class.java), mock(ToolRegistry::class.java), ObjectMapper(),
-        mock(DraftMaterialService::class.java)
+        mock(DraftMaterialService::class.java), mock(AttachmentService::class.java)
     )
 
     private val space = UUID.randomUUID()
@@ -41,5 +41,11 @@ class ConversationSourcesTest {
     @Test
     fun `falls back to the best match when the answer names nothing`() {
         assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit, onboarding), "Mondays.").map { it.path })
+    }
+
+    @Test
+    fun `an answer about attached files gets no stand-in source`() {
+        assertEquals(emptyList<String>(), service.retrievalSources(listOf(fruit, onboarding), "Your note says to call the movers.", fallback = false).map { it.path })
+        assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit), "As ops/fruit-policy.md says", fallback = false).map { it.path })
     }
 }

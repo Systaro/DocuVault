@@ -13,6 +13,8 @@ import { ToastService } from '../../shared/services/toast.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { AskComposerComponent, AskSubmission } from './ask-composer.component';
+import { MessageAttachmentsComponent } from '../../shared/components/message-attachments.component';
+import { Attachment } from '../../core/api/attachments.service';
 import { ProposalCardComponent } from './proposal-card.component';
 import { SaveAnswerDialogComponent, SavedAnswer } from './save-answer-dialog.component';
 import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component';
@@ -25,7 +27,7 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
 @Component({
   selector: 'app-ask',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LayoutComponent, AskComposerComponent, ProposalCardComponent, SaveAnswerDialogComponent, DraftDialogComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LayoutComponent, AskComposerComponent, MessageAttachmentsComponent, ProposalCardComponent, SaveAnswerDialogComponent, DraftDialogComponent],
   template: `
     <app-layout>
     <div class="ask-page">
@@ -125,7 +127,12 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
           @for (m of messages(); track m.id) {
             <article class="message" [class]="'message ' + m.role">
               @if (m.role === 'user') {
-                <div class="bubble">{{ m.content }}</div>
+                @if (m.attachments.length) {
+                  <app-message-attachments [attachments]="m.attachments" />
+                }
+                @if (m.content) {
+                  <div class="bubble">{{ m.content }}</div>
+                }
               } @else {
                 @if (m.toolCalls.length) {
                   <details class="tool-log">
@@ -218,11 +225,12 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
             #composer
             [spaces]="spaces()"
             [fixedSpaceName]="active()?.spaceName ?? null"
+            [fixedSpaceId]="active()?.spaceId ?? null"
             [initialSpaceId]="requestedSpaceId()"
             [documentPath]="active() ? (active()!.documentPath ?? null) : requestedDocument()"
             [busy]="streaming()"
             [autofocus]="true"
-            [placeholder]="active() ? 'Ask a follow-up' : 'Ask about your documentation'"
+            [placeholder]="active() ? 'Ask a follow-up, or add files' : 'Ask anything, or drop photos, scans and PDFs'"
             (submitted)="send($event)"
             (clearDocument)="requestedDocument.set(null)"
           />
@@ -473,7 +481,8 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
       p { max-width: 460px; margin: 0 auto; line-height: 1.5; }
     }
 
-    .message.user { display: flex; justify-content: flex-end; }
+    .message.user { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .message.user app-message-attachments { max-width: 80%; }
 
     .bubble {
       max-width: 80%;
@@ -726,11 +735,13 @@ export class AskComponent implements OnInit, OnDestroy {
         this.send({ message: draft.message, spaceId: draft.spaceId, documentPath: null }, draft);
         return;
       }
-      const question = params.get('q');
-      if (question && params.get('space')) {
+      const question = params.get('q') ?? '';
+      // Files come along in the navigation state; a reload does not send them again.
+      const attachments: Attachment[] = history.state?.askAttachments ?? [];
+      if ((question || attachments.length) && params.get('space')) {
         // Arriving from the dashboard or the command palette with a question already typed.
         this.router.navigate([], { queryParams: { q: null }, queryParamsHandling: 'merge', replaceUrl: true });
-        this.send({ message: question, spaceId: params.get('space')!, documentPath: params.get('doc') });
+        this.send({ message: question, spaceId: params.get('space')!, documentPath: params.get('doc'), attachments });
       }
       return;
     }
@@ -782,17 +793,19 @@ export class AskComponent implements OnInit, OnDestroy {
     this.liveTools.set([]);
     this.status.set(null);
     this.streaming.set(true);
-    this.messages.update(list => [...list, localUserMessage(submission.message)]);
+    this.messages.update(list => [...list, localUserMessage(submission.message, submission.attachments ?? [])]);
     this.afterRender(true);
 
+    const attachmentIds = submission.attachments?.map(a => a.id) ?? [];
     const request = conversationId
-      ? { conversationId, message: submission.message }
+      ? { conversationId, message: submission.message, attachmentIds }
       : {
           spaceId: submission.spaceId,
           documentPath: submission.documentPath ?? undefined,
           message: submission.message,
           draftTemplate: draft?.template,
-          draftDays: draft?.days
+          draftDays: draft?.days,
+          attachmentIds
         };
 
     this.turn = this.ai.sendTurn(request).subscribe({
@@ -988,11 +1001,12 @@ export class AskComponent implements OnInit, OnDestroy {
   }
 }
 
-function localUserMessage(content: string): ConversationMessage {
+function localUserMessage(content: string, attachments: Attachment[]): ConversationMessage {
   return {
     id: `local-${Date.now()}`,
     role: 'user',
     content,
+    attachments,
     sources: [],
     toolCalls: [],
     createdDocuments: [],

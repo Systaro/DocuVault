@@ -19,7 +19,8 @@ class S3Config(
     @Value("\${minio.endpoint}") private val endpoint: String,
     @Value("\${minio.access-key}") private val accessKey: String,
     @Value("\${minio.secret-key}") private val secretKey: String,
-    @Value("\${minio.bucket}") private val bucket: String
+    @Value("\${minio.bucket}") private val bucket: String,
+    @Value("\${minio.attachments-bucket}") private val attachmentsBucket: String
 ) {
     private val logger = LoggerFactory.getLogger(S3Config::class.java)
 
@@ -34,18 +35,20 @@ class S3Config(
     fun s3Client(): S3Client = buildClient()
 
     @PostConstruct
-    fun ensureBucket() {
-        try {
-            val client = buildClient()
+    fun ensureBuckets() {
+        listOf(bucket, attachmentsBucket).distinct().forEach { name ->
             try {
-                client.headBucket(HeadBucketRequest.builder().bucket(bucket).build())
-                logger.info("S3 bucket '$bucket' already exists")
-            } catch (e: NoSuchBucketException) {
-                client.createBucket(CreateBucketRequest.builder().bucket(bucket).build())
-                logger.info("Created S3 bucket '$bucket'")
+                val client = buildClient()
+                try {
+                    client.headBucket(HeadBucketRequest.builder().bucket(name).build())
+                    logger.info("S3 bucket '$name' already exists")
+                } catch (e: NoSuchBucketException) {
+                    client.createBucket(CreateBucketRequest.builder().bucket(name).build())
+                    logger.info("Created S3 bucket '$name'")
+                }
+            } catch (e: Exception) {
+                logger.warn("Could not prepare bucket '$name' on MinIO at $endpoint: ${e.message}. Uploads to it will fail until MinIO is available.")
             }
-        } catch (e: Exception) {
-            logger.warn("Could not connect to MinIO at $endpoint: ${e.message}. Logo uploads will not work until MinIO is available.")
         }
     }
 }

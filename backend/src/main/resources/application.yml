@@ -113,6 +113,8 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:docuvault}
   secret-key: ${MINIO_SECRET_KEY:docuvault123}
   bucket: space-logos
+  # Files attached to assistant conversations and quick notes.
+  attachments-bucket: ${MINIO_ATTACHMENTS_BUCKET:assistant-attachments}
 
 # Git Repository Storage
 git:

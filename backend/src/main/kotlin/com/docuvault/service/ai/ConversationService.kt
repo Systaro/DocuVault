@@ -3,14 +3,18 @@ package com.docuvault.service.ai
 import com.aallam.openai.api.chat.ChatCompletionRequest
 import com.aallam.openai.api.chat.ChatMessage
 import com.aallam.openai.api.chat.ChatRole
+import com.aallam.openai.api.chat.ContentPart
+import com.aallam.openai.api.chat.TextPart
 import com.aallam.openai.api.chat.Tool
 import com.aallam.openai.api.chat.ToolCall
 import com.aallam.openai.api.core.Parameters
 import com.aallam.openai.api.model.ModelId
 import com.aallam.openai.client.OpenAI
 import com.docuvault.config.OpenAIProvider
+import com.docuvault.domain.ai.AssistantAttachment
 import com.docuvault.domain.ai.Conversation
 import com.docuvault.domain.ai.ConversationMessage
+import com.docuvault.domain.ai.MessageAttachment
 import com.docuvault.domain.ai.MessageProposal
 import com.docuvault.domain.ai.MessageSource
 import com.docuvault.domain.ai.MessageTask
@@ -81,6 +85,7 @@ data class MessageDto(
     val createdDocuments: List<SourceDto>,
     val proposals: List<ProposalDto>,
     val createdTasks: List<MessageTask>,
+    val attachments: List<MessageAttachment>,
     val createdAt: Instant
 )
 
@@ -110,7 +115,11 @@ data class PreparedTurn(
     /** The document a document conversation is about; always a source of its answers. */
     val documentSource: MessageSource? = null,
     /** The turn writes a draft: the text goes into the answer for the user to edit and save, never straight into Git. */
-    val drafting: Boolean = false
+    val drafting: Boolean = false,
+    /** Files sent with this message. */
+    val attachments: List<AssistantAttachment> = emptyList(),
+    /** Files sent earlier in the conversation, so follow-up questions can still see them. */
+    val historyAttachments: Map<UUID, AssistantAttachment> = emptyMap()
 )
 
 @Service
@@ -125,7 +134,8 @@ class ConversationService(
     private val gitService: GitService,
     private val toolRegistry: ToolRegistry,
     private val objectMapper: ObjectMapper,
-    private val draftMaterialService: DraftMaterialService
+    private val draftMaterialService: DraftMaterialService,
+    private val attachmentService: AttachmentService
 ) {
     private val logger = LoggerFactory.getLogger(ConversationService::class.java)
 
@@ -139,6 +149,8 @@ class ConversationService(
         private const val MAX_LISTED_FOLDERS = 100
         private const val MAX_DOCUMENT_CHARS = 60_000
         private const val TITLE_LENGTH = 80
+        /** Tools that change something; left out when the user cannot write or a draft is being written. */
+        private val WRITING_TOOLS = setOf("create_document", "propose_edit", "create_task", "save_attachment")
 
         private val WRITE_INSTRUCTIONS = """
             Writing:
@@ -153,6 +165,17 @@ class ConversationService(
         private val DRAFT_INSTRUCTIONS = """
             Drafting: write the complete draft as your answer, in Markdown, starting with a # heading.
             Do not save it anywhere and do not create tasks; the user edits the draft and saves it themselves.
+        """.trimIndent()
+
+        private val ATTACHMENT_INSTRUCTIONS = """
+            Files: the user can attach photos, scans, PDFs and text files. They are part of their message.
+            - Read them closely, handwriting included. When you quote or transcribe handwriting, do it faithfully,
+              keep crossed-out words crossed out (~~like this~~) and mark words you cannot read as [illegible];
+              never guess silently.
+            - When files come without a question, say briefly what each one is, give the transcription of handwritten
+              or scanned pages, and offer what you can do with it: keep it in the space, turn it into a document, make tasks.
+            - Attachments belong to this conversation, not to the space. Only call save_attachment to keep an original file
+              in the space, or create_document to keep a transcription or summary, when the user asks for it.
         """.trimIndent()
 
         private val READ_ONLY_INSTRUCTIONS = """
@@ -220,9 +243,10 @@ class ConversationService(
         conversationId: UUID?,
         documentPath: String?,
         message: String,
-        draft: DraftRequest? = null
+        draft: DraftRequest? = null,
+        attachmentIds: List<UUID> = emptyList()
     ): PreparedTurn {
-        if (message.isBlank()) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "The message is empty")
+        if (message.isBlank() && attachmentIds.isEmpty()) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "The message is empty")
         if (!openAIProvider.isConfigured()) {
             throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "AI features are not configured. Please set up your OpenAI API key in Admin Settings.")
         }
@@ -244,8 +268,18 @@ class ConversationService(
         val history = if (existing == null) emptyList()
         else messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.id!!).takeLast(HISTORY_MESSAGES)
 
+        val attachments = attachmentService.attach(user, conversation.id!!, attachmentIds)
+        // A question that is only files is named after them.
+        if (existing == null && message.isBlank()) conversation.title = titleFor(attachments.joinToString(", ") { it.fileName })
+        val historyAttachments = attachmentService.byIds(history.flatMap { m -> m.attachments.map { it.id } })
+
         val now = Instant.now()
-        val userMessage = messageRepository.save(ConversationMessage(conversation = conversation, role = "user", content = message, createdAt = now))
+        val userMessage = messageRepository.save(
+            ConversationMessage(
+                conversation = conversation, role = "user", content = message.trim(), createdAt = now,
+                attachments = attachments.map { it.toMessageAttachment() }
+            )
+        )
         conversation.updatedAt = now
 
         val repositories = spaceRepository.findAllById(repositoryIds)
@@ -276,13 +310,16 @@ class ConversationService(
                     draftMaterial != null -> DRAFT_INSTRUCTIONS
                     canWrite -> WRITE_INSTRUCTIONS
                     else -> READ_ONLY_INSTRUCTIONS
-                }
+                },
+                files = (historyAttachments.values + attachments).distinctBy { it.id }
             ) + (draftMaterial?.let { "\n\nMaterial for the draft (write from this, do not invent anything beyond it):\n$it" } ?: ""),
             history = history,
             retrievalSpaceIds = if (docPath != null || draftMaterial != null) emptyList() else repositoryIds,
             spacePaths = (repositories + space).associate { it.id!! to it.getFullPath() },
             documentSource = docPath?.let { MessageSource(repositories.single().id!!, it) },
-            drafting = draftMaterial != null
+            drafting = draftMaterial != null,
+            attachments = attachments,
+            historyAttachments = historyAttachments
         )
     }
 
@@ -297,8 +334,11 @@ class ConversationService(
         var answer: String
         var failed = false
 
+        val query = turn.message.ifBlank {
+            turn.attachments.mapNotNull { it.extractedText?.take(500) }.joinToString("\n").ifBlank { turn.attachments.joinToString(" ") { it.fileName } }
+        }
         val chunks = if (turn.retrievalSpaceIds.isEmpty()) emptyList()
-        else runCatching { embeddingService.findSimilarAcrossSpaces(turn.retrievalSpaceIds, turn.message, RETRIEVED_CHUNKS) }
+        else runCatching { embeddingService.findSimilarAcrossSpaces(turn.retrievalSpaceIds, query, RETRIEVED_CHUNKS) }
             .onFailure { logger.warn("Retrieval failed for conversation ${turn.conversationId}: ${it.message}") }
             .getOrDefault(emptyList())
 
@@ -306,10 +346,7 @@ class ConversationService(
             val openAI = openAIProvider.getClient(socketTimeout = 180.seconds)
                 ?: throw ToolException("AI features are not configured.")
             val messages = mutableListOf(ChatMessage(role = ChatRole.System, content = turn.systemPrompt + retrievedContext(chunks)))
-            turn.history.forEach { m ->
-                messages += ChatMessage(role = if (m.role == "user") ChatRole.User else ChatRole.Assistant, content = m.content)
-            }
-            messages += ChatMessage(role = ChatRole.User, content = turn.message)
+            messages += conversationMessages(turn)
             answer = converse(openAI, messages, session, turn, toolLog, listener)
         } catch (e: Exception) {
             logger.error("Assistant turn failed for conversation ${turn.conversationId}", e)
@@ -319,7 +356,8 @@ class ConversationService(
         }
 
         val effects = session.effects
-        val chunkSources = retrievalSources(chunks, answer)
+        // An answer about attached files draws on them; the best search hit is no stand-in for a source then.
+        val chunkSources = retrievalSources(chunks, answer, fallback = turn.attachments.isEmpty() && turn.historyAttachments.isEmpty())
         val sources = (listOfNotNull(turn.documentSource) + effects.sources.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) } + chunkSources)
             .distinctBy { it.spaceId to it.path }
             .take(MAX_SOURCES)
@@ -350,7 +388,7 @@ class ConversationService(
         listener: TurnListener
     ): String {
         val tools = toolRegistry.conversationTools()
-            .filter { (turn.canWrite && !turn.drafting) || it.name !in setOf("create_document", "propose_edit", "create_task") }
+            .filter { (turn.canWrite && !turn.drafting) || it.name !in WRITING_TOOLS }
         val openAiTools = tools.map { tool ->
             Tool.function(
                 name = tool.name,
@@ -401,6 +439,32 @@ class ConversationService(
         return "I wasn't able to finish that within ${MAX_TOOL_ROUNDS} steps. Please try a narrower question."
     }
 
+    /**
+     * The history and the new message as the model sees them. Files go along
+     * with the message they were sent with; the newest images come first when
+     * there are more than one request may carry.
+     */
+    private fun conversationMessages(turn: PreparedTurn): List<ChatMessage> {
+        val (currentParts, currentImages) = attachmentService.contentParts(turn.attachments, AttachmentService.MAX_IMAGES_PER_REQUEST)
+        var budget = AttachmentService.MAX_IMAGES_PER_REQUEST - currentImages
+        val historyParts = HashMap<UUID, List<ContentPart>>()
+        turn.history.asReversed().filter { it.role == "user" && it.attachments.isNotEmpty() }.forEach { m ->
+            val files = m.attachments.mapNotNull { turn.historyAttachments[it.id] }
+            val (parts, used) = attachmentService.contentParts(files, budget)
+            budget -= used
+            historyParts[m.id!!] = parts
+        }
+
+        fun userMessage(text: String, files: List<ContentPart>): ChatMessage =
+            if (files.isEmpty()) ChatMessage(role = ChatRole.User, content = text)
+            else ChatMessage(role = ChatRole.User, content = listOf(TextPart(text.ifBlank { "(Only the attached files, no question.)" })) + files)
+
+        return turn.history.map { m ->
+            if (m.role == "user") userMessage(m.content, historyParts[m.id!!].orEmpty())
+            else ChatMessage(role = ChatRole.Assistant, content = m.content)
+        } + userMessage(turn.message, currentParts)
+    }
+
     private fun runTool(
         call: ToolCall.Function,
         session: ToolSession,
@@ -443,6 +507,7 @@ class ConversationService(
             "list_tasks" -> if (args.get("assigned_to_me")?.asBoolean() == true) "Looked up your tasks" else "Listed the tasks"
             "create_task" -> "Created the task \"${arg("title") ?: ""}\""
             "update_task" -> "Updated a task"
+            "save_attachment" -> "Saved ${arg("path") ?: "the file"} in the space"
             else -> name.replace('_', ' ').replaceFirstChar { it.uppercase() }
         }
     }
@@ -509,7 +574,15 @@ class ConversationService(
 
     // ---- Prompt ---------------------------------------------------------------------
 
-    private fun systemPrompt(user: User, space: Space, repositories: List<Space>, documentPath: String?, documentContent: String?, writing: String): String {
+    private fun systemPrompt(
+        user: User,
+        space: Space,
+        repositories: List<Space>,
+        documentPath: String?,
+        documentContent: String?,
+        writing: String,
+        files: List<AssistantAttachment> = emptyList()
+    ): String {
         val overview = if (space.type == SpaceType.GROUP) {
             buildString {
                 appendLine("Group: ${space.name}")
@@ -530,6 +603,8 @@ class ConversationService(
             |${documentContent.take(MAX_DOCUMENT_CHARS)}
             """.trimMargin()
         } else ""
+        val attached = if (files.isEmpty()) "" else ATTACHMENT_INSTRUCTIONS + "\nFiles in this conversation:\n" +
+            files.joinToString("\n") { "  - ${it.fileName} (${it.kind.name.lowercase()}) [attachment_id: ${it.id}]" }
 
         return """
             |You are the assistant inside DocuVault, a documentation tool where every space is a Git repository.
@@ -545,6 +620,8 @@ class ConversationService(
             |- Name the documents you used by their path.
             |
             |$writing
+            |
+            |$attached
             |
             |$focus
         """.trimMargin().trim()
@@ -586,12 +663,12 @@ class ConversationService(
      * returns something, often from unrelated documents, so only documents the
      * answer names count; when it names none, the best match stands in.
      */
-    internal fun retrievalSources(chunks: List<CrossSpaceChunk>, answer: String): List<MessageSource> {
+    internal fun retrievalSources(chunks: List<CrossSpaceChunk>, answer: String, fallback: Boolean = true): List<MessageSource> {
         val named = chunks.filter { chunk ->
             answer.contains(chunk.documentPath) ||
                 chunk.documentTitle?.takeIf { it.length > 3 }?.let { answer.contains(it, ignoreCase = true) } == true
         }
-        return named.ifEmpty { chunks.take(1) }.map { MessageSource(it.spaceId, it.documentPath, it.documentTitle) }
+        return named.ifEmpty { if (fallback) chunks.take(1) else emptyList() }.map { MessageSource(it.spaceId, it.documentPath, it.documentTitle) }
     }
 
     private fun retrievedContext(chunks: List<CrossSpaceChunk>): String =
@@ -633,6 +710,7 @@ class ConversationService(
         createdDocuments = createdDocuments.map { SourceDto(it.spaceId, paths[it.spaceId], it.path, it.title) },
         proposals = proposals.map { it.toDto(paths) },
         createdTasks = createdTasks,
+        attachments = attachments,
         createdAt = createdAt
     )
 

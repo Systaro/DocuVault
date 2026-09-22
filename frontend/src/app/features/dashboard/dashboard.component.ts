@@ -57,7 +57,6 @@ interface BreadcrumbItem {
             <section class="dashboard-ask" aria-label="Ask about your documentation">
               <app-ask-composer
                 [spaces]="askSpaces()"
-                placeholder="Ask a question about your documentation"
                 (submitted)="ask($event)"
               />
               <a routerLink="/ask" class="dashboard-ask-history">
@@ -1102,7 +1101,10 @@ export class DashboardComponent implements OnInit {
   }
 
   ask(submission: AskSubmission): void {
-    this.router.navigate(['/ask'], { queryParams: { space: submission.spaceId, q: submission.message } });
+    this.router.navigate(['/ask'], {
+      queryParams: { space: submission.spaceId, q: submission.message || null },
+      state: { askAttachments: submission.attachments ?? [] }
+    });
   }
 
   closeModal(): void {

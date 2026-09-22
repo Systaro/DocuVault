@@ -43,6 +43,9 @@ class LoopbackApi(
     fun putState(spaceId: String, key: String, value: String): JsonNode =
         call(HttpMethod.PUT, "/spaces/$spaceId/state/${UriUtils.encodePathSegment(key, StandardCharsets.UTF_8)}", mapOf("value" to value))
 
+    fun saveAttachment(attachmentId: String, body: Map<String, Any?>): JsonNode =
+        call(HttpMethod.POST, "/ai/attachments/${UriUtils.encodePathSegment(attachmentId, StandardCharsets.UTF_8)}/save", body)
+
     fun myTasks(): JsonNode = call(HttpMethod.GET, "/tasks/mine")
     fun spaceTasks(spaceId: String, status: String?): JsonNode =
         call(HttpMethod.GET, "/spaces/$spaceId/tasks" + (status?.let { "?status=${UriUtils.encodeQueryParam(it, StandardCharsets.UTF_8)}" } ?: ""))

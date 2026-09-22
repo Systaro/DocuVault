@@ -89,7 +89,8 @@ class ConversationController(private val conversationService: ConversationServic
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         val prepared = conversationService.prepareTurn(
             userDetails.username, request.spaceId, request.conversationId, request.documentPath, request.message,
-            request.draftTemplate?.let { DraftRequest(it, request.draftDays ?: 7) }
+            request.draftTemplate?.let { DraftRequest(it, request.draftDays ?: 7) },
+            request.attachmentIds
         )
 
         // nginx would otherwise hold the events back until the buffer fills.
@@ -171,8 +172,9 @@ data class TurnRequest(
     /** Makes a new conversation write a draft from the space's recent notes, tasks and documents. */
     val draftTemplate: DraftTemplate? = null,
     val draftDays: Int? = null,
-    @field:NotBlank(message = "Message is required")
-    val message: String
+    /** Uploaded with POST /ai/attachments; a message may consist of files alone. */
+    val attachmentIds: List<UUID> = emptyList(),
+    val message: String = ""
 )
 
 data class RenameConversationRequest(

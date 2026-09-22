@@ -73,6 +73,11 @@ class ConversationMessage(
     @Column(name = "created_tasks", columnDefinition = "jsonb")
     var createdTasks: List<MessageTask> = emptyList(),
 
+    /** Files the user sent with this message. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    var attachments: List<MessageAttachment> = emptyList(),
+
     @Column(name = "created_at")
     val createdAt: Instant = Instant.now()
 )
@@ -81,6 +86,14 @@ data class MessageSource(
     val spaceId: UUID,
     val path: String,
     val title: String? = null
+)
+
+data class MessageAttachment(
+    val id: UUID,
+    val fileName: String,
+    val contentType: String,
+    val kind: AttachmentKind,
+    val sizeBytes: Long
 )
 
 data class MessageTask(

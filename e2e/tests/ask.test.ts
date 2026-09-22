@@ -1,5 +1,5 @@
 import { Browser, Page } from 'puppeteer';
-import { launchBrowser, loadEnv, loginAsAdmin, takeScreenshot } from '../helpers/browser';
+import { chooseAskSpace, launchBrowser, loadEnv, loginAsAdmin, takeScreenshot } from '../helpers/browser';
 import {
   SecondUser, TestSpace, api, createTestSpace, createViewer, deleteTestSpace, dismissChangelog, loginInNewContext, waitForIndexed,
 } from '../helpers/api';
@@ -59,20 +59,6 @@ describe('Ask', () => {
     return page.$$eval('article.message.assistant:not(.live)', (els) => (els[els.length - 1] as HTMLElement).innerText);
   }
 
-  async function chooseSpace(name: string): Promise<void> {
-    await page.click('app-ask-composer app-searchable-select .select-trigger');
-    await page.waitForSelector('.select-panel', { timeout: 5000 });
-    const search = await page.$('.select-panel input');
-    if (search) await search.type(name);
-    const picked = await page.evaluate((label: string) => {
-      const option = Array.from(document.querySelectorAll('.select-panel *')).find(
-        (el) => el.children.length === 0 && el.textContent?.trim() === label
-      );
-      (option as HTMLElement | undefined)?.click();
-      return !!option;
-    }, name);
-    if (!picked) throw new Error(`Space "${name}" is not in the picker`);
-  }
 
   beforeAll(async () => {
     loadEnv();
@@ -98,7 +84,7 @@ describe('Ask', () => {
     await page.goto(`${base()}/dashboard`, { waitUntil: 'networkidle2' });
     await dismissChangelog(page);
     await page.waitForSelector('app-ask-composer', { timeout: 15000 });
-    await chooseSpace(space.name);
+    await chooseAskSpace(page, space.name);
     await watchForStreaming();
     await submitQuestion('What is the office fruit this quarter?');
 
@@ -164,8 +150,8 @@ describe('Ask', () => {
     await dismissChangelog(page);
     await page.waitForSelector('button.ai-fab', { timeout: 20000 });
     await page.click('button.ai-fab');
-    await page.waitForSelector('app-ask-composer .scope-chip.doc', { timeout: 15000 });
-    const chip = await page.$eval('app-ask-composer .scope-chip.doc', (el) => (el as HTMLElement).innerText);
+    await page.waitForSelector('app-ask-composer .doc-chip', { timeout: 15000 });
+    const chip = await page.$eval('app-ask-composer .doc-chip', (el) => (el as HTMLElement).innerText);
     expect(chip).toContain('ops/onboarding-checklist.md');
 
     await submitQuestion('What is the second item on this checklist?');
