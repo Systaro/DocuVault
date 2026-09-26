@@ -912,7 +912,7 @@ export class AccountComponent implements OnInit {
     private apiTokensService: ApiTokensService,
     private usersService: UsersService
   ) {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://docuvault.systaro.de';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://docuvault.example.com';
     this.mcpUrl = `${origin}/api/mcp`;
     this.mcpCommand = `claude mcp add --transport http docuvault ${this.mcpUrl}`;
     this.mcpConfig = JSON.stringify({
