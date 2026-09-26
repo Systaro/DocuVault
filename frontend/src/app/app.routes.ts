@@ -1,6 +1,7 @@
 import { Routes, UrlMatchResult, UrlSegment } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
+import { aiChatGuard } from './core/capabilities/ai-chat.guard';
 
 export function askMatcher(segments: UrlSegment[]): UrlMatchResult | null {
   if (segments[0]?.path !== 'ask' || segments.length > 2) return null;
@@ -82,7 +83,7 @@ export const routes: Routes = [
     // /ask and /ask/:id share one route so the page survives the URL change
     // when a new conversation gets its id while its answer is still streaming.
     matcher: askMatcher,
-    canActivate: [authGuard],
+    canActivate: [authGuard, aiChatGuard],
     loadComponent: () => import('./features/ask/ask.component').then(m => m.AskComponent)
   },
   // Nested path routing for spaces - supports paths like /spaces/group/subgroup/repo
