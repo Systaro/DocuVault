@@ -139,6 +139,11 @@ class PermissionService(
         return allAccessible.toList()
     }
 
+    /** Every repository the user may read, for questions asked across all spaces. */
+    @Transactional(readOnly = true)
+    fun readableRepositoryIds(userId: UUID, userRole: UserRole): List<UUID> =
+        getAccessibleSpaces(userId, userRole).filter { it.type == SpaceType.REPOSITORY }.map { it.id!! }
+
     /**
      * The repositories behind [spaceId] that the user may actually read: the
      * space itself for a repository, or every readable descendant repository

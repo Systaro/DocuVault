@@ -78,6 +78,31 @@ class ConversationAccessTest {
     }
 
     @Test
+    fun `a space id that does not exist is not taken to mean everywhere`() {
+        val missing = UUID.randomUUID()
+        `when`(spaceRepository.findById(missing)).thenReturn(Optional.empty())
+
+        val error = assertThrows<ResponseStatusException> {
+            service.prepareTurn(user.email, missing, null, null, "what is in here?")
+        }
+
+        assertEquals(HttpStatus.NOT_FOUND, error.statusCode)
+        verifyNoInteractions(messageRepository, embeddingService)
+    }
+
+    @Test
+    fun `asking everywhere without any readable repository stores nothing`() {
+        `when`(permissionService.readableRepositoryIds(user.id!!, user.role)).thenReturn(emptyList())
+
+        val error = assertThrows<ResponseStatusException> {
+            service.prepareTurn(user.email, null, null, null, "what is in here?")
+        }
+
+        assertEquals(HttpStatus.NOT_FOUND, error.statusCode)
+        verifyNoInteractions(messageRepository, embeddingService)
+    }
+
+    @Test
     fun `another user's conversation cannot be continued, read or deleted`() {
         val foreign = Conversation(id = UUID.randomUUID(), user = other, space = space, title = "private")
         `when`(conversationRepository.findById(foreign.id!!)).thenReturn(Optional.of(foreign))

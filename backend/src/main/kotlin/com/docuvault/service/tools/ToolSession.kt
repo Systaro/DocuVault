@@ -32,7 +32,8 @@ sealed interface ToolScope {
     data object Unrestricted : ToolScope
 
     data class Conversation(
-        val spaceId: String,
+        /** Null for a conversation across all readable repositories. */
+        val spaceId: String?,
         val spaceName: String,
         val repositoryIds: Set<String>,
         /** Recorded as the source of tasks the assistant creates. */

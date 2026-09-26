@@ -8,7 +8,7 @@ import org.hibernate.type.SqlTypes
 import java.time.Instant
 import java.util.*
 
-/** A conversation with the assistant, owned by one user and pinned to one space. */
+/** A conversation with the assistant, owned by one user and pinned to one space, or to none for all readable spaces. */
 @Entity
 @Table(name = "conversations")
 class Conversation(
@@ -21,8 +21,8 @@ class Conversation(
     val user: User,
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "space_id", nullable = false)
-    val space: Space,
+    @JoinColumn(name = "space_id")
+    val space: Space?,
 
     /** Set when the conversation is about one document rather than the whole space. */
     @Column(name = "document_path")

@@ -53,9 +53,10 @@ import kotlin.time.Duration.Companion.seconds
 data class ConversationSummaryDto(
     val id: UUID,
     val title: String,
-    val spaceId: UUID,
+    /** Null for a conversation across all spaces. */
+    val spaceId: UUID?,
     val spaceName: String,
-    val spaceFullPath: String,
+    val spaceFullPath: String?,
     val documentPath: String?,
     val updatedAt: Instant
 )
@@ -149,6 +150,8 @@ class ConversationService(
         private const val MAX_LISTED_FOLDERS = 100
         private const val MAX_DOCUMENT_CHARS = 60_000
         private const val TITLE_LENGTH = 80
+        /** What a conversation without a space is called. */
+        private const val ALL_SPACES = "Everywhere"
         /** Tools that change something; left out when the user cannot write or a draft is being written. */
         private val WRITING_TOOLS = setOf("create_document", "propose_edit", "create_task", "save_attachment")
 
@@ -253,13 +256,16 @@ class ConversationService(
         val user = user(userEmail)
 
         val existing = conversationId?.let { owned(user, it) }
-        val space = existing?.space
-            ?: spaceId?.let { spaceRepository.findById(it).orElse(null) }
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a space for the conversation")
+        // No space means everywhere: every repository the user can read.
+        val space = if (existing != null) existing.space
+            else spaceId?.let { spaceRepository.findById(it).orElse(null) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Space not found") }
 
         // An unreadable space must look exactly like a missing one.
-        val repositoryIds = permissionService.readableRepositoryIds(user.id!!, user.role, space.id!!)
-        if (repositoryIds.isEmpty()) throw ResponseStatusException(HttpStatus.NOT_FOUND, "Space not found")
+        val repositoryIds = if (space != null) permissionService.readableRepositoryIds(user.id!!, user.role, space.id!!)
+            else permissionService.readableRepositoryIds(user.id!!, user.role)
+        if (repositoryIds.isEmpty()) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, if (space != null) "Space not found" else "You have no spaces to ask about")
+        }
 
         val docPath = existing?.documentPath ?: documentPath?.trim()?.trimStart('/')?.ifEmpty { null }
         val conversation = existing ?: conversationRepository.save(
@@ -302,7 +308,7 @@ class ConversationService(
             summary = conversation.toSummary(),
             userMessageId = userMessage.id!!,
             message = message,
-            scope = ToolScope.Conversation(space.id.toString(), space.name, repositoryIds.map { it.toString() }.toSet(), conversation.id.toString()),
+            scope = ToolScope.Conversation(space?.id?.toString(), space?.name ?: ALL_SPACES, repositoryIds.map { it.toString() }.toSet(), conversation.id.toString()),
             canWrite = canWrite,
             systemPrompt = systemPrompt(
                 user, space, repositories, docPath, documentContent,
@@ -315,7 +321,7 @@ class ConversationService(
             ) + (draftMaterial?.let { "\n\nMaterial for the draft (write from this, do not invent anything beyond it):\n$it" } ?: ""),
             history = history,
             retrievalSpaceIds = if (docPath != null || draftMaterial != null) emptyList() else repositoryIds,
-            spacePaths = (repositories + space).associate { it.id!! to it.getFullPath() },
+            spacePaths = (repositories + listOfNotNull(space)).associate { it.id!! to it.getFullPath() },
             documentSource = docPath?.let { MessageSource(repositories.single().id!!, it) },
             drafting = draftMaterial != null,
             attachments = attachments,
@@ -576,14 +582,19 @@ class ConversationService(
 
     private fun systemPrompt(
         user: User,
-        space: Space,
+        space: Space?,
         repositories: List<Space>,
         documentPath: String?,
         documentContent: String?,
         writing: String,
         files: List<AssistantAttachment> = emptyList()
     ): String {
-        val overview = if (space.type == SpaceType.GROUP) {
+        val overview = if (space == null) {
+            buildString {
+                appendLine("Repositories the user can read (pass spaceId to tools):")
+                repositories.forEach { appendLine("  - ${it.name} (${it.getFullPath()}) [spaceId: ${it.id}]") }
+            }
+        } else if (space.type == SpaceType.GROUP) {
             buildString {
                 appendLine("Group: ${space.name}")
                 space.description?.takeIf { it.isNotBlank() }?.let { appendLine("Description: $it") }
@@ -608,7 +619,7 @@ class ConversationService(
 
         return """
             |You are the assistant inside DocuVault, a documentation tool where every space is a Git repository.
-            |You help with the "${space.name}" space.
+            |${if (space != null) "You help with the \"${space.name}\" space." else "You help with all of the user's spaces."}
             |You are talking to ${user.name} (${user.email}); when they say "me", they mean this person. Today is ${java.time.LocalDate.now()}.
             |
             |$overview
@@ -694,9 +705,9 @@ class ConversationService(
     private fun Conversation.toSummary() = ConversationSummaryDto(
         id = id!!,
         title = title,
-        spaceId = space.id!!,
-        spaceName = space.name,
-        spaceFullPath = space.getFullPath(),
+        spaceId = space?.id,
+        spaceName = space?.name ?: ALL_SPACES,
+        spaceFullPath = space?.getFullPath(),
         documentPath = documentPath,
         updatedAt = updatedAt
     )
