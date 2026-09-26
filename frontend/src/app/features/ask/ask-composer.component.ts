@@ -7,10 +7,11 @@ import { AttachmentTrayComponent } from '../../shared/components/attachment-tray
 import { SpaceAvatarComponent } from '../../shared/components/space-avatar.component';
 import { AttachmentQueue } from '../../shared/services/attachment-queue';
 import { ToastService } from '../../shared/services/toast.service';
-import { SpacePickerComponent } from './space-picker.component';
+import { EVERYWHERE, SpacePickerComponent } from './space-picker.component';
 
 export interface AskSubmission {
   message: string;
+  /** A space id, or EVERYWHERE for all spaces the user can read. */
   spaceId: string;
   documentPath: string | null;
   attachments?: Attachment[];
@@ -18,7 +19,7 @@ export interface AskSubmission {
 
 const LAST_SPACE_KEY = 'docuvault.ask.lastSpace';
 
-/** The space a new question goes to when nothing else says: the one used last time. */
+/** The last space picked for a question; drafts, which need one repository, start from it. */
 export function rememberedSpaceId(): string | null {
   try {
     return localStorage.getItem(LAST_SPACE_KEY);
@@ -28,6 +29,7 @@ export function rememberedSpaceId(): string | null {
 }
 
 function rememberSpace(spaceId: string): void {
+  if (spaceId === EVERYWHERE) return;
   try {
     localStorage.setItem(LAST_SPACE_KEY, spaceId);
   } catch {
@@ -67,7 +69,7 @@ function rememberSpace(spaceId: string): void {
               @if (fixedSpace(); as space) {
                 <app-space-avatar [space]="space" size="sm" />
               } @else {
-                <span translate="no" class="material-icons">workspaces</span>
+                <span translate="no" class="material-icons">{{ fixedSpaceId() ? 'workspaces' : 'public' }}</span>
               }
               <span class="fixed-name">{{ name }}</span>
             </span>
@@ -126,7 +128,7 @@ function rememberSpace(spaceId: string): void {
     :host { display: block; }
 
     .ask-composer {
-      --glow-colors: #6fb3b8, #38bdf8, #8b5cf6, #ec4899, #f59e0b, #6fb3b8;
+      --glow-colors: var(--primary), #38bdf8, #8b5cf6, #ec4899, #f59e0b, var(--primary);
       position: relative;
       isolation: isolate;
       animation: glow-spin 7s linear infinite;
@@ -353,7 +355,7 @@ export class AskComposerComponent implements AfterViewInit, OnDestroy {
   fixedSpace = computed(() => this.spaces().find(s => s.id === this.fixedSpaceId()) ?? null);
 
   constructor() {
-    // Pick a sensible space once the list arrives: the one asked for, else the last used, else the first repository.
+    // Pick a space once the list arrives: the one the page asked for, else everywhere.
     effect(() => {
       const spaces = this.spaces();
       if (this.fixedSpaceName()) return;
@@ -364,9 +366,10 @@ export class AskComposerComponent implements AfterViewInit, OnDestroy {
         if (!current && this.initialSpaceId()) this.selectedSpaceId.set(this.initialSpaceId());
         return;
       }
-      if (current && spaces.some(s => s.id === current)) return;
-      const wanted = [this.initialSpaceId(), rememberedSpaceId()].find(id => id && spaces.some(s => s.id === id));
-      this.selectedSpaceId.set(wanted ?? spaces.find(s => s.type === 'REPOSITORY')?.id ?? spaces[0].id);
+      const known = (id: string | null) => id === EVERYWHERE || spaces.some(s => s.id === id);
+      if (current && known(current)) return;
+      const wanted = this.initialSpaceId();
+      this.selectedSpaceId.set(wanted && known(wanted) ? wanted : EVERYWHERE);
     }, { allowSignalWrites: true });
   }
 

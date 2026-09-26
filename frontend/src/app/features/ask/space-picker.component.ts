@@ -3,8 +3,12 @@ import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { Space } from '../../core/api/spaces.service';
 import { SpaceAvatarComponent } from '../../shared/components/space-avatar.component';
 
+/** The picker value for a question asked across every space the user can read. */
+export const EVERYWHERE = 'everywhere';
+
 interface PickerRow {
-  space: Space;
+  /** Null for the "Everywhere" row. */
+  space: Space | null;
   /** A repository shown under its group. */
   nested: boolean;
 }
@@ -27,7 +31,7 @@ interface PickerRow {
       #origin="cdkOverlayOrigin"
       [class.open]="open()"
       [disabled]="!spaces().length"
-      [title]="selected() ? 'Asking in ' + selected()!.name + '. Click to change.' : 'Choose a space'"
+      [title]="triggerTitle()"
       aria-haspopup="listbox"
       [attr.aria-expanded]="open()"
       (click)="toggle()"
@@ -36,6 +40,9 @@ interface PickerRow {
       @if (selected(); as space) {
         <app-space-avatar [space]="space" size="sm" />
         <span class="trigger-name">{{ space.name }}</span>
+      } @else if (value() === EVERYWHERE) {
+        <span translate="no" class="material-icons everywhere-icon sm">public</span>
+        <span class="trigger-name">Everywhere</span>
       } @else {
         <span translate="no" class="material-icons placeholder-icon">workspaces</span>
         <span class="trigger-name placeholder">Choose a space</span>
@@ -67,26 +74,34 @@ interface PickerRow {
           />
         </div>
         <div class="panel-rows">
-          @for (row of rows(); track row.space.id; let i = $index) {
+          @for (row of rows(); track rowValue(row); let i = $index) {
             <button
               type="button"
               class="panel-row"
               role="option"
               [class.nested]="row.nested"
               [class.active]="i === activeIndex()"
-              [class.selected]="row.space.id === value()"
-              [attr.aria-selected]="row.space.id === value()"
+              [class.selected]="rowValue(row) === value()"
+              [attr.aria-selected]="rowValue(row) === value()"
               (mouseenter)="activeIndex.set(i)"
-              (click)="pick(row.space)"
+              (click)="pick(row)"
             >
-              <app-space-avatar [space]="row.space" [size]="row.nested ? 'sm' : 'md'" />
-              <span class="row-text">
-                <span class="row-name">{{ row.space.name }}</span>
-                @if (row.space.type === 'GROUP') {
-                  <span class="row-sub">All spaces in this group</span>
-                }
-              </span>
-              @if (row.space.id === value()) {
+              @if (row.space; as space) {
+                <app-space-avatar [space]="space" [size]="row.nested ? 'sm' : 'md'" />
+                <span class="row-text">
+                  <span class="row-name">{{ space.name }}</span>
+                  @if (space.type === 'GROUP') {
+                    <span class="row-sub">All spaces in this group</span>
+                  }
+                </span>
+              } @else {
+                <span translate="no" class="material-icons everywhere-icon">public</span>
+                <span class="row-text">
+                  <span class="row-name">Everywhere</span>
+                  <span class="row-sub">All spaces you can read</span>
+                </span>
+              }
+              @if (rowValue(row) === value()) {
                 <span translate="no" class="material-icons check">check</span>
               }
             </button>
@@ -132,6 +147,22 @@ interface PickerRow {
     }
 
     .placeholder-icon { font-size: 18px; color: var(--text-muted); }
+
+    .everywhere-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      /* Sized like app-space-avatar (md 24px, sm 20px) so the row lines up with the spaces below. */
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 17px;
+
+      &.sm { width: 20px; height: 20px; border-radius: 6px; font-size: 15px; }
+    }
 
     .chevron {
       font-size: 18px;
@@ -224,6 +255,8 @@ export class SpacePickerComponent {
   filter = signal('');
   activeIndex = signal(0);
 
+  readonly EVERYWHERE = EVERYWHERE;
+
   readonly positions: ConnectedPosition[] = [
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top' },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom' }
@@ -231,16 +264,22 @@ export class SpacePickerComponent {
 
   selected = computed(() => this.spaces().find(s => s.id === this.value()) ?? null);
 
-  /** Groups first-level, their repositories under them; a search flattens the list. */
+  triggerTitle = computed(() => {
+    const name = this.selected()?.name ?? (this.value() === EVERYWHERE ? 'all spaces' : null);
+    return name ? `Asking in ${name}. Click to change.` : 'Choose a space';
+  });
+
+  /** "Everywhere" first, then groups first-level with their repositories under them; a search flattens the list. */
   rows = computed<PickerRow[]>(() => {
     const spaces = [...this.spaces()].sort((a, b) => a.fullPath.localeCompare(b.fullPath));
     const needle = this.filter().trim().toLowerCase();
     if (needle) {
-      return spaces.filter(s => s.name.toLowerCase().includes(needle) || s.fullPath.toLowerCase().includes(needle))
-        .map(space => ({ space, nested: false }));
+      const everywhere: PickerRow[] = 'everywhere'.includes(needle) ? [{ space: null, nested: false }] : [];
+      return [...everywhere, ...spaces.filter(s => s.name.toLowerCase().includes(needle) || s.fullPath.toLowerCase().includes(needle))
+        .map(space => ({ space, nested: false }))];
     }
     const ids = new Set(spaces.map(s => s.id));
-    const rows: PickerRow[] = [];
+    const rows: PickerRow[] = [{ space: null, nested: false }];
     for (const space of spaces.filter(s => !s.parentId || !ids.has(s.parentId))) {
       rows.push({ space, nested: false });
       spaces.filter(child => child.parentId === space.id).forEach(child => rows.push({ space: child, nested: true }));
@@ -254,7 +293,7 @@ export class SpacePickerComponent {
       return;
     }
     this.filter.set('');
-    this.activeIndex.set(Math.max(0, this.rows().findIndex(r => r.space.id === this.value())));
+    this.activeIndex.set(Math.max(0, this.rows().findIndex(r => this.rowValue(r) === this.value())));
     this.open.set(true);
     setTimeout(() => this.search?.nativeElement.focus());
   }
@@ -265,8 +304,12 @@ export class SpacePickerComponent {
     this.trigger?.nativeElement.focus();
   }
 
-  pick(space: Space): void {
-    this.changed.emit(space.id);
+  rowValue(row: PickerRow): string {
+    return row.space?.id ?? EVERYWHERE;
+  }
+
+  pick(row: PickerRow): void {
+    this.changed.emit(this.rowValue(row));
     this.close();
   }
 
@@ -293,7 +336,7 @@ export class SpacePickerComponent {
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const row = this.rows()[this.activeIndex()];
-      if (row) this.pick(row.space);
+      if (row) this.pick(row);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       this.close();

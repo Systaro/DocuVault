@@ -13,6 +13,7 @@ import { ToastService } from '../../shared/services/toast.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { AskComposerComponent, AskSubmission } from './ask-composer.component';
+import { EVERYWHERE } from './space-picker.component';
 import { MessageAttachmentsComponent } from '../../shared/components/message-attachments.component';
 import { Attachment } from '../../core/api/attachments.service';
 import { ProposalCardComponent } from './proposal-card.component';
@@ -102,7 +103,11 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
           @if (active(); as c) {
             <div class="header-text">
               <h1>{{ c.title }}</h1>
-              <a class="header-space" [routerLink]="spaceLink(c.spaceFullPath)">{{ c.spaceName }}</a>
+              @if (c.spaceFullPath; as fullPath) {
+                <a class="header-space" [routerLink]="spaceLink(fullPath)">{{ c.spaceName }}</a>
+              } @else {
+                <span class="header-space">{{ c.spaceName }}</span>
+              }
             </div>
           } @else {
             <div class="header-text">
@@ -800,7 +805,7 @@ export class AskComponent implements OnInit, OnDestroy {
     const request = conversationId
       ? { conversationId, message: submission.message, attachmentIds }
       : {
-          spaceId: submission.spaceId,
+          spaceId: submission.spaceId === EVERYWHERE ? undefined : submission.spaceId,
           documentPath: submission.documentPath ?? undefined,
           message: submission.message,
           draftTemplate: draft?.template,

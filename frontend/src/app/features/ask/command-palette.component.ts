@@ -5,10 +5,9 @@ import { Router } from '@angular/router';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, of, switchMap, catchError } from 'rxjs';
 import { AiService, ConversationSummary } from '../../core/api/ai.service';
 import { SearchResult, SearchService } from '../../core/api/search.service';
-import { Space, SpacesService } from '../../core/api/spaces.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { spaceRoute } from '../../shared/utils/route-utils';
-import { rememberedSpaceId } from './ask-composer.component';
+import { EVERYWHERE } from './space-picker.component';
 
 interface PaletteItem {
   icon: string;
@@ -186,7 +185,6 @@ export class CommandPaletteComponent implements OnInit, AfterViewInit, OnDestroy
   private router = inject(Router);
   private ai = inject(AiService);
   private search = inject(SearchService);
-  private spacesService = inject(SpacesService);
   private caps = inject(CapabilitiesService);
 
   closed = output<void>();
@@ -198,15 +196,8 @@ export class CommandPaletteComponent implements OnInit, AfterViewInit, OnDestroy
   selected = signal(0);
   private results = signal<SearchResult[]>([]);
   private recent = signal<ConversationSummary[]>([]);
-  private spaces = signal<Space[]>([]);
   private queries = new Subject<string>();
   private subscription = new Subscription();
-
-  private askSpace = computed(() => {
-    const spaces = this.spaces();
-    const remembered = rememberedSpaceId();
-    return spaces.find(s => s.id === remembered) ?? spaces.find(s => s.type === 'REPOSITORY') ?? null;
-  });
 
   items = computed<PaletteItem[]>(() => {
     const text = this.text().trim();
@@ -224,14 +215,13 @@ export class CommandPaletteComponent implements OnInit, AfterViewInit, OnDestroy
       return items;
     }
 
-    const space = this.askSpace();
-    if (this.aiChat() && space) {
+    if (this.aiChat()) {
       items.push({
         icon: 'auto_awesome',
         label: `Ask: ${text}`,
-        detail: space.name,
+        detail: 'Everywhere',
         section: 'Assistant',
-        run: () => this.go(['/ask'], { space: space.id, q: text })
+        run: () => this.go(['/ask'], { space: EVERYWHERE, q: text })
       });
     }
     for (const r of this.results()) {
@@ -253,7 +243,6 @@ export class CommandPaletteComponent implements OnInit, AfterViewInit, OnDestroy
 
   ngOnInit(): void {
     if (this.aiChat()) {
-      this.spacesService.getSpaces().subscribe({ next: spaces => this.spaces.set(spaces) });
       this.ai.listConversations().subscribe({ next: list => this.recent.set(list.slice(0, 5)) });
     }
     this.subscription.add(

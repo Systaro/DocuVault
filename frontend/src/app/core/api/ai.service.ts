@@ -14,9 +14,10 @@ export interface SearchResult {
 export interface ConversationSummary {
   id: string;
   title: string;
-  spaceId: string;
+  /** Null for a conversation across all spaces. */
+  spaceId: string | null;
   spaceName: string;
-  spaceFullPath: string;
+  spaceFullPath: string | null;
   documentPath?: string | null;
   updatedAt: string;
 }
