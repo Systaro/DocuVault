@@ -12,6 +12,7 @@ import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.SettingsService
+import com.docuvault.service.branding.BrandingService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -33,7 +34,7 @@ class TaskAccessTest {
 
     private val service = TaskService(
         taskRepository, spaceRepository, userRepository, permissionService, emailService,
-        mock(SettingsService::class.java), "https://docs.example"
+        mock(SettingsService::class.java), mock(BrandingService::class.java)
     )
 
     private fun user(name: String) =

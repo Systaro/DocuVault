@@ -12,8 +12,8 @@ import com.docuvault.infrastructure.repository.SpaceChangeEventRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
 import com.docuvault.service.PermissionService
+import com.docuvault.service.branding.BrandingService
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -28,7 +28,7 @@ class DigestEmailScheduler(
     private val userRepository: UserRepository,
     private val subscriptionService: NotificationSubscriptionService,
     private val emailService: EmailService,
-    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(DigestEmailScheduler::class.java)
 
@@ -90,6 +90,7 @@ class DigestEmailScheduler(
             }
         }
 
+        val brand = brandingService.emailBrand()
         for ((user, pendingSpaces) in perUser) {
             val token = subscriptionService.tokenFor(user)
             val views = pendingSpaces.map { ps ->
@@ -107,9 +108,9 @@ class DigestEmailScheduler(
                 )
             }
             val totalChanges = views.sumOf { it.changes.size }
-            val html = NotificationEmail.buildDigest(views, headingLabel, publicUrl, token)
-            val subject = digestSubject(views, totalChanges, windowLabel)
-            val headers = NotificationEmail.unsubscribeHeaders(publicUrl, token)
+            val html = NotificationEmail.buildDigest(views, headingLabel, brand, token)
+            val subject = digestSubject(views, totalChanges, windowLabel, brand.appName)
+            val headers = NotificationEmail.unsubscribeHeaders(brand.publicUrl, token)
 
             val result = runCatching { emailService.sendHtml(user.email, subject, html, headers) }
             if (result.isSuccess) {
@@ -137,12 +138,12 @@ class DigestEmailScheduler(
         }
     }
 
-    private fun digestSubject(views: List<DigestSpaceView>, total: Int, windowLabel: String): String {
+    private fun digestSubject(views: List<DigestSpaceView>, total: Int, windowLabel: String, appName: String): String {
         val plural = if (total == 1) "" else "s"
         return if (views.size == 1) {
             "${views[0].spaceName}: $total change$plural in last $windowLabel"
         } else {
-            "DocuVault digest: $total change$plural across ${views.size} spaces (last $windowLabel)"
+            "$appName digest: $total change$plural across ${views.size} spaces (last $windowLabel)"
         }
     }
 

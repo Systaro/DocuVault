@@ -12,20 +12,22 @@ import { QuickCaptureModalComponent } from '../../features/inbox/quick-capture-m
 import { CommandPaletteComponent } from '../../features/ask/command-palette.component';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { APP_VERSION } from '../version';
+import { BrandingService } from '../../core/branding/branding.service';
+import { BrandLogoComponent } from './brand-logo.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, ChangelogModalComponent, QuickCaptureModalComponent, CommandPaletteComponent],
+  imports: [CommonModule, RouterLink, RouterLinkActive, GlobalSearchComponent, HeaderSearchComponent, HeaderNotificationsComponent, ChangelogModalComponent, QuickCaptureModalComponent, CommandPaletteComponent, BrandLogoComponent],
   template: `
     <div class="app-container">
       <!-- Header -->
       <header class="app-header">
         <div class="app-logo">
           <a routerLink="/dashboard" class="logo-link">
-            <img [src]="themeService.darkMode() ? 'assets/logo_horiz_dark.png' : 'assets/logo_horiz.png'" alt="DocuVault" class="logo-img" />
+            <app-brand-logo variant="wordmark" [onDark]="themeService.darkMode()" />
           </a>
-          <button class="app-version" (click)="openChangelog()" [title]="'Release notes for DocuVault ' + appVersion">{{ appVersion }}</button>
+          <button class="app-version" (click)="openChangelog()" [title]="'Release notes for ' + branding.appName() + ' ' + appVersion">{{ appVersion }}</button>
         </div>
 
         <nav class="header-nav">
@@ -154,13 +156,10 @@ import { APP_VERSION } from '../version';
       .logo-link {
         display: flex;
         align-items: center;
+        min-width: 0;
+        max-width: 240px;
+        color: var(--text-primary);
         text-decoration: none;
-      }
-
-      .logo-img {
-        height: 40px;
-        width: auto;
-        object-fit: contain;
       }
 
       /* Reads as a chip rather than a passive label — it opens the full release
@@ -229,7 +228,7 @@ import { APP_VERSION } from '../version';
 
       &.active {
         color: var(--primary-dark);
-        background: rgba(111, 179, 184, 0.15);
+        background: color-mix(in srgb, var(--primary) 15%, transparent);
       }
     }
 
@@ -354,9 +353,9 @@ import { APP_VERSION } from '../version';
       // The wordmark is the one element with slack: it is a horizontal lockup
       // and reads fine smaller, while every icon next to it is already at the
       // floor of a comfortable tap target.
-      .logo-img {
+      .logo-link {
         max-width: 88px;
-        height: auto;
+        --brand-text-size: 16px;
       }
 
       .header-actions {
@@ -396,7 +395,7 @@ import { APP_VERSION } from '../version';
         padding: 0 var(--spacing-sm);
       }
 
-      .logo-img {
+      .logo-link {
         max-width: 68px;
       }
 
@@ -424,6 +423,7 @@ export class LayoutComponent implements OnInit {
   captureText = signal('');
   showPalette = signal(false);
   caps = inject(CapabilitiesService);
+  branding = inject(BrandingService);
   showChangelog = signal(false);
   changelogReleases = signal<ChangelogRelease[]>([]);
   appVersion = APP_VERSION;

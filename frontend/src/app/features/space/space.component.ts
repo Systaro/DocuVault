@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } from '@angular/router';
-import { Title } from '@angular/platform-browser';
+import { PageTitleService } from '../../core/branding/page-title.service';
 import { Observable } from 'rxjs';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { SpacesService, Space, SpaceMember } from '../../core/api/spaces.service';
@@ -913,7 +913,7 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
 
       &.active {
         color: var(--primary);
-        background: rgba(111, 179, 184, 0.1);
+        background: color-mix(in srgb, var(--primary) 10%, transparent);
       }
     }
 
@@ -1773,7 +1773,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private titleService: Title,
+    private pageTitle: PageTitleService,
     private spacesService: SpacesService,
     private documentsService: DocumentsService,
     private sharedLinksService: SharedLinksService,
@@ -1936,21 +1936,15 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /**
-   * Sets the browser tab title to "<file> · <space> — DocuVault" so the open
+   * Sets the browser tab title to "<file> – <space> – <app name>" so the open
    * document and space are visible before the app name.
    */
   private updateTitle(): void {
-    const parts: string[] = [];
     const docPath = this.currentDocPath();
-    if (docPath) {
-      parts.push(docPath.split('/').pop()?.replace(/\.md$/, '') || docPath);
-    }
-    const space = this.spaceSignal();
-    if (space) {
-      parts.push(space.name);
-    }
-    const prefix = parts.length ? `${parts.join(' · ')} — ` : '';
-    this.titleService.setTitle(`${prefix}DocuVault`);
+    this.pageTitle.set(
+      docPath ? docPath.split('/').pop()?.replace(/\.md$/, '') || docPath : null,
+      this.spaceSignal()?.name
+    );
   }
 
   /**
@@ -2692,6 +2686,6 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     document.removeEventListener('mousemove', this.boundOnMouseMove);
     document.removeEventListener('mouseup', this.boundOnMouseUp);
     document.removeEventListener('dragover', this.trackDragIntent, true);
-    this.titleService.setTitle('DocuVault');
+    this.pageTitle.set();
   }
 }

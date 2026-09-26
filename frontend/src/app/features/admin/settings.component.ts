@@ -1,13 +1,30 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SettingsService, AppSettings, TestResult } from '../../core/api/settings.service';
 import { SearchableSelectComponent, SelectOption } from '../../shared/components/searchable-select.component';
+import { AuthService } from '../../core/auth/auth.service';
+import { BrandingAssetKind, BrandingService, DEFAULT_APP_NAME } from '../../core/branding/branding.service';
+import { DEFAULT_PRIMARY, HEX_COLOR } from '../../core/branding/palette';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
+import { LogoUploadComponent } from '../../shared/components/logo-upload.component';
+import { ToastService } from '../../shared/services/toast.service';
+
+interface BrandingAssetSlot {
+  kind: BrandingAssetKind;
+  title: string;
+  hint: string;
+  label: string;
+  types: string[];
+  surface: 'light' | 'dark';
+}
+
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, SearchableSelectComponent, BrandLogoComponent, LogoUploadComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -26,6 +43,95 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
           {{ error() }}
         </div>
       } @else {
+        @if (authService.isSuperAdmin()) {
+          <!-- Branding -->
+          <div class="settings-card" id="branding">
+            <div class="settings-card-header">
+              <div class="settings-card-icon git">
+                <span translate="no" class="material-icons">palette</span>
+              </div>
+              <div>
+                <h2>Branding</h2>
+                <p>Name, colour and logos this instance shows everywhere, including the sign-in page and shared links</p>
+              </div>
+            </div>
+
+            <div class="settings-card-body">
+              <div class="form-group">
+                <label for="brandName">App name</label>
+                <input id="brandName" type="text" class="form-input" maxlength="60"
+                       [ngModel]="brandName()" (ngModelChange)="brandName.set($event)"
+                       [class.invalid]="!brandNameValid()" [placeholder]="defaultAppName" />
+                @if (brandNameValid()) {
+                  <p class="form-hint">Shown in the header, tab titles and emails. Leave empty for "{{ defaultAppName }}".</p>
+                } @else {
+                  <p class="form-hint invalid">Up to 60 characters, without &lt; or &gt;.</p>
+                }
+              </div>
+
+              <div class="form-group">
+                <label for="brandColor">Primary colour</label>
+                <div class="color-row">
+                  <input type="color" class="color-swatch" aria-label="Pick the primary colour"
+                         [value]="brandColorValid() && brandColor() ? brandColor() : defaultPrimary"
+                         (input)="setBrandColor($any($event.target).value)" />
+                  <input id="brandColor" type="text" class="form-input hex-input" maxlength="7" placeholder="Default"
+                         [ngModel]="brandColor()" (ngModelChange)="setBrandColor($event)"
+                         [class.invalid]="!brandColorValid()" />
+                  <button type="button" class="btn btn-secondary" (click)="setBrandColor('')" [disabled]="!brandColor()">
+                    <span translate="no" class="material-icons">restart_alt</span>
+                    Reset to default
+                  </button>
+                </div>
+                @if (brandColorValid()) {
+                  <p class="form-hint">Both themes derive their shades from this colour. A very light colour is darkened for buttons so their labels stay readable.</p>
+                } @else {
+                  <p class="form-hint invalid">Use the form #rrggbb.</p>
+                }
+              </div>
+
+              <div class="brand-preview" aria-label="Preview">
+                @for (theme of previewThemes; track theme) {
+                  <div class="preview-bar" [attr.data-theme]="theme">
+                    <app-brand-logo class="preview-logo" variant="wordmark" [onDark]="theme === 'dark'" />
+                    <span class="preview-link">Link</span>
+                    <span class="preview-button">Button</span>
+                  </div>
+                }
+              </div>
+
+              <div class="button-row">
+                <button (click)="saveBranding()" [disabled]="savingBranding() || !brandingDirty() || !brandNameValid() || !brandColorValid()"
+                        class="btn btn-primary">
+                  @if (savingBranding()) {
+                    <span translate="no" class="material-icons animate-spin">sync</span> Saving…
+                  } @else {
+                    <span translate="no" class="material-icons">save</span> Save branding
+                  }
+                </button>
+              </div>
+
+              <div class="asset-grid">
+                @for (slot of assetSlots; track slot.kind) {
+                  <div class="asset-slot">
+                    <span class="asset-label">{{ slot.title }}</span>
+                    <p class="form-hint">{{ slot.hint }}</p>
+                    <app-logo-upload #upload
+                      [currentLogoUrl]="assetUrl(slot.kind)"
+                      [label]="slot.label"
+                      [allowedTypes]="slot.types"
+                      [maxBytes]="maxAssetBytes"
+                      [surface]="slot.surface"
+                      fit="contain"
+                      (fileSelected)="uploadAsset(slot, $event, upload)"
+                      (logoRemoved)="removeAsset(slot, upload)" />
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
         <!-- GitLab Connection -->
         <div class="settings-card" id="git">
           <div class="settings-card-header">
@@ -309,7 +415,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
               <div class="form-group">
                 <label for="mailFromName">From name</label>
                 <input id="mailFromName" type="text" [(ngModel)]="mailFromName"
-                       placeholder="DocuVault" class="form-input" />
+                       [placeholder]="branding.appName()" class="form-input" />
               </div>
             </div>
 
@@ -563,7 +669,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       &:focus {
         outline: none;
         border-color: var(--primary);
-        box-shadow: 0 0 0 3px rgba(111, 179, 184, 0.1);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
       }
 
       &::placeholder {
@@ -581,7 +687,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       border-radius: var(--radius-sm);
 
       &.database {
-        background: rgba(111, 179, 184, 0.1);
+        background: color-mix(in srgb, var(--primary) 10%, transparent);
         color: var(--primary-dark);
       }
     }
@@ -724,9 +830,106 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       color: var(--text-primary);
     }
 
+    .form-input.invalid {
+      border-color: var(--error);
+    }
+
+    .form-hint.invalid {
+      color: var(--error);
+    }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .color-swatch {
+      width: 44px;
+      height: 40px;
+      padding: 2px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--background);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .hex-input {
+      width: 120px;
+      font-family: Monaco, Menlo, monospace;
+    }
+
+    .brand-preview {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--spacing-md);
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .preview-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      height: 64px;
+      padding: 0 var(--spacing-md);
+      background: var(--surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .preview-logo {
+      flex: 1;
+      min-width: 0;
+      --brand-text-size: 17px;
+    }
+
+    .preview-link {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--primary-dark);
+    }
+
+    .preview-button {
+      padding: 6px 12px;
+      border-radius: var(--radius-md);
+      background: var(--primary);
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--spacing-lg);
+      padding-top: var(--spacing-lg);
+      border-top: 1px solid var(--border);
+
+      .form-hint {
+        margin: 0 0 var(--spacing-sm);
+        min-height: 3em;
+      }
+    }
+
+    .asset-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
     @media (max-width: 576px) {
-      .info-grid {
+      .info-grid,
+      .brand-preview,
+      .asset-grid {
         grid-template-columns: 1fr;
+      }
+
+      .color-row {
+        flex-wrap: wrap;
       }
 
       .button-row {
@@ -735,7 +938,32 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
     }
   `]
 })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, OnDestroy {
+  protected authService = inject(AuthService);
+  protected branding = inject(BrandingService);
+  private toast = inject(ToastService);
+
+  // Branding form
+  readonly defaultAppName = DEFAULT_APP_NAME;
+  readonly defaultPrimary = DEFAULT_PRIMARY;
+  readonly previewThemes = ['light', 'dark'] as const;
+  readonly maxAssetBytes = 1024 * 1024;
+  readonly assetSlots: BrandingAssetSlot[] = [
+    { kind: 'logo', title: 'Logo', hint: 'For light backgrounds: the header in light mode and shared links.', label: 'logo', types: IMAGE_TYPES, surface: 'light' },
+    { kind: 'logo-dark', title: 'Logo on dark', hint: 'For dark backgrounds: dark mode and the sign-in panel. Falls back to the logo.', label: 'logo', types: IMAGE_TYPES, surface: 'dark' },
+    { kind: 'favicon', title: 'Favicon', hint: 'The browser tab icon. Square, at least 64 px.', label: 'icon', types: [...IMAGE_TYPES, 'image/x-icon', 'image/vnd.microsoft.icon'], surface: 'light' }
+  ];
+  brandName = signal('');
+  brandColor = signal('');
+  savingBranding = signal(false);
+  brandNameValid = computed(() => this.brandName().trim().length <= 60 && !/[<>]/.test(this.brandName()));
+  brandColorValid = computed(() => !this.brandColor() || HEX_COLOR.test(this.brandColor()));
+  brandingDirty = computed(() => {
+    const saved = this.branding.branding();
+    const savedName = this.branding.customName() ? saved.appName : '';
+    return this.brandName().trim() !== savedName || this.brandColor().toLowerCase() !== (saved.primaryColor ?? '').toLowerCase();
+  });
+
   settings = signal<AppSettings | null>(null);
   loading = signal(true);
   error = signal<string | null>(null);
@@ -792,7 +1020,7 @@ export class SettingsComponent implements OnInit {
   mailPassword = '';
   mailStartTls = true;
   mailFromAddress = '';
-  mailFromName = 'DocuVault';
+  mailFromName = '';
   testEmailTo = '';
   testingEmail = signal(false);
   savingEmail = signal(false);
@@ -808,7 +1036,81 @@ export class SettingsComponent implements OnInit {
   constructor(private settingsService: SettingsService) {}
 
   ngOnInit(): void {
+    this.resetBrandingForm();
     this.loadSettings();
+  }
+
+  ngOnDestroy(): void {
+    this.branding.preview(undefined);
+  }
+
+  private resetBrandingForm(): void {
+    this.brandName.set(this.branding.customName() ? this.branding.appName() : '');
+    this.brandColor.set(this.branding.branding().primaryColor ?? '');
+  }
+
+  /** Applied app-wide straight away, so the whole page previews an unsaved colour. */
+  setBrandColor(value: string): void {
+    const color = value.trim();
+    this.brandColor.set(color);
+    if (!color) this.branding.preview(null);
+    else if (HEX_COLOR.test(color)) this.branding.preview(color);
+  }
+
+  saveBranding(): void {
+    this.savingBranding.set(true);
+    this.branding.save({ appName: this.brandName().trim(), primaryColor: this.brandColor() }).subscribe({
+      next: () => {
+        this.branding.preview(undefined);
+        this.resetBrandingForm();
+        this.savingBranding.set(false);
+        this.toast.success('Branding saved', 'The new name and colour are live for everyone.');
+      },
+      error: err => {
+        this.savingBranding.set(false);
+        this.toast.error('Could not save branding', this.errorMessage(err));
+      }
+    });
+  }
+
+  assetUrl(kind: BrandingAssetKind): string | null {
+    const branding = this.branding.branding();
+    return kind === 'logo' ? branding.logo : kind === 'logo-dark' ? branding.logoDark : branding.favicon;
+  }
+
+  uploadAsset(slot: BrandingAssetSlot, file: File, upload: LogoUploadComponent): void {
+    upload.setUploading(true);
+    this.branding.uploadAsset(slot.kind, file).subscribe({
+      next: () => {
+        upload.setUploading(false);
+        upload.clearPreview();
+        this.toast.success(`${slot.title} uploaded`, 'It is live for everyone.');
+      },
+      error: err => {
+        upload.setUploading(false);
+        upload.clearPreview();
+        this.toast.error(`Could not upload the ${slot.title.toLowerCase()}`,
+          err.status === 413 ? 'The file is larger than 1 MB.' : this.errorMessage(err));
+      }
+    });
+  }
+
+  removeAsset(slot: BrandingAssetSlot, upload: LogoUploadComponent): void {
+    upload.setUploading(true);
+    this.branding.deleteAsset(slot.kind).subscribe({
+      next: () => {
+        upload.setUploading(false);
+        this.toast.success(`${slot.title} removed`, 'The default is shown again.');
+      },
+      error: err => {
+        upload.setUploading(false);
+        this.toast.error(`Could not remove the ${slot.title.toLowerCase()}`, this.errorMessage(err));
+      }
+    });
+  }
+
+  private errorMessage(err: { error?: { message?: string; error?: string } }): string {
+    return err.error?.message || err.error?.error || 'Please try again.';
   }
 
   loadSettings(): void {
@@ -827,7 +1129,7 @@ export class SettingsComponent implements OnInit {
         this.mailUsername = settings['mail.username']?.value || '';
         this.mailStartTls = (settings['mail.starttls']?.value || 'true') === 'true';
         this.mailFromAddress = settings['mail.from-address']?.value || '';
-        this.mailFromName = settings['mail.from-name']?.value || 'DocuVault';
+        this.mailFromName = settings['mail.from-name']?.value || '';
         this.pdfRenderUrl = settings['pdf.render-url']?.value || '';
         // The key comes back masked, so it is never put in the field — an empty
         // box with a "Saved" placeholder, and typing replaces it.

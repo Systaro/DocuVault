@@ -3,17 +3,18 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, BrandLogoComponent],
   template: `
     <div class="register-container">
       <!-- Left Brand Panel -->
       <div class="register-left">
         <div class="register-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="register-brand-logo" />
+          <app-brand-logo [onDark]="true" class="register-brand-logo" />
           <p>Join your team's collaborative documentation workspace with Git-powered version control</p>
         </div>
       </div>
@@ -176,8 +177,9 @@ import { AuthService } from '../../core/auth/auth.service';
     }
 
     .register-brand-logo {
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -281,7 +283,9 @@ import { AuthService } from '../../core/auth/auth.service';
       }
 
       .register-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 

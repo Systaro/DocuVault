@@ -280,7 +280,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
       transition: background var(--transition);
 
       &:hover {
-        background: rgba(111, 179, 184, 0.08);
+        background: color-mix(in srgb, var(--primary) 8%, transparent);
       }
 
       .material-icons {

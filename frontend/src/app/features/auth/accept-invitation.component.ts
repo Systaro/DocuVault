@@ -3,16 +3,17 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { UsersService } from '../../core/api/users.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-accept-invitation',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, BrandLogoComponent],
   template: `
     <div class="invitation-container">
       <div class="invitation-left">
         <div class="invitation-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="invitation-brand-logo" />
+          <app-brand-logo [onDark]="true" class="invitation-brand-logo" />
           <p>Your team's collaborative documentation workspace with Git-powered version control</p>
         </div>
       </div>
@@ -178,9 +179,9 @@ import { UsersService } from '../../core/api/users.service';
     }
 
     .invitation-brand-logo {
-      display: inline-block;
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -310,7 +311,9 @@ import { UsersService } from '../../core/api/users.service';
       }
 
       .invitation-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 

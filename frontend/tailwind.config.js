@@ -6,18 +6,18 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Notehub Teal/Mint Palette
+        // Follows the instance's brand colour (see core/branding), not a fixed teal.
         primary: {
-          50: '#f0fafb',
-          100: '#d9f2f4',
-          200: '#badfe7',
-          300: '#9acfd9',
-          400: '#6fb3b8',
-          500: '#4a9da3',
-          600: '#388087',
-          700: '#2d6a70',
-          800: '#275558',
-          900: '#1a2e30',
+          50: 'color-mix(in srgb, var(--primary-light) 30%, white)',
+          100: 'color-mix(in srgb, var(--primary-light) 60%, white)',
+          200: 'var(--primary-light)',
+          300: 'color-mix(in srgb, var(--primary) 50%, var(--primary-light))',
+          400: 'var(--primary)',
+          500: 'color-mix(in srgb, var(--primary) 60%, var(--primary-dark))',
+          600: 'var(--primary-dark)',
+          700: 'color-mix(in srgb, var(--primary-dark) 80%, black)',
+          800: 'color-mix(in srgb, var(--primary-dark) 65%, black)',
+          900: 'color-mix(in srgb, var(--primary-dark) 40%, black)',
         },
         accent: {
           50: '#f0fdf4',
@@ -57,10 +57,10 @@ module.exports = {
         'xl': '20px',
       },
       boxShadow: {
-        'sm': '0 1px 3px rgba(56, 128, 135, 0.08)',
-        'DEFAULT': '0 4px 12px rgba(56, 128, 135, 0.12)',
-        'lg': '0 8px 24px rgba(56, 128, 135, 0.16)',
-        'xl': '0 16px 48px rgba(56, 128, 135, 0.2)',
+        'sm': '0 1px 3px color-mix(in srgb, var(--primary-dark) 8%, transparent)',
+        'DEFAULT': '0 4px 12px color-mix(in srgb, var(--primary-dark) 12%, transparent)',
+        'lg': '0 8px 24px color-mix(in srgb, var(--primary-dark) 16%, transparent)',
+        'xl': '0 16px 48px color-mix(in srgb, var(--primary-dark) 20%, transparent)',
       },
     },
   },

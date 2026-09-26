@@ -101,7 +101,7 @@ import { PendingAttachment, formatFileSize } from '../services/attachment-queue'
     .bar {
       display: block;
       height: 100%;
-      background: linear-gradient(90deg, #6fb3b8, #8b5cf6, #ec4899);
+      background: linear-gradient(90deg, var(--primary), #8b5cf6, #ec4899);
       transition: width 0.2s ease;
     }
     @for $i from 0 through 10 { .bar.p#{$i} { width: $i * 10%; } }

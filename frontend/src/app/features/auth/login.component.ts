@@ -3,17 +3,18 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, BrandLogoComponent],
   template: `
     <div class="login-container">
       <!-- Left Brand Panel -->
       <div class="login-left">
         <div class="login-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="login-brand-logo" />
+          <app-brand-logo [onDark]="true" class="login-brand-logo" />
           <p>Your team's collaborative documentation workspace with Git-powered version control</p>
         </div>
       </div>
@@ -156,9 +157,9 @@ import { AuthService } from '../../core/auth/auth.service';
     }
 
     .login-brand-logo {
-      display: inline-block;
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -323,7 +324,9 @@ import { AuthService } from '../../core/auth/auth.service';
       }
 
       .login-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 

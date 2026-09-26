@@ -7,6 +7,7 @@ import com.docuvault.domain.user.User
 import com.docuvault.domain.user.UserRole
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.embedding.CrossSpaceChunk
 import com.docuvault.service.embedding.EmbeddingService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -29,7 +30,7 @@ class CaptureServiceTest {
     private val userRepository = mock(UserRepository::class.java)
     private val objectMapper = ObjectMapper()
 
-    private val service = CaptureService(openAIProvider, embeddingService, permissionService, userRepository, objectMapper)
+    private val service = CaptureService(openAIProvider, embeddingService, permissionService, userRepository, objectMapper, mock(BrandingService::class.java))
 
     private val user = User(id = UUID.randomUUID(), email = "anna@x.io", passwordHash = "h", name = "Anna Berg", role = UserRole.EDITOR)
     private val colleague = User(id = UUID.randomUUID(), email = "tom@x.io", passwordHash = "h", name = "Tom Klein")

@@ -113,8 +113,8 @@ interface DiffLine {
       width: 36px;
       height: 36px;
       border-radius: 8px;
-      background: rgba(111, 179, 184, 0.15);
-      border: 1px solid rgba(111, 179, 184, 0.25);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
       display: flex;
       align-items: center;
       justify-content: center;

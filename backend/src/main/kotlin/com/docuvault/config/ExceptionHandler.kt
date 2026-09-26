@@ -4,6 +4,7 @@ import com.docuvault.service.SpaceInConflictException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -72,6 +73,18 @@ class GlobalExceptionHandler {
             .body(ErrorResponse(
                 status = 404,
                 message = "Resource not found"
+            ))
+    }
+
+    /** A failed @PreAuthorize check (e.g. a non-admin calling an admin endpoint)
+     *  is a 403, not a server error. */
+    @ExceptionHandler(AccessDeniedException::class)
+    fun handleAccessDenied(ex: AccessDeniedException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse(
+                status = 403,
+                message = "You do not have permission to do this"
             ))
     }
 

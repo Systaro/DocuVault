@@ -1,6 +1,8 @@
 package com.docuvault.service.notification
 
 import com.docuvault.domain.space.ChangeType
+import com.docuvault.service.EmailLayout
+import com.docuvault.service.branding.EmailBrand
 import java.util.*
 
 /** A single file change as rendered in an email (decoupled from JPA entities). */
@@ -35,40 +37,40 @@ object NotificationEmail {
     }
 
     /** Real-time email for a single commit in a single space. */
-    fun buildInstant(view: DigestSpaceView, author: String, publicUrl: String, token: String): String {
+    fun buildInstant(view: DigestSpaceView, author: String, brand: EmailBrand, token: String): String {
         val total = view.changes.size
         return wrap(
             heading = "New activity",
             subheading = "${escapeHtml(author)} made $total change${plural(total)} in ${escapeHtml(view.spaceName)}",
-            body = renderSpaceSection(view, publicUrl, token),
-            publicUrl = publicUrl,
+            body = renderSpaceSection(view, brand, token),
+            brand = brand,
             token = token
         )
     }
 
     /** Consolidated digest covering every space a user is subscribed to in this window. */
-    fun buildDigest(spaces: List<DigestSpaceView>, periodLabel: String, publicUrl: String, token: String): String {
+    fun buildDigest(spaces: List<DigestSpaceView>, periodLabel: String, brand: EmailBrand, token: String): String {
         val totalChanges = spaces.sumOf { it.changes.size }
         val spaceCount = spaces.size
         val subheading =
             "$totalChanges change${plural(totalChanges)} across $spaceCount space${plural(spaceCount)} you follow"
-        val body = spaces.joinToString("\n") { renderSpaceSection(it, publicUrl, token) }
+        val body = spaces.joinToString("\n") { renderSpaceSection(it, brand, token) }
         return wrap(
             heading = "${periodLabel.replaceFirstChar { it.uppercase() }} digest",
             subheading = subheading,
             body = body,
-            publicUrl = publicUrl,
+            brand = brand,
             token = token
         )
     }
 
     /** One-time announcement when notifications are switched on for the release. */
-    fun buildAnnouncement(name: String, publicUrl: String, token: String): String {
+    fun buildAnnouncement(name: String, brand: EmailBrand, token: String): String {
         val body = """
         <tr><td style="padding:24px 32px;color:#444;font-size:15px;line-height:1.7;">
           <p style="margin:0 0 16px;">Hi ${escapeHtml(name)},</p>
           <p style="margin:0 0 16px;">
-            We've turned on <strong>daily change digests</strong> for the DocuVault spaces you're part of.
+            We've turned on <strong>daily change digests</strong> for the ${escapeHtml(brand.appName)} spaces you're part of.
             Once a day you'll get a single email summarising what was added, edited, renamed or removed —
             so you can keep up without watching the repos.
           </p>
@@ -77,34 +79,32 @@ object NotificationEmail {
             <li>Switch to instant or hourly, or turn email off entirely.</li>
             <li>Mute individual repositories or whole groups.</li>
           </ul>
-          <table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:8px 0 0;">
-            <a href="$publicUrl/account" style="display:inline-block;background:linear-gradient(135deg,#4a8a8f,#6fb3b8);color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;">Manage notifications</a>
-          </td></tr></table>
+          <div style="padding:8px 0 0;">${EmailLayout.button(brand, "${brand.publicUrl}/account", "Manage notifications")}</div>
         </td></tr>
         """.trimIndent()
         return wrap(
             heading = "Notifications are on",
             subheading = "Daily digests for the spaces you follow",
             body = body,
-            publicUrl = publicUrl,
+            brand = brand,
             token = token
         )
     }
 
     // --- section rendering -------------------------------------------------
 
-    private fun renderSpaceSection(view: DigestSpaceView, publicUrl: String, token: String): String {
+    private fun renderSpaceSection(view: DigestSpaceView, brand: EmailBrand, token: String): String {
         val total = view.changes.size
         val byType = view.changes.groupBy { it.changeType }
         val chips = TYPE_ORDER.mapNotNull { type ->
-            byType[type]?.size?.let { count -> chip(type, count) }
+            byType[type]?.size?.let { count -> chip(type, count, brand) }
         }.joinToString("")
 
         val groups = TYPE_ORDER.mapNotNull { type ->
-            byType[type]?.takeIf { it.isNotEmpty() }?.let { changes -> renderGroup(type, changes) }
+            byType[type]?.takeIf { it.isNotEmpty() }?.let { changes -> renderGroup(type, changes, brand) }
         }.joinToString("\n")
 
-        val muteUrl = "$publicUrl/unsubscribe?t=$token&s=${view.spaceId}"
+        val muteUrl = "${brand.publicUrl}/unsubscribe?t=$token&s=${view.spaceId}"
 
         return """
         <tr><td style="padding:24px 32px 0;">
@@ -116,15 +116,15 @@ object NotificationEmail {
         </td></tr>
         $groups
         <tr><td style="padding:12px 32px 20px;border-bottom:1px solid #eef1f4;">
-          <a href="$publicUrl/spaces" style="color:#4a8a8f;text-decoration:none;font-size:13px;font-weight:600;">Open ${escapeHtml(view.spaceName)}</a>
+          <a href="${brand.publicUrl}/spaces" style="color:${brand.color};text-decoration:none;font-size:13px;font-weight:600;">Open ${escapeHtml(view.spaceName)}</a>
           <span style="color:#ccc;"> &nbsp;·&nbsp; </span>
           <a href="$muteUrl" style="color:#aaa;text-decoration:none;font-size:13px;">Mute this repository</a>
         </td></tr>
         """.trimIndent()
     }
 
-    private fun renderGroup(type: ChangeType, changes: List<DigestChange>): String {
-        val color = typeColor(type)
+    private fun renderGroup(type: ChangeType, changes: List<DigestChange>, brand: EmailBrand): String {
+        val color = typeColor(type, brand)
         val shown = changes.take(MAX_ROWS_PER_GROUP)
         val overflow = changes.size - shown.size
         val rows = shown.joinToString("\n") { fileRow(it, color) }
@@ -170,8 +170,8 @@ object NotificationEmail {
         }
     }
 
-    private fun chip(type: ChangeType, count: Int): String {
-        val color = typeColor(type)
+    private fun chip(type: ChangeType, count: Int, brand: EmailBrand): String {
+        val color = typeColor(type, brand)
         return """<span style="display:inline-block;margin:0 6px 4px 0;font-size:12px;color:$color;">
             |<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:$color;vertical-align:middle;margin-right:5px;"></span>$count ${verb(type).lowercase()}</span>""".trimMargin()
     }
@@ -183,9 +183,9 @@ object NotificationEmail {
         ChangeType.RENAMED -> "Renamed"
     }
 
-    private fun typeColor(type: ChangeType): String = when (type) {
+    private fun typeColor(type: ChangeType, brand: EmailBrand): String = when (type) {
         ChangeType.ADDED -> "#16a34a"
-        ChangeType.MODIFIED -> "#4a8a8f"
+        ChangeType.MODIFIED -> brand.color
         ChangeType.DELETED -> "#dc2626"
         ChangeType.RENAMED -> "#b7791f"
     }
@@ -196,50 +196,28 @@ object NotificationEmail {
 
     // --- shell + footer ----------------------------------------------------
 
-    private fun wrap(heading: String, subheading: String, body: String, publicUrl: String, token: String): String = """
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light only">
-  <meta name="supported-color-schemes" content="light">
-</head>
-<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
-        <tr><td style="background:linear-gradient(135deg,#4a8a8f 0%,#6fb3b8 100%);padding:24px 32px;color:#fff;">
+    private fun wrap(heading: String, subheading: String, body: String, brand: EmailBrand, token: String): String {
+        val text = EmailLayout.textOn(brand.color)
+        return EmailLayout.page(width = 640, rows = """
+        <tr><td style="background-color:${brand.color};padding:24px 32px;color:$text;">
           <h1 style="margin:0;font-size:20px;font-weight:700;">${escapeHtml(heading)}</h1>
           <p style="margin:4px 0 0;font-size:14px;opacity:.9;">${escapeHtml(subheading)}</p>
         </td></tr>
         $body
-        ${footer(publicUrl, token)}
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>
-""".trimIndent()
-
-    private fun footer(publicUrl: String, token: String): String {
-        val manageUrl = "$publicUrl/account"
-        val unsubAllUrl = "$publicUrl/unsubscribe?t=$token"
-        return """
-        <tr><td style="background:#fafbfc;padding:18px 32px;text-align:center;">
-          <p style="margin:0;color:#999;font-size:12px;line-height:1.6;">
-            You're receiving this because notifications are on for spaces you follow.<br>
-            <a href="$manageUrl" style="color:#6fb3b8;text-decoration:none;">Manage notifications</a>
-            <span style="color:#ccc;"> &nbsp;·&nbsp; </span>
-            <a href="$unsubAllUrl" style="color:#999;text-decoration:underline;">Unsubscribe from all</a>
-          </p>
-        </td></tr>
-        """.trimIndent()
+        ${footer(brand, token)}
+        """.trimIndent())
     }
 
-    private fun escapeHtml(s: String): String = s
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
+    private fun footer(brand: EmailBrand, token: String): String {
+        val manageUrl = "${brand.publicUrl}/account"
+        val unsubAllUrl = "${brand.publicUrl}/unsubscribe?t=$token"
+        return EmailLayout.footer("""
+            You're receiving this because notifications are on for ${escapeHtml(brand.appName)} spaces you follow.<br>
+            <a href="$manageUrl" style="color:${brand.color};text-decoration:none;">Manage notifications</a>
+            <span style="color:#ccc;"> &nbsp;·&nbsp; </span>
+            <a href="$unsubAllUrl" style="color:#999;text-decoration:underline;">Unsubscribe from all</a>
+        """.trimIndent())
+    }
+
+    private fun escapeHtml(s: String): String = EmailLayout.escape(s)
 }

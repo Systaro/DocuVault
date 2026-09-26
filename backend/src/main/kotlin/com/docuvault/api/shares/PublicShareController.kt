@@ -11,6 +11,7 @@ import com.docuvault.service.AnnotationService
 import com.docuvault.service.ShareAccessTokenService
 import com.docuvault.service.ShareAssetResolver
 import com.docuvault.service.SharedLinkService
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.git.FileNode
 import com.docuvault.service.git.GitService
 import com.docuvault.service.HtmlPreviewInjection
@@ -40,7 +41,8 @@ class PublicShareController(
     private val gitService: GitService,
     private val shareAccessTokenService: ShareAccessTokenService,
     private val annotationService: AnnotationService,
-    private val shareAssetResolver: ShareAssetResolver
+    private val shareAssetResolver: ShareAssetResolver,
+    private val brandingService: BrandingService
 ) {
     @GetMapping("/{token}")
     fun getMetadata(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<SharedFileMetadataDto> {
@@ -461,6 +463,7 @@ class PublicShareController(
                 .body("<html><head><title>Link Not Available</title></head><body><p>This shared link is no longer available.</p></body></html>")
 
         val spaceName = link.space.name
+        val appName = brandingService.appName()
         val scheme = request.getHeader("X-Forwarded-Proto") ?: request.scheme
         val host = request.getHeader("X-Forwarded-Host") ?: request.getHeader("Host") ?: request.serverName
         val shareUrl = "$scheme://$host/share/$token"
@@ -469,7 +472,7 @@ class PublicShareController(
         val ogMeta = extractOgMetadata(link, request)
         val title = ogMeta.title ?: link.filePath.substringAfterLast('/').substringBeforeLast('.')
         val ogTitle = "$title — $spaceName"
-        val description = ogMeta.description ?: "$title - shared from $spaceName on DocuVault"
+        val description = ogMeta.description ?: "$title - shared from $spaceName on $appName"
 
         // Render content as HTML for SSR
         val content = if (link.shareType == ShareType.FILE && !link.isPasswordProtected()) {
@@ -493,7 +496,7 @@ class PublicShareController(
                 html
             }
             ext in listOf("html", "htm") && content != null -> content
-            else -> "<p><a href=\"$shareUrl\">Open in DocuVault</a></p>"
+            else -> "<p><a href=\"$shareUrl\">Open in ${escapeHtml(appName)}</a></p>"
         }
 
         val escapedTitle = escapeHtml(ogTitle)
@@ -515,7 +518,7 @@ class PublicShareController(
                 <meta property="og:description" content="$escapedDesc">
                 <meta property="og:type" content="article">
                 <meta property="og:url" content="$shareUrl">
-                <meta property="og:site_name" content="DocuVault">
+                <meta property="og:site_name" content="${escapeHtml(appName)}">
                 $imageMetaTags
                 <meta name="twitter:card" content="$twitterCard">
                 <meta name="twitter:title" content="$escapedTitle">

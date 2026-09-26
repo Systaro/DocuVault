@@ -182,8 +182,8 @@ interface EmailModeOption {
       align-items: center;
       gap: var(--spacing-sm);
       padding: var(--spacing-md);
-      background: rgba(111, 179, 184, 0.08);
-      border: 1px solid rgba(111, 179, 184, 0.2);
+      background: color-mix(in srgb, var(--primary) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
       border-radius: var(--radius-md);
       font-size: 13px;
       color: var(--text-secondary);

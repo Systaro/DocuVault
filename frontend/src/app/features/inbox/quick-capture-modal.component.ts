@@ -252,7 +252,7 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       justify-content: center;
       transition: all var(--transition);
 
-      &:hover { background: rgba(111,179,184,0.1); color: var(--text-primary); }
+      &:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--text-primary); }
       .material-icons { font-size: 15px; }
     }
 

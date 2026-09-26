@@ -510,7 +510,7 @@ import { SearchableSelectComponent, SelectOption } from './searchable-select.com
 
     .access-option.selected {
       border-color: var(--primary, #6fb3b8);
-      background: rgba(111, 179, 184, 0.06);
+      background: color-mix(in srgb, var(--primary) 6%, transparent);
     }
 
     .access-option.selected .material-icons {

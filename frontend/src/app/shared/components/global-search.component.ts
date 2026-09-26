@@ -186,7 +186,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
       align-items: center;
       justify-content: center;
       border-radius: 8px;
-      background: rgba(111, 179, 184, 0.1);
+      background: color-mix(in srgb, var(--primary) 10%, transparent);
       color: var(--primary);
 
       .material-icons {
@@ -216,7 +216,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap, of, takeUntil }
     }
 
     .search-result.is-container .result-icon {
-      background: rgba(56, 128, 135, 0.14);
+      background: color-mix(in srgb, var(--primary-dark) 14%, transparent);
       color: var(--primary-dark);
     }
 

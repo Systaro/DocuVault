@@ -3,16 +3,17 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-forgot-password',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, BrandLogoComponent],
   template: `
     <div class="forgot-container">
       <div class="forgot-left">
         <div class="forgot-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="forgot-brand-logo" />
+          <app-brand-logo [onDark]="true" class="forgot-brand-logo" />
           <p>Your team's collaborative documentation workspace with Git-powered version control</p>
         </div>
       </div>
@@ -128,9 +129,9 @@ import { AuthService } from '../../core/auth/auth.service';
     }
 
     .forgot-brand-logo {
-      display: inline-block;
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -255,7 +256,9 @@ import { AuthService } from '../../core/auth/auth.service';
       }
 
       .forgot-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 

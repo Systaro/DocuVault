@@ -21,7 +21,8 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class GitService(
     @Value("\${git.repos-path}") private val reposPath: String,
-    private val settingsService: SettingsService
+    private val settingsService: SettingsService,
+    @Value("\${app.git.author-email}") private val botEmail: String
 ) {
     private val logger = LoggerFactory.getLogger(GitService::class.java)
 
@@ -55,7 +56,7 @@ class GitService(
                         git.add().addFilepattern(".").call()
                         git.commit()
                             .setMessage("DocuVault: baseline snapshot of existing content")
-                            .setAuthor("docuvault-bot", "bot@docuvault.systaro.de")
+                            .setAuthor("docuvault-bot", botEmail)
                             .call()
                     }
                 }
@@ -182,7 +183,7 @@ class GitService(
 
         git.commit()
             .setMessage(message)
-            .setAuthor("docuvault-bot", "bot@docuvault.systaro.de")
+            .setAuthor("docuvault-bot", botEmail)
             .call()
         return true
     }

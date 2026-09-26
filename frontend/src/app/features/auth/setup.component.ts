@@ -1,20 +1,22 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { BrandingService } from '../../core/branding/branding.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-setup',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, BrandLogoComponent],
   template: `
     <div class="setup-container">
       <!-- Left Brand Panel -->
       <div class="setup-left">
         <div class="setup-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="setup-brand-logo" />
-          <p>Welcome — let's get your DocuVault instance set up. Create the first administrator account to continue.</p>
+          <app-brand-logo [onDark]="true" class="setup-brand-logo" />
+          <p>Welcome — let's get your {{ branding.appName() }} instance set up. Create the first administrator account to continue.</p>
         </div>
       </div>
 
@@ -177,8 +179,9 @@ import { AuthService } from '../../core/auth/auth.service';
     }
 
     .setup-brand-logo {
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -283,7 +286,9 @@ import { AuthService } from '../../core/auth/auth.service';
       }
 
       .setup-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 
@@ -316,6 +321,7 @@ import { AuthService } from '../../core/auth/auth.service';
   `]
 })
 export class SetupComponent implements OnInit {
+  protected branding = inject(BrandingService);
   name = '';
   email = '';
   password = '';

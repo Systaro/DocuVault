@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { SharedLinksService, SharedFileMetadata, FileNode } from '../../core/api/shared-links.service';
-import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta, Title } from '@angular/platform-browser';
+import { DomSanitizer, SafeResourceUrl, SafeHtml, Meta } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { AnnotationOverlayComponent } from '../../shared/components/annotation-overlay.component';
 import { AnnotationPermission } from '../../core/api/annotations.service';
@@ -12,6 +12,9 @@ import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension, sharedFileUrl } from '../../shared/utils/file-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
+import { BrandingService } from '../../core/branding/branding.service';
+import { PageTitleService } from '../../core/branding/page-title.service';
 
 /** Near the top of a document the bar always shows. */
 const HEADER_REVEAL_ZONE_PX = 40;
@@ -21,15 +24,12 @@ const SCROLL_JITTER_PX = 4;
 @Component({
   selector: 'app-public-viewer',
   standalone: true,
-  imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent],
+  imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent, BrandLogoComponent],
   template: `
     <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error() && !maintenanceMode()">
       <!-- Header -->
       <header class="viewer-header" [class.tucked]="headerOffset() < 0" [style.margin-top.px]="headerOffset() || null">
-        <div class="header-brand">
-          <span translate="no" class="brand-icon material-icons">menu_book</span>
-          <span class="brand-name">DocuVault</span>
-        </div>
+        <app-brand-logo class="header-brand" />
         @if (breadcrumbSegments().length) {
           <nav class="header-breadcrumb" aria-label="File location">
             @for (segment of breadcrumbSegments(); track segment.label; let last = $last) {
@@ -429,16 +429,11 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .header-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #6fb3b8;
-      font-weight: 600;
-      font-size: 16px;
-    }
-
-    .brand-icon {
-      font-size: 24px;
+      --brand-text-size: 16px;
+      --brand-logo-max-height: 28px;
+      --brand-logo-max-width: 180px;
+      color: var(--primary);
+      flex-shrink: 0;
     }
 
     .header-breadcrumb {
@@ -500,7 +495,7 @@ const SCROLL_JITTER_PX = 4;
 
     .password-card .lock-icon {
       font-size: 56px;
-      color: #6fb3b8;
+      color: var(--primary);
       margin-bottom: 16px;
     }
 
@@ -535,8 +530,8 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .password-field:focus {
-      border-color: #6fb3b8;
-      box-shadow: 0 0 0 3px rgba(111, 179, 184, 0.15);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
     }
 
     .password-field.error {
@@ -555,7 +550,7 @@ const SCROLL_JITTER_PX = 4;
       justify-content: center;
       gap: 8px;
       padding: 10px 24px;
-      background: #6fb3b8;
+      background: var(--primary);
       color: white;
       border: none;
       border-radius: 8px;
@@ -566,7 +561,7 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .btn-unlock:hover:not(:disabled) {
-      background: #5a9a9f;
+      background: color-mix(in srgb, var(--primary) 85%, black);
     }
 
     .btn-unlock:disabled {
@@ -597,7 +592,7 @@ const SCROLL_JITTER_PX = 4;
 
       .material-icons {
         font-size: 20px;
-        color: #6fb3b8;
+        color: var(--primary);
       }
     }
 
@@ -629,8 +624,8 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .tree-file.active {
-      background: #e0f2f1;
-      color: #00796b;
+      background: color-mix(in srgb, var(--primary) 14%, white);
+      color: color-mix(in srgb, var(--primary) 55%, black);
       font-weight: 500;
     }
 
@@ -641,7 +636,7 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .folder-icon {
-      color: #6fb3b8;
+      color: var(--primary);
     }
 
     .file-icon {
@@ -669,7 +664,7 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .resize-handle:hover {
-      background: #6fb3b8;
+      background: var(--primary);
     }
 
     /* Folder content area */
@@ -730,7 +725,7 @@ const SCROLL_JITTER_PX = 4;
     }
 
     .folder-browser-crumb {
-      color: #4a9da3;
+      color: var(--primary);
       text-decoration: none;
       cursor: pointer;
 
@@ -756,7 +751,7 @@ const SCROLL_JITTER_PX = 4;
       margin: 0 0 20px;
 
       .material-icons {
-        color: #6fb3b8;
+        color: var(--primary);
         font-size: 28px;
       }
     }
@@ -842,7 +837,7 @@ const SCROLL_JITTER_PX = 4;
 
     .download-icon {
       font-size: 64px;
-      color: #6fb3b8;
+      color: var(--primary);
     }
 
     .download-state .btn {
@@ -851,7 +846,7 @@ const SCROLL_JITTER_PX = 4;
       align-items: center;
       gap: 8px;
       padding: 10px 24px;
-      background: #6fb3b8;
+      background: var(--primary);
       color: white;
       border: none;
       border-radius: 8px;
@@ -861,7 +856,7 @@ const SCROLL_JITTER_PX = 4;
       cursor: pointer;
 
       &:hover {
-        background: #5a9a9f;
+        background: color-mix(in srgb, var(--primary) 85%, black);
       }
     }
 
@@ -1028,7 +1023,8 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     private location: Location,
     private sharedLinksService: SharedLinksService,
     private sanitizer: DomSanitizer,
-    private titleService: Title,
+    private pageTitle: PageTitleService,
+    private branding: BrandingService,
     private metaService: Meta,
     private markdownService: MarkdownRenderService,
     private elementRef: ElementRef<HTMLElement>,
@@ -1128,7 +1124,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.titleService.setTitle('DocuVault');
+    this.pageTitle.set();
     this.metaService.removeTag('name="description"');
     this.metaService.removeTag('property="og:title"');
     this.metaService.removeTag('property="og:description"');
@@ -1313,21 +1309,20 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   }
 
   private setPageMeta(meta: SharedFileMetadata): void {
-    const title = meta.ogTitle
-      ? `${meta.ogTitle} — ${meta.spaceName}`
-      : `${meta.fileName} - ${meta.spaceName} | DocuVault`;
+    this.pageTitle.set(meta.ogTitle || meta.fileName, meta.spaceName);
+    const title = this.pageTitle.title();
+    const appName = this.branding.appName();
     const description = meta.ogDescription
-      || `${meta.fileName} - shared from ${meta.spaceName} on DocuVault`;
+      || `${meta.fileName} - shared from ${meta.spaceName} on ${appName}`;
     const shareUrl = window.location.href;
     const twitterCard = meta.ogImageUrl ? 'summary_large_image' : 'summary';
 
-    this.titleService.setTitle(title);
     this.metaService.updateTag({ name: 'description', content: description });
     this.metaService.updateTag({ property: 'og:title', content: title });
     this.metaService.updateTag({ property: 'og:description', content: description });
     this.metaService.updateTag({ property: 'og:type', content: 'article' });
     this.metaService.updateTag({ property: 'og:url', content: shareUrl });
-    this.metaService.updateTag({ property: 'og:site_name', content: 'DocuVault' });
+    this.metaService.updateTag({ property: 'og:site_name', content: appName });
     this.metaService.updateTag({ name: 'twitter:card', content: twitterCard });
     this.metaService.updateTag({ name: 'twitter:title', content: title });
     this.metaService.updateTag({ name: 'twitter:description', content: description });

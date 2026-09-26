@@ -5,8 +5,9 @@ import com.docuvault.domain.space.PermissionLevel
 import com.docuvault.domain.space.Space
 import com.docuvault.domain.user.User
 import com.docuvault.infrastructure.repository.AccessRequestRepository
+import com.docuvault.service.branding.BrandingService
+import com.docuvault.service.branding.EmailBrand
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -44,7 +45,7 @@ class AccessRequestService(
     private val permissionService: PermissionService,
     private val emailService: EmailService,
     private val settingsService: SettingsService,
-    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(AccessRequestService::class.java)
 
@@ -83,11 +84,12 @@ class AccessRequestService(
             return AccessRequestResult.NoOneToNotify
         }
 
+        val brand = brandingService.emailBrand()
         recipients.forEach { admin ->
             emailService.sendHtml(
                 to = admin.email,
                 subject = "${requester.name} is asking for access to ${space.name}",
-                htmlBody = emailBody(requester, space, message, admin)
+                htmlBody = emailBody(brand, requester, space, message, admin)
             )
         }
 
@@ -114,32 +116,23 @@ class AccessRequestService(
         return members.filter { it.superAdmin }.map { it.user }.take(MAX_RECIPIENTS)
     }
 
-    private fun emailBody(requester: User, space: Space, message: String?, admin: User): String {
-        val spaceUrl = "$publicUrl/spaces/${space.getFullPath()}"
+    /** The requester's name and note reach an HTML email, so they are escaped. */
+    private fun emailBody(brand: EmailBrand, requester: User, space: Space, message: String?, admin: User): String {
+        val spaceUrl = "${brand.publicUrl}/spaces/${space.getFullPath()}"
         val settingsUrl = "$spaceUrl/settings"
         val note = message?.takeIf { it.isNotBlank() }?.let {
             """
             <tr><td style="padding: 0 0 24px;">
-              <div style="background: #f6f8f8; border-left: 3px solid #6fb3b8; border-radius: 6px; padding: 14px 16px;">
+              <div style="background: #f6f8f8; border-left: 3px solid ${brand.color}; border-radius: 6px; padding: 14px 16px;">
                 <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap;">${escape(it)}</p>
               </div>
             </td></tr>
             """
         } ?: ""
 
-        return """
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f0f2f5; padding: 40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="max-width: 560px; width: 100%;">
-        <tr><td style="background: linear-gradient(135deg, #4a8a8f 0%, #6fb3b8 50%, #8fcdd2 100%); border-radius: 16px 16px 0 0; padding: 40px 40px 32px; text-align: center;">
-          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 8px;">Someone needs access</h1>
-          <p style="color: rgba(255,255,255,0.85); font-size: 15px; margin: 0;">${escape(space.name)}</p>
-        </td></tr>
-        <tr><td style="background: #ffffff; padding: 40px;">
+        return EmailLayout.page("""
+${EmailLayout.banner(brand, "Someone needs access", space.name)}
+        <tr><td style="padding: 40px;">
           <p style="color: #333; font-size: 16px; line-height: 1.6; margin: 0 0 8px;">Hi ${escape(admin.name)},</p>
           <p style="color: #555; font-size: 15px; line-height: 1.7; margin: 0 0 24px;">
             <strong style="color: #333;">${escape(requester.name)}</strong>
@@ -148,28 +141,14 @@ class AccessRequestService(
             You are getting this because you can grant it.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0">$note</table>
-          <table cellpadding="0" cellspacing="0" style="margin: 0 0 28px;"><tr><td style="border-radius: 8px; background: #4a8a8f;">
-            <a href="$settingsUrl" style="display: inline-block; padding: 12px 26px; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none;">Manage access</a>
-          </td></tr></table>
+          <div style="margin: 0 0 28px;">${EmailLayout.button(brand, settingsUrl, "Manage access")}</div>
           <p style="color: #888; font-size: 13px; line-height: 1.6; margin: 0;">
             If they should not have it, you can ignore this — nothing was granted.
           </p>
         </td></tr>
-        <tr><td style="background: #ffffff; border-radius: 0 0 16px 16px; border-top: 1px solid #eceff0; padding: 20px 40px; text-align: center;">
-          <p style="color: #9aa5a6; font-size: 12px; margin: 0;">DocuVault · <a href="$spaceUrl" style="color: #6fb3b8; text-decoration: none;">${escape(space.getFullPath())}</a></p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>
-        """.trimIndent()
+${EmailLayout.footer("""${escape(brand.appName)} · <a href="$spaceUrl" style="color: ${brand.color}; text-decoration: none;">${escape(space.getFullPath())}</a>""")}
+        """.trimIndent())
     }
 
-    /** The requester's name and note reach an HTML email, so they are escaped. */
-    private fun escape(text: String): String = text
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
+    private fun escape(text: String): String = EmailLayout.escape(text)
 }

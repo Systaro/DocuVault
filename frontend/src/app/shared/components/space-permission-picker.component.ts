@@ -105,7 +105,7 @@ export interface InheritedGrant {
       }
 
       &.has-permission {
-        background: rgba(111, 179, 184, 0.06);
+        background: color-mix(in srgb, var(--primary) 6%, transparent);
       }
     }
 

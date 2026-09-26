@@ -469,7 +469,7 @@ import {
       width: 44px;
       height: 44px;
       border-radius: var(--radius-md);
-      background: rgba(111, 179, 184, 0.15);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
       display: flex;
       align-items: center;
       justify-content: center;

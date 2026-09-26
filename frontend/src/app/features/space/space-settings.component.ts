@@ -640,7 +640,7 @@ await state.save();</pre>
       letter-spacing: 0.5px;
       padding: 1px 6px;
       border-radius: 4px;
-      background: rgba(111, 179, 184, 0.15);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
       color: var(--primary-dark);
     }
     .rule-condition {

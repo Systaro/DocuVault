@@ -177,7 +177,7 @@ interface ListingEntry extends FileEntry {
             <div class="sync-error-content">
               <div class="sync-error-title">Sync paused — merge conflict</div>
               <div class="sync-error-message">
-                DocuVault's local changes diverged from <code>{{ space()?.branch }}</code> and could not be merged automatically.
+                The local changes diverged from <code>{{ space()?.branch }}</code> and could not be merged automatically.
                 Editing is disabled for this space until the conflict is resolved in GitLab.
               </div>
               @if (space()?.conflictMrUrl) {
@@ -1083,7 +1083,7 @@ interface ListingEntry extends FileEntry {
     }
 
     .inline-new-folder {
-      background: rgba(111, 179, 184, 0.06);
+      background: color-mix(in srgb, var(--primary) 6%, transparent);
       border-top: 1px solid var(--border);
 
       &:first-child { border-top: none; }

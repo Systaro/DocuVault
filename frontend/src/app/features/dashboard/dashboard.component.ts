@@ -544,7 +544,7 @@ interface BreadcrumbItem {
       font-size: 12px;
       font-weight: 600;
       color: var(--primary-dark);
-      background: rgba(111, 179, 184, 0.15);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
       border-radius: var(--radius-sm);
 
       .material-icons { font-size: 14px; }
@@ -781,7 +781,7 @@ interface BreadcrumbItem {
 
       &:hover {
         border-color: var(--primary);
-        background: rgba(111, 179, 184, 0.05);
+        background: color-mix(in srgb, var(--primary) 5%, transparent);
       }
 
       .material-icons {

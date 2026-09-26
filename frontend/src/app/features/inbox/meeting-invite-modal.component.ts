@@ -252,7 +252,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
     .lang-hint .material-icons { font-size: 14px; }
 
     .token-box {
-      background: rgba(111, 179, 184, 0.08);
+      background: color-mix(in srgb, var(--primary) 8%, transparent);
       border: 1px solid var(--primary);
       border-radius: var(--radius-lg, 8px);
       padding: 12px 14px;

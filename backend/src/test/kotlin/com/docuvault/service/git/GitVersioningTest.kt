@@ -23,7 +23,7 @@ class GitVersioningTest {
     lateinit var reposDir: Path
 
     private fun services(): Pair<GitService, GitDiffService> {
-        val gitService = GitService(reposDir.toString(), mock(SettingsService::class.java))
+        val gitService = GitService(reposDir.toString(), mock(SettingsService::class.java), "docuvault-bot@localhost")
         return gitService to GitDiffService(gitService)
     }
 

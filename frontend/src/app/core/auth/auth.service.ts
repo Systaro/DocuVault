@@ -53,6 +53,7 @@ export class AuthService {
     const user = this.userSignal();
     return user?.role === 'SUPER_ADMIN' || user?.role === 'ORG_ADMIN';
   });
+  isSuperAdmin = computed(() => this.userSignal()?.role === 'SUPER_ADMIN');
   isImpersonating = computed(() => !!this.userSignal()?.impersonating);
 
   constructor(

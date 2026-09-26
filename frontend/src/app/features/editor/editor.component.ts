@@ -46,6 +46,7 @@ import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
 import { describeSaveError, NOTHING_TO_SAVE } from '../../shared/utils/save-error';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
+import { BrandingService } from '../../core/branding/branding.service';
 import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../shared/utils/scroll-anchor';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
@@ -596,7 +597,7 @@ interface SheetView {
               <div class="unsupported-card">
                 <span translate="no" class="material-icons unsupported-icon">{{ fileGlyph(documentPath) }}</span>
                 <h2 class="unsupported-name">{{ documentPath.split('/').pop() }}</h2>
-                <p class="unsupported-hint">DocuVault can't show this kind of file. You can download it and open it locally.</p>
+                <p class="unsupported-hint">{{ branding.appName() }} can't show this kind of file. You can download it and open it locally.</p>
                 <a class="unsupported-download" [href]="previewUrl() + '?download=true'" download>
                   <span translate="no" class="material-icons">download</span>
                   Download file
@@ -2187,6 +2188,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   @ViewChild('editorElement') editorElement!: ElementRef<HTMLElement>;
   @ViewChild(AutosizeTextareaDirective) private titleAutosize?: AutosizeTextareaDirective;
   private readonly treeSync = inject(FileTreeSyncService);
+  protected readonly branding = inject(BrandingService);
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
   @ViewChild(HtmlEditorComponent) private htmlEditor?: HtmlEditorComponent;
 

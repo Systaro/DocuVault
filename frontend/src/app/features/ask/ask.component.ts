@@ -2,7 +2,8 @@ import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Title, SafeHtml } from '@angular/platform-browser';
+import { SafeHtml } from '@angular/platform-browser';
+import { PageTitleService } from '../../core/branding/page-title.service';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 import {
   AiService, ConversationMessage, ConversationSummary, EditProposal, MessageSource, MessageToolCall
@@ -646,7 +647,7 @@ export class AskComponent implements OnInit, OnDestroy {
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
-  private title = inject(Title);
+  private pageTitle = inject(PageTitleService);
   private host = inject(ElementRef<HTMLElement>);
 
   spaces = signal<Space[]>([]);
@@ -990,7 +991,7 @@ export class AskComponent implements OnInit, OnDestroy {
 
   private updateTitle(): void {
     const c = this.active();
-    this.title.setTitle(c ? `${c.title} – Ask – DocuVault` : 'Ask – DocuVault');
+    this.pageTitle.set(c?.title, 'Ask');
   }
 
   private afterRender(forceScroll: boolean): void {

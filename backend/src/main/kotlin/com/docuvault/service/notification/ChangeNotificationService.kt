@@ -17,8 +17,8 @@ import com.docuvault.service.EmailService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.git.DetectedChange
 import com.docuvault.service.git.GitDiffService
+import com.docuvault.service.branding.BrandingService
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -33,7 +33,7 @@ class ChangeNotificationService(
     private val pushSenders: List<PushSender>,
     private val emailService: EmailService,
     private val subscriptionService: NotificationSubscriptionService,
-    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(ChangeNotificationService::class.java)
 
@@ -118,8 +118,9 @@ class ChangeNotificationService(
             changes = group.map { DigestChange(it.changeType, it.filePath, it.oldPath, author) }
         )
         val token = subscriptionService.tokenFor(user)
-        val html = NotificationEmail.buildInstant(view = view, author = author, publicUrl = publicUrl, token = token)
-        val headers = NotificationEmail.unsubscribeHeaders(publicUrl, token, space.id!!)
+        val brand = brandingService.emailBrand()
+        val html = NotificationEmail.buildInstant(view = view, author = author, brand = brand, token = token)
+        val headers = NotificationEmail.unsubscribeHeaders(brand.publicUrl, token, space.id!!)
 
         val result = runCatching { emailService.sendHtml(user.email, subject, html, headers) }
         dispatchRepository.save(

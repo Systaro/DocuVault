@@ -1,5 +1,6 @@
 package com.docuvault.config
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.authentication.AuthenticationManager
@@ -21,6 +22,7 @@ import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import com.docuvault.infrastructure.repository.UserRepository
+import java.net.URI
 
 @Configuration
 @EnableWebSecurity
@@ -28,8 +30,11 @@ import com.docuvault.infrastructure.repository.UserRepository
 class SecurityConfig(
     private val userDetailsService: UserDetailsService,
     private val rateLimitFilter: RateLimitFilter,
-    private val apiTokenAuthFilter: ApiTokenAuthFilter
+    private val apiTokenAuthFilter: ApiTokenAuthFilter,
+    @Value("\${app.public-url}") publicUrl: String
 ) {
+    private val publicOrigin: String = URI(publicUrl).let { "${it.scheme}://${it.authority}" }
+
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
@@ -44,6 +49,8 @@ class SecurityConfig(
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/capabilities").permitAll()
+                    // Login page, public shares and email clients show the brand without a session.
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/branding", "/branding/assets/**").permitAll()
                     .requestMatchers("/users/accept-invitation").permitAll()
                     .requestMatchers("/notifications/unsubscribe", "/notifications/unsubscribe/info").permitAll()
                     .requestMatchers("/shared/**").permitAll()
@@ -73,11 +80,11 @@ class SecurityConfig(
             "http://localhost:7031",
             "http://127.0.0.1:7031",
             "http://localhost:80",
-            "https://docuvault.systaro.de",
+            publicOrigin,
             "capacitor://localhost",
             "https://localhost",
             "ionic://localhost"
-        )
+        ).distinct()
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true

@@ -29,6 +29,7 @@ import com.docuvault.infrastructure.repository.ConversationRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.embedding.CrossSpaceChunk
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.git.GitService
@@ -136,7 +137,8 @@ class ConversationService(
     private val toolRegistry: ToolRegistry,
     private val objectMapper: ObjectMapper,
     private val draftMaterialService: DraftMaterialService,
-    private val attachmentService: AttachmentService
+    private val attachmentService: AttachmentService,
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(ConversationService::class.java)
 
@@ -618,7 +620,7 @@ class ConversationService(
             files.joinToString("\n") { "  - ${it.fileName} (${it.kind.name.lowercase()}) [attachment_id: ${it.id}]" }
 
         return """
-            |You are the assistant inside DocuVault, a documentation tool where every space is a Git repository.
+            |You are the assistant inside ${brandingService.appName()}, a documentation tool where every space is a Git repository.
             |${if (space != null) "You help with the \"${space.name}\" space." else "You help with all of the user's spaces."}
             |You are talking to ${user.name} (${user.email}); when they say "me", they mean this person. Today is ${java.time.LocalDate.now()}.
             |

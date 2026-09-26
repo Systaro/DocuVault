@@ -5,8 +5,7 @@
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <!-- Central log shipping is opt-in: the LOGSTASH appender only exists when
-         LOGSTASH_DESTINATION is set (systaro prod sets it; self-hosted/customer
-         installs leave it unset and ship nothing). environment = active Spring
+         LOGSTASH_DESTINATION is set; installs that leave it unset ship nothing. environment = active Spring
          profile, which drives the ES index name logstash-docuvault-<env>-<date>. -->
     <springProperty scope="context" name="logstashDestination" source="logstash.destination" defaultValue=""/>
     <springProperty scope="context" name="logstashEnvironment" source="spring.profiles.active" defaultValue="default"/>

@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Title } from '@angular/platform-browser';
+import { PageTitleService } from '../../core/branding/page-title.service';
 import { LayoutComponent } from '../../shared/components/layout.component';
 import { ToastService } from '../../shared/services/toast.service';
 import { Task, TasksService } from '../../core/api/tasks.service';
@@ -128,7 +128,7 @@ import { AuthService } from '../../core/auth/auth.service';
 export class MyTasksComponent implements OnInit {
   private tasksService = inject(TasksService);
   private toast = inject(ToastService);
-  private title = inject(Title);
+  private pageTitle = inject(PageTitleService);
 
   state = new TaskListState(this.tasksService, this.toast, inject(AuthService));
   assigned = this.state.list();
@@ -137,7 +137,7 @@ export class MyTasksComponent implements OnInit {
   editing = signal<Task | null>(null);
 
   ngOnInit(): void {
-    this.title.setTitle('My tasks – DocuVault');
+    this.pageTitle.set('My tasks');
     this.state.loading.set(true);
     this.tasksService.mine().subscribe({
       next: mine => {

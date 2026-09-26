@@ -1,7 +1,8 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
+import { BrandingService } from '../../core/branding/branding.service';
 
 @Component({
   selector: 'app-unsubscribe',
@@ -25,7 +26,7 @@ import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
           <p class="muted">{{ done()!.message }}</p>
           @if (canStopAll()) {
             <button class="btn btn-danger" [disabled]="working()" (click)="stopAll()">
-              Also stop all DocuVault emails
+              Also stop all {{ branding.appName() }} emails
             </button>
           }
           <a class="btn btn-ghost" href="/account">Manage preferences</a>
@@ -42,7 +43,7 @@ import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
           } @else {
             <h1>Unsubscribe from all emails?</h1>
             <p class="muted">
-              This turns off all DocuVault notification emails for <strong>{{ info()!.email }}</strong>.
+              This turns off all {{ branding.appName() }} notification emails for <strong>{{ info()!.email }}</strong>.
             </p>
             <button class="btn btn-danger" [disabled]="working()" (click)="confirm()">
               {{ working() ? 'Working…' : 'Unsubscribe from all' }}
@@ -80,7 +81,7 @@ import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
       height: 56px;
       margin: 0 auto 20px;
       border-radius: 14px;
-      background: linear-gradient(135deg, #4a8a8f, #6fb3b8);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 75%, black), var(--primary));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -105,12 +106,13 @@ import { UsersService, UnsubscribeInfo } from '../../core/api/users.service';
     }
     .btn:last-child { margin-bottom: 0; }
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-primary { background: linear-gradient(135deg, #4a8a8f, #6fb3b8); color: #fff; }
+    .btn-primary { background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 75%, black), var(--primary)); color: #fff; }
     .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-    .btn-ghost { background: none; color: #6fb3b8; }
+    .btn-ghost { background: none; color: var(--primary); }
   `]
 })
 export class UnsubscribeComponent implements OnInit {
+  protected branding = inject(BrandingService);
   loadingInfo = signal(true);
   invalid = signal(false);
   info = signal<UnsubscribeInfo | null>(null);

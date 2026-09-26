@@ -4,8 +4,8 @@ import com.docuvault.domain.user.EmailMode
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.EmailService
 import com.docuvault.service.SettingsService
+import com.docuvault.service.branding.BrandingService
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -21,7 +21,7 @@ class NotificationRolloutService(
     private val subscriptionService: NotificationSubscriptionService,
     private val emailService: EmailService,
     private val settingsService: SettingsService,
-    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(NotificationRolloutService::class.java)
 
@@ -38,15 +38,16 @@ class NotificationRolloutService(
         }
 
         val targets = userRepository.findAll().filter { it.enabled && it.emailMode == EmailMode.NONE }
+        val brand = brandingService.emailBrand()
         for (user in targets) {
             user.emailMode = EmailMode.DAILY
             user.updatedAt = Instant.now()
             userRepository.save(user)
 
             val token = subscriptionService.tokenFor(user)
-            val html = NotificationEmail.buildAnnouncement(user.name, publicUrl, token)
-            val headers = NotificationEmail.unsubscribeHeaders(publicUrl, token)
-            emailService.sendHtml(user.email, "DocuVault notifications are now on", html, headers)
+            val html = NotificationEmail.buildAnnouncement(user.name, brand, token)
+            val headers = NotificationEmail.unsubscribeHeaders(brand.publicUrl, token)
+            emailService.sendHtml(user.email, "${brand.appName} notifications are now on", html, headers)
         }
 
         val now = Instant.now().toString()

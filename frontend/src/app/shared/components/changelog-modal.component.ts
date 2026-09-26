@@ -4,6 +4,7 @@ import { SafeHtml } from '@angular/platform-browser';
 import { ChangelogRelease } from '../../core/api/changelog.service';
 import { MarkdownRenderService } from '../services/markdown-render.service';
 import { ChangelogDemoComponent } from './changelog-demo.component';
+import { BrandingService } from '../../core/branding/branding.service';
 
 /**
  * A release note is prose with pictures in it, and a picture is either a still
@@ -189,6 +190,7 @@ const DEMO_MARKER = /^[ \t]*!\[([^\]]*)\]\(demo:([a-z0-9-]+)\)[ \t]*$/gim;
 })
 export class ChangelogModalComponent {
   private markdown = inject(MarkdownRenderService);
+  private branding = inject(BrandingService);
 
   renderedReleases: RenderedRelease[] = [];
 
@@ -233,7 +235,7 @@ export class ChangelogModalComponent {
   get subtitle(): string {
     const count = this.renderedReleases.length;
     if (count === 0) return 'No release notes available.';
-    if (count === 1) return `DocuVault ${this.renderedReleases[0].version}`;
+    if (count === 1) return `${this.branding.appName()} ${this.renderedReleases[0].version}`;
     return `${count} releases since you were last here`;
   }
 

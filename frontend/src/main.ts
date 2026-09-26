@@ -9,6 +9,8 @@ import { authInterceptor } from './app/core/interceptors/auth.interceptor';
 import { NativeTokenStore } from './app/core/auth/native-token.store';
 import { PlatformService } from './app/core/platform/platform.service';
 import { CapabilitiesService } from './app/core/capabilities/capabilities.service';
+import { BrandingService } from './app/core/branding/branding.service';
+import { PageTitleService } from './app/core/branding/page-title.service';
 
 bootstrapApplication(AppComponent, {
   providers: [
@@ -33,6 +35,13 @@ bootstrapApplication(AppComponent, {
       multi: true,
       deps: [CapabilitiesService],
       useFactory: (caps: CapabilitiesService) => () => caps.load()
+    },
+    {
+      provide: APP_INITIALIZER,
+      multi: true,
+      // PageTitleService is a dependency only so the app name reaches the tab from the start.
+      deps: [BrandingService, PageTitleService],
+      useFactory: (branding: BrandingService) => () => branding.load()
     }
   ]
 }).catch(err => console.error(err));

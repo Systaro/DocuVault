@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { Title } from '@angular/platform-browser';
+import { PageTitleService } from '../../core/branding/page-title.service';
 import { Subscription } from 'rxjs';
 import { Space, SpacesService } from '../../core/api/spaces.service';
 import { TASK_STATUS_LABELS, Task, TaskStatus, TasksService } from '../../core/api/tasks.service';
@@ -142,7 +142,7 @@ export class SpaceTasksComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private spacesService = inject(SpacesService);
   private tasksService = inject(TasksService);
-  private title = inject(Title);
+  private pageTitle = inject(PageTitleService);
 
   state = new TaskListState(this.tasksService, inject(ToastService), inject(AuthService));
   tasks = this.state.list();
@@ -176,7 +176,7 @@ export class SpaceTasksComponent implements OnInit, OnDestroy {
       this.spacesService.getSpaceByPath(fullPath).subscribe({
         next: space => {
           this.space.set(space);
-          this.title.setTitle(`Tasks – ${space.name} – DocuVault`);
+          this.pageTitle.set('Tasks', space.name);
           this.tasksService.forSpace(space.id).subscribe({
             next: tasks => {
               this.tasks.items.set(tasks);

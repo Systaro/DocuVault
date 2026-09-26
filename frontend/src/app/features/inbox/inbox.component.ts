@@ -373,14 +373,14 @@ import { AuthService } from '../../core/auth/auth.service';
       padding: 5px 12px;
       border: 1px solid var(--primary);
       border-radius: 999px;
-      background: rgba(111, 179, 184, 0.1);
+      background: color-mix(in srgb, var(--primary) 10%, transparent);
       color: var(--primary-dark);
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       transition: background var(--transition);
 
-      &:hover { background: rgba(111, 179, 184, 0.18); }
+      &:hover { background: color-mix(in srgb, var(--primary) 18%, transparent); }
 
       .material-icons { font-size: 15px; color: var(--primary); }
       .live-pill-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -475,7 +475,7 @@ import { AuthService } from '../../core/auth/auth.service';
       &:hover { border-color: var(--primary); }
       &.selected {
         border-color: var(--primary);
-        background: rgba(111, 179, 184, 0.06);
+        background: color-mix(in srgb, var(--primary) 6%, transparent);
       }
     }
 
@@ -655,7 +655,7 @@ import { AuthService } from '../../core/auth/auth.service';
       font-weight: 600;
       padding: 2px 8px;
       border-radius: 999px;
-      background: rgba(111, 179, 184, 0.15);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
       color: var(--primary-dark);
 
       &.high { background: rgba(34, 197, 94, 0.12); color: #15803d; }
@@ -737,7 +737,7 @@ import { AuthService } from '../../core/auth/auth.service';
       gap: 12px;
       transition: all var(--transition);
 
-      &:hover { border-color: rgba(111, 179, 184, 0.3); }
+      &:hover { border-color: color-mix(in srgb, var(--primary) 30%, transparent); }
     }
 
     .filed-card-body { flex: 1; min-width: 0; }
@@ -770,7 +770,7 @@ import { AuthService } from '../../core/auth/auth.service';
       font-size: 12px;
       color: var(--primary);
       font-weight: 500;
-      background: rgba(111, 179, 184, 0.1);
+      background: color-mix(in srgb, var(--primary) 10%, transparent);
       padding: 2px 8px;
       border-radius: 999px;
 

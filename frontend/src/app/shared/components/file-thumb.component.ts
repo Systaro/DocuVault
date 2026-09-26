@@ -250,6 +250,8 @@ export class FileThumbComponent implements OnInit, OnDestroy {
    * one; the type is oversized because it is about to be shrunk 20x.
    */
   private previewDocument(body: string): string {
+    // The frame is a separate document, so the brand colour is passed in rather than inherited.
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim();
     return `<!doctype html><html><head><meta charset="utf-8"><style>
       html,body{margin:0;padding:56px 64px;background:#fff;color:#1f2937;
         font-family:-apple-system,'Segoe UI',sans-serif;font-size:30px;line-height:1.55;
@@ -265,8 +267,8 @@ export class FileThumbComponent implements OnInit, OnDestroy {
       pre code{background:none;padding:0}
       table{border-collapse:collapse;width:100%}
       th,td{border:1px solid #e2e8f0;padding:12px 16px;text-align:left}
-      blockquote{margin:0 0 20px;padding-left:24px;border-left:8px solid #6fb3b8;color:#475569}
-      a{color:#388087}
+      blockquote{margin:0 0 20px;padding-left:24px;border-left:8px solid ${primary};color:#475569}
+      a{color:color-mix(in srgb, ${primary} 70%, black)}
     </style></head><body>${body}</body></html>`;
   }
 }

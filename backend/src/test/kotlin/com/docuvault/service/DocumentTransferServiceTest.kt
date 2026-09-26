@@ -25,7 +25,7 @@ class DocumentTransferServiceTest {
     @TempDir
     lateinit var reposDir: Path
 
-    private val gitService by lazy { GitService(reposDir.toString(), mock(SettingsService::class.java)) }
+    private val gitService by lazy { GitService(reposDir.toString(), mock(SettingsService::class.java), "docuvault-bot@localhost") }
     private val documentRepository = mock(DocumentRepository::class.java)
 
     private val service by lazy {

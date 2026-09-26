@@ -9,6 +9,8 @@ import { CommonModule } from '@angular/common';
     <div
       class="logo-upload-zone"
       [class.dragging]="dragging()"
+      [class.themed]="!!surface"
+      [attr.data-theme]="surface"
       (dragover)="onDragOver($event)"
       (dragleave)="dragging.set(false)"
       (drop)="onDrop($event)"
@@ -17,24 +19,24 @@ import { CommonModule } from '@angular/common';
       <input
         #fileInput
         type="file"
-        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+        [accept]="accept()"
         (change)="onFileSelected($event)"
         hidden
       />
 
       @if (previewUrl() || currentLogoUrl) {
         <div class="logo-preview">
-          <img [src]="previewUrl() || currentLogoUrl" alt="Logo" />
+          <img [src]="previewUrl() || currentLogoUrl" [alt]="label" [class.contain]="fit === 'contain'" />
           <div class="logo-overlay">
             <span translate="no" class="material-icons">edit</span>
-            <span>Change logo</span>
+            <span>Change {{ label }}</span>
           </div>
         </div>
       } @else {
         <div class="upload-placeholder">
           <span translate="no" class="material-icons">add_photo_alternate</span>
-          <span class="upload-text">Upload logo</span>
-          <span class="upload-hint">PNG, JPG, SVG, WebP (max 2MB)</span>
+          <span class="upload-text">Upload {{ label }}</span>
+          <span class="upload-hint">{{ typeNames() }} (max {{ maxSizeLabel() }})</span>
         </div>
       }
 
@@ -52,7 +54,7 @@ import { CommonModule } from '@angular/common';
         (click)="removeLogo($event)"
       >
         <span translate="no" class="material-icons">delete_outline</span>
-        Remove logo
+        Remove {{ label }}
       </button>
     }
 
@@ -79,9 +81,13 @@ import { CommonModule } from '@angular/common';
         border-color: var(--primary);
       }
 
+      &.themed {
+        background: var(--surface);
+      }
+
       &.dragging {
         border-color: var(--primary);
-        background: rgba(111, 179, 184, 0.08);
+        background: color-mix(in srgb, var(--primary) 8%, transparent);
       }
     }
 
@@ -121,6 +127,11 @@ import { CommonModule } from '@angular/common';
         width: 100%;
         height: 100%;
         object-fit: cover;
+
+        &.contain {
+          object-fit: contain;
+          padding: 8px;
+        }
       }
 
       .logo-overlay {
@@ -187,6 +198,13 @@ import { CommonModule } from '@angular/common';
 })
 export class LogoUploadComponent {
   @Input() currentLogoUrl: string | null = null;
+  @Input() label = 'logo';
+  @Input() allowedTypes: string[] = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+  @Input() maxBytes = 2 * 1024 * 1024;
+  /** Shows the image on that theme's surface, for artwork made for a light or dark background. */
+  @Input() surface: 'light' | 'dark' | null = null;
+  /** `contain` for wide artwork such as wordmarks, which `cover` would crop. */
+  @Input() fit: 'cover' | 'contain' = 'cover';
   @Output() fileSelected = new EventEmitter<File>();
   @Output() logoRemoved = new EventEmitter<void>();
 
@@ -195,8 +213,36 @@ export class LogoUploadComponent {
   previewUrl = signal<string | null>(null);
   error = signal<string | null>(null);
 
-  private readonly maxSize = 2 * 1024 * 1024;
-  private readonly allowedTypes = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+  private static readonly TYPE_NAMES: Record<string, string> = {
+    'image/png': 'PNG',
+    'image/jpeg': 'JPG',
+    'image/svg+xml': 'SVG',
+    'image/webp': 'WebP',
+    'image/x-icon': 'ICO',
+    'image/vnd.microsoft.icon': 'ICO'
+  };
+
+  accept(): string {
+    return [...this.allowedTypes, ...(this.allowsIco() ? ['.ico'] : [])].join(',');
+  }
+
+  typeNames(): string {
+    return [...new Set(this.allowedTypes.map(type => LogoUploadComponent.TYPE_NAMES[type] ?? type))].join(', ');
+  }
+
+  maxSizeLabel(): string {
+    const mb = this.maxBytes / (1024 * 1024);
+    return mb >= 1 ? `${+mb.toFixed(1)}MB` : `${Math.round(this.maxBytes / 1024)}KB`;
+  }
+
+  private allowsIco(): boolean {
+    return this.allowedTypes.some(type => LogoUploadComponent.TYPE_NAMES[type] === 'ICO');
+  }
+
+  /** Browsers report .ico files inconsistently, sometimes with no type at all. */
+  private isAllowed(file: File): boolean {
+    return this.allowedTypes.includes(file.type) || (this.allowsIco() && file.name.toLowerCase().endsWith('.ico'));
+  }
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -220,12 +266,12 @@ export class LogoUploadComponent {
   private handleFile(file: File): void {
     this.error.set(null);
 
-    if (!this.allowedTypes.includes(file.type)) {
-      this.error.set('Invalid file type. Use PNG, JPG, SVG, or WebP.');
+    if (!this.isAllowed(file)) {
+      this.error.set(`Invalid file type. Use ${this.typeNames()}.`);
       return;
     }
-    if (file.size > this.maxSize) {
-      this.error.set('File too large. Maximum size is 2MB.');
+    if (file.size > this.maxBytes) {
+      this.error.set(`File too large. Maximum size is ${this.maxSizeLabel()}.`);
       return;
     }
 

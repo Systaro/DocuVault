@@ -12,6 +12,7 @@ import com.docuvault.domain.space.SyncStatus
 import com.docuvault.domain.user.User
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.embedding.CrossSpaceChunk
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.task.ActionItems
@@ -57,7 +58,8 @@ class CaptureService(
     private val embeddingService: EmbeddingService,
     private val permissionService: PermissionService,
     private val userRepository: UserRepository,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(CaptureService::class.java)
 
@@ -118,7 +120,7 @@ class CaptureService(
         val openAI = openAIProvider.getClient() ?: return null
         val names = candidates.associate { it.id to it.getFullPath() }
         val system = """
-            |You file quick notes in DocuVault, a documentation tool organised in spaces.
+            |You file quick notes in ${brandingService.appName()}, a documentation tool organised in spaces.
             |Pick the one space the note below belongs to, and list the tasks it contains.
             |
             |Spaces the user can write to:

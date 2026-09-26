@@ -3,6 +3,7 @@ package com.docuvault.api.notifications
 import com.docuvault.domain.user.EmailMode
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.notification.NotificationSubscriptionService
 import org.springframework.http.ResponseEntity
 import org.springframework.transaction.annotation.Transactional
@@ -24,7 +25,8 @@ import java.util.*
 class NotificationUnsubscribeController(
     private val subscriptionService: NotificationSubscriptionService,
     private val spaceRepository: SpaceRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val brandingService: BrandingService
 ) {
     @GetMapping("/unsubscribe/info")
     fun info(
@@ -64,7 +66,7 @@ class NotificationUnsubscribeController(
         user.updatedAt = Instant.now()
         userRepository.save(user)
         return ResponseEntity.ok(
-            UnsubscribeResultDto(scope = "all", message = "You've been unsubscribed from all DocuVault emails.")
+            UnsubscribeResultDto(scope = "all", message = "You've been unsubscribed from all ${brandingService.appName()} emails.")
         )
     }
 }

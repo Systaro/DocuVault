@@ -1,7 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { IsActiveMatchOptions, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { LayoutComponent } from '../../shared/components/layout.component';
+import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
   selector: 'app-admin',
@@ -46,11 +47,24 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                 <a
                   routerLink="settings"
                   routerLinkActive="active"
+                  [routerLinkActiveOptions]="settingsLinkActive"
                   class="sidebar-link"
                 >
                   <span translate="no" class="material-icons">settings</span>
                   Settings
                 </a>
+                @if (authService.isSuperAdmin()) {
+                  <a
+                    routerLink="settings"
+                    fragment="branding"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="settingsLinkActive"
+                    class="sidebar-link"
+                  >
+                    <span translate="no" class="material-icons">palette</span>
+                    Branding
+                  </a>
+                }
               </div>
               <div class="sidebar-section">
                 <span class="sidebar-label">Integrations</span>
@@ -58,6 +72,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLink="settings"
                   fragment="git"
                   routerLinkActive="active"
+                  [routerLinkActiveOptions]="settingsLinkActive"
                   class="sidebar-link"
                 >
                   <span translate="no" class="material-icons">cloud_sync</span>
@@ -67,6 +82,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
                   routerLink="settings"
                   fragment="ai"
                   routerLinkActive="active"
+                  [routerLinkActiveOptions]="settingsLinkActive"
                   class="sidebar-link"
                 >
                   <span translate="no" class="material-icons">auto_awesome</span>
@@ -188,7 +204,7 @@ import { LayoutComponent } from '../../shared/components/layout.component';
 
       &.active {
         color: var(--primary);
-        background: rgba(111, 179, 184, 0.1);
+        background: color-mix(in srgb, var(--primary) 10%, transparent);
       }
     }
 
@@ -213,4 +229,12 @@ import { LayoutComponent } from '../../shared/components/layout.component';
     }
   `]
 })
-export class AdminComponent {}
+export class AdminComponent {
+  protected authService = inject(AuthService);
+
+  /** The settings links differ only by fragment, so only the one whose
+   *  fragment matches is marked active. */
+  protected readonly settingsLinkActive: IsActiveMatchOptions = {
+    paths: 'exact', queryParams: 'ignored', matrixParams: 'ignored', fragment: 'exact'
+  };
+}

@@ -8,7 +8,8 @@
 // ============================================
 // CSS VARIABLES - NOTEHUB DESIGN SYSTEM
 // ============================================
-:root {
+:root,
+[data-theme="light"] {
   // Colors
   --primary-dark: #388087;
   --primary: #6FB3B8;
@@ -45,10 +46,10 @@
   --radius-full: 9999px;
 
   // Shadows
-  --shadow-sm: 0 1px 3px rgba(56, 128, 135, 0.08);
-  --shadow-md: 0 4px 12px rgba(56, 128, 135, 0.12);
-  --shadow-lg: 0 8px 24px rgba(56, 128, 135, 0.16);
-  --shadow-xl: 0 16px 48px rgba(56, 128, 135, 0.2);
+  --shadow-sm: 0 1px 3px color-mix(in srgb, var(--primary-dark) 8%, transparent);
+  --shadow-md: 0 4px 12px color-mix(in srgb, var(--primary-dark) 12%, transparent);
+  --shadow-lg: 0 8px 24px color-mix(in srgb, var(--primary-dark) 16%, transparent);
+  --shadow-xl: 0 16px 48px color-mix(in srgb, var(--primary-dark) 20%, transparent);
   --shadow: var(--shadow-md);
 
   // Transitions
@@ -169,7 +170,7 @@ body {
   &:hover:not(:disabled) {
     border-color: var(--primary);
     color: var(--primary-dark);
-    background: rgba(111, 179, 184, 0.05);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
   }
 
   &:disabled {
@@ -249,7 +250,7 @@ body {
   &:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px rgba(111, 179, 184, 0.15);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 15%, transparent);
   }
 
   &:disabled {
@@ -410,7 +411,7 @@ body {
   font-weight: 500;
 
   &.badge-admin {
-    background: rgba(56, 128, 135, 0.1);
+    background: color-mix(in srgb, var(--primary-dark) 10%, transparent);
     color: var(--primary-dark);
   }
 
@@ -548,7 +549,7 @@ body {
 
   &.active {
     border-color: var(--primary);
-    background: linear-gradient(135deg, rgba(111,179,184,0.05) 0%, rgba(194,237,206,0.05) 100%);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, transparent) 0%, rgba(194,237,206,0.05) 100%);
   }
 
   .workspace-icon {
@@ -666,7 +667,7 @@ body {
 
   &:hover {
     border-color: var(--primary);
-    background: rgba(111, 179, 184, 0.05);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
   }
 
   .material-icons {
@@ -760,7 +761,7 @@ body {
   transition: background var(--transition-fast);
 
   &:hover {
-    background: rgba(111, 179, 184, 0.05);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
   }
 
   &:last-child {
@@ -1254,7 +1255,7 @@ body {
     content: '';
     position: absolute;
     inset: 0;
-    background: rgba(111, 179, 184, 0.18);
+    background: color-mix(in srgb, var(--primary) 18%, transparent);
     pointer-events: none;
     z-index: 2;
   }
@@ -1633,7 +1634,7 @@ body {
   }
 
   blockquote {
-    border-left: 4px solid #6fb3b8;
+    border-left: 4px solid var(--primary);
     margin: 0 0 1em;
     padding: 0.5em 1em;
     color: #4b5563;
@@ -1664,7 +1665,7 @@ body {
   tr:nth-child(even) { background: #f9fafb; }
 
   a {
-    color: #6fb3b8;
+    color: var(--primary);
     text-decoration: none;
 
     &:hover { text-decoration: underline; }

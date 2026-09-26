@@ -1,8 +1,10 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Title } from '@angular/platform-browser';
 import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
+import { BrandingService } from '../../core/branding/branding.service';
+import { PageTitleService } from '../../core/branding/page-title.service';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 /**
  * The one page a person sees when connecting an MCP client (Claude Code,
@@ -14,12 +16,12 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
 @Component({
   selector: 'app-oauth-consent',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, BrandLogoComponent],
   template: `
     <div class="consent-container">
       <div class="consent-left">
         <div class="consent-brand">
-          <img src="assets/logo.png" alt="DocuVault" class="consent-brand-logo" />
+          <app-brand-logo [onDark]="true" class="consent-brand-logo" />
           <p>Your team's collaborative documentation workspace with Git-powered version control</p>
         </div>
       </div>
@@ -36,8 +38,8 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
               <span translate="no" class="material-icons state-icon error-icon">link_off</span>
               <h2>Cannot authorize this request</h2>
               <p>{{ fatalError() }}</p>
-              <p class="hint">Start the connection again from your MCP client. If it keeps failing, the client's configuration points at the wrong DocuVault URL.</p>
-              <a routerLink="/dashboard" class="btn btn-secondary btn-full">Back to DocuVault</a>
+              <p class="hint">Start the connection again from your MCP client. If it keeps failing, the client's configuration points at the wrong {{ branding.appName() }} URL.</p>
+              <a routerLink="/dashboard" class="btn btn-secondary btn-full">Back to {{ branding.appName() }}</a>
             </div>
           } @else if (redirecting()) {
             <div class="state">
@@ -48,7 +50,7 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
           } @else {
             @if (consent(); as c) {
             <h2>Authorize {{ c.clientName }}</h2>
-            <p class="subtitle">An application wants to use DocuVault on your behalf.</p>
+            <p class="subtitle">An application wants to use {{ branding.appName() }} on your behalf.</p>
 
             <div class="consent-facts">
               <div class="fact">
@@ -76,7 +78,7 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
 
             <div class="consent-note">
               <span translate="no" class="material-icons">info</span>
-              <p>The application registered itself under the name "{{ c.clientName }}". DocuVault cannot verify who operates it, so only approve if you started this from a tool you trust.</p>
+              <p>The application registered itself under the name "{{ c.clientName }}". {{ branding.appName() }} cannot verify who operates it, so only approve if you started this from a tool you trust.</p>
             </div>
 
             @if (error()) {
@@ -153,9 +155,9 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
     }
 
     .consent-brand-logo {
-      display: inline-block;
-      max-width: 200px;
-      height: auto;
+      --brand-logo-max-height: 64px;
+      --brand-logo-max-width: 260px;
+      --brand-text-size: 32px;
       margin-bottom: 24px;
     }
 
@@ -358,7 +360,9 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
       }
 
       .consent-brand-logo {
-        max-width: 120px;
+        --brand-mark-width: 120px;
+        --brand-logo-max-height: 40px;
+        --brand-text-size: 22px;
         margin-bottom: 0;
       }
 
@@ -387,7 +391,8 @@ import { OAuthConsent, OAuthService } from '../../core/api/oauth.service';
 export class OAuthConsentComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private oauth = inject(OAuthService);
-  private title = inject(Title);
+  private pageTitle = inject(PageTitleService);
+  protected branding = inject(BrandingService);
 
   loading = signal(true);
   submitting = signal(false);
@@ -397,7 +402,7 @@ export class OAuthConsentComponent implements OnInit {
   redirecting = signal<'approve' | 'deny' | null>(null);
 
   ngOnInit(): void {
-    this.title.setTitle('Authorize application – DocuVault');
+    this.pageTitle.set('Authorize application');
     const query: Record<string, string> = {};
     this.route.snapshot.queryParamMap.keys.forEach(key => {
       const value = this.route.snapshot.queryParamMap.get(key);
@@ -413,7 +418,7 @@ export class OAuthConsentComponent implements OnInit {
         }
         if (response.consent) {
           this.consent.set(response.consent);
-          this.title.setTitle(`Authorize ${response.consent.clientName} – DocuVault`);
+          this.pageTitle.set(`Authorize ${response.consent.clientName}`);
         } else {
           this.fatalError.set('The authorization request is incomplete.');
         }
@@ -435,7 +440,7 @@ export class OAuthConsentComponent implements OnInit {
       next: response => {
         if (!response.redirectUrl) {
           this.submitting.set(false);
-          this.error.set('DocuVault did not return a redirect target. Start again from your MCP client.');
+          this.error.set(`${this.branding.appName()} did not return a redirect target. Start again from your MCP client.`);
           return;
         }
         this.redirecting.set(decision);

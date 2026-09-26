@@ -1,7 +1,8 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/auth/auth.service';
+import { BrandingService } from '../../core/branding/branding.service';
 import { ApiTokensService, ApiToken } from '../../core/api/api-tokens.service';
 import { UsersService } from '../../core/api/users.service';
 import { LayoutComponent } from '../../shared/components/layout.component';
@@ -251,14 +252,14 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
             <span translate="no" class="material-icons card-icon">terminal</span>
             <div>
               <h2>MCP Server</h2>
-              <p>Use DocuVault documentation directly in Claude Code, Claude Desktop or Cursor</p>
+              <p>Use {{ branding.appName() }} documentation directly in Claude Code, Claude Desktop or Cursor</p>
             </div>
           </div>
           <div class="card-body">
             <div class="mcp-explainer">
               <p>
                 The <strong>Model Context Protocol (MCP)</strong> lets AI assistants like Claude access your documentation directly.
-                DocuVault runs the MCP server itself: add one URL to your client, approve the connection in your browser, done.
+                {{ branding.appName() }} runs the MCP server itself: add one URL to your client, approve the connection in your browser, done.
                 Nothing to install, no token to copy. Works with Claude Code on macOS, Linux and Windows.
               </p>
 
@@ -297,7 +298,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
 
             <h3 class="setup-heading">Claude Code</h3>
             <p class="setup-intro">
-              Run this once. Then, in a session, open <code>/mcp</code>, pick <strong>docuvault</strong> and <strong>Authenticate</strong>: your browser opens DocuVault to approve the connection.
+              Run this once. Then, in a session, open <code>/mcp</code>, pick <strong>docuvault</strong> and <strong>Authenticate</strong>: your browser opens {{ branding.appName() }} to approve the connection.
             </p>
             <div class="code-block">
               <div class="code-header">
@@ -419,7 +420,7 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
     .role-badge {
       display: inline-block;
       padding: 2px 8px;
-      background: rgba(111, 179, 184, 0.15);
+      background: color-mix(in srgb, var(--primary) 15%, transparent);
       color: var(--primary-dark);
       border-radius: var(--radius-sm);
       font-size: 13px !important;
@@ -754,8 +755,8 @@ import { SearchableSelectComponent, SelectOption } from '../../shared/components
       align-items: flex-start;
       gap: var(--spacing-sm);
       padding: var(--spacing-md);
-      background: rgba(111, 179, 184, 0.08);
-      border: 1px solid rgba(111, 179, 184, 0.2);
+      background: color-mix(in srgb, var(--primary) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
       border-radius: var(--radius-md);
 
       > .material-icons {
@@ -903,6 +904,8 @@ export class AccountComponent implements OnInit {
   readonly mcpUrl: string;
   readonly mcpCommand: string;
   readonly mcpConfig: string;
+
+  protected branding = inject(BrandingService);
 
   constructor(
     public authService: AuthService,

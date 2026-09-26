@@ -18,11 +18,12 @@ import { CapabilitiesService } from '../../core/capabilities/capabilities.servic
 import { AiEditResult } from '../../core/api/ai.service';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
 import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
+import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 
 @Component({
   selector: 'app-preview',
   standalone: true,
-  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent, AiEditDialogComponent, AiEditStepBackComponent],
+  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent, AiEditDialogComponent, AiEditStepBackComponent, BrandLogoComponent],
   template: `
     <div class="preview-shell">
       <!-- Hover zone: reveals the auto-hidden topbar when the cursor nears the top -->
@@ -35,10 +36,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
         <button class="header-icon-btn" (click)="goBack()" title="Back to editor">
           <span translate="no" class="material-icons">arrow_back</span>
         </button>
-        <div class="header-brand">
-          <span translate="no" class="brand-icon material-icons">menu_book</span>
-          <span class="brand-name">DocuVault</span>
-        </div>
+        <app-brand-logo class="header-brand" />
         @if (breadcrumbSegments().length) {
           <nav class="header-breadcrumb" aria-label="File location">
             @for (segment of breadcrumbSegments(); track segment.label; let last = $last) {
@@ -327,16 +325,12 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
     }
 
     .header-brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #6fb3b8;
-      font-weight: 600;
-      font-size: 16px;
+      --brand-text-size: 16px;
+      --brand-logo-max-height: 28px;
+      --brand-logo-max-width: 180px;
+      color: var(--primary);
       flex-shrink: 0;
     }
-
-    .brand-icon { font-size: 24px; }
 
     .header-breadcrumb {
       display: flex;
@@ -412,7 +406,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
 
     .sidebar-header .material-icons {
       font-size: 20px;
-      color: #6fb3b8;
+      color: var(--primary);
     }
 
     .sidebar-title {
@@ -454,8 +448,8 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
     .tree-folder:hover, .tree-file:hover { background: #f3f4f6; }
 
     .tree-file.active {
-      background: #e0f2f1;
-      color: #00796b;
+      background: color-mix(in srgb, var(--primary) 14%, white);
+      color: color-mix(in srgb, var(--primary) 55%, black);
       font-weight: 500;
     }
 
@@ -465,7 +459,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
       flex-shrink: 0;
     }
 
-    .folder-icon { color: #6fb3b8; }
+    .folder-icon { color: var(--primary); }
     .file-icon { color: #9ca3af; }
 
     .file-icon-img {
@@ -530,7 +524,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
     .loading-state p, .error-state p, .download-state p { margin: 0; font-size: 14px; }
 
     .error-icon { font-size: 64px; color: #d1d5db; }
-    .download-icon { font-size: 64px; color: #6fb3b8; }
+    .download-icon { font-size: 64px; color: var(--primary); }
 
     .download-state .btn {
       margin-top: 24px;
@@ -538,7 +532,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
       align-items: center;
       gap: 8px;
       padding: 10px 24px;
-      background: #6fb3b8;
+      background: var(--primary);
       color: white;
       border: none;
       border-radius: 8px;
@@ -548,7 +542,7 @@ import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/component
       cursor: pointer;
     }
 
-    .download-state .btn:hover { background: #5a9a9f; }
+    .download-state .btn:hover { background: color-mix(in srgb, var(--primary) 85%, black); }
 
     .html-container, .pdf-container { flex: 1; display: flex; }
 

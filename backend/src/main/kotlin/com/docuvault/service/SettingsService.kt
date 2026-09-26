@@ -25,8 +25,8 @@ class SettingsService(
     @Value("\${spring.mail.username:}") private val defaultMailUsername: String,
     @Value("\${spring.mail.password:}") private val defaultMailPassword: String,
     @Value("\${spring.mail.properties.mail.smtp.starttls.enable:true}") private val defaultMailStartTls: String,
-    @Value("\${app.mail.from-address:noreply@docuvault.systaro.de}") private val defaultMailFromAddress: String,
-    @Value("\${app.mail.from-name:DocuVault}") private val defaultMailFromName: String,
+    @Value("\${app.mail.from-address}") private val defaultMailFromAddress: String,
+    @Value("\${app.mail.from-name}") private val defaultMailFromName: String,
     @Value("\${pdf.render-url:}") private val defaultPdfRenderUrl: String,
     @Value("\${pdf.api-key:}") private val defaultPdfApiKey: String,
     @Value("\${encryption.key}") private val encryptionKeySource: String
@@ -138,6 +138,7 @@ class SettingsService(
     fun getMailPassword(): String = getOrDefault(MAIL_PASSWORD, defaultMailPassword)
     fun getMailStartTls(): Boolean = getOrDefault(MAIL_STARTTLS, defaultMailStartTls).toBooleanStrictOrNull() ?: true
     fun getMailFromAddress(): String = getOrDefault(MAIL_FROM_ADDRESS, defaultMailFromAddress)
+    /** Blank means "use the app name" — see EmailService. */
     fun getMailFromName(): String = getOrDefault(MAIL_FROM_NAME, defaultMailFromName)
     fun isMailConfigured(): Boolean = getMailHost().isNotBlank()
 

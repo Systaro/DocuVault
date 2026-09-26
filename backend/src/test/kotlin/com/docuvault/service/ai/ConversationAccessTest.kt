@@ -10,6 +10,7 @@ import com.docuvault.infrastructure.repository.ConversationRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
+import com.docuvault.service.branding.BrandingService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.git.GitService
 import com.docuvault.service.tools.ToolRegistry
@@ -52,7 +53,8 @@ class ConversationAccessTest {
         mock(ToolRegistry::class.java),
         ObjectMapper(),
         mock(DraftMaterialService::class.java),
-        mock(AttachmentService::class.java)
+        mock(AttachmentService::class.java),
+        mock(BrandingService::class.java)
     )
 
     private val user = User(id = UUID.randomUUID(), email = "u@x.io", passwordHash = "h", name = "User", role = UserRole.VIEWER)

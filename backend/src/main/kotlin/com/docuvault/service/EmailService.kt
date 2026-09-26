@@ -1,5 +1,6 @@
 package com.docuvault.service
 
+import com.docuvault.service.branding.BrandingService
 import org.slf4j.LoggerFactory
 import org.springframework.mail.SimpleMailMessage
 import org.springframework.mail.javamail.JavaMailSenderImpl
@@ -9,7 +10,8 @@ import org.springframework.stereotype.Service
 
 @Service
 class EmailService(
-    private val settingsService: SettingsService
+    private val settingsService: SettingsService,
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(EmailService::class.java)
 
@@ -34,12 +36,23 @@ class EmailService(
         }
     }
 
+    /** An explicitly configured sender name wins; otherwise mail goes out under the app's own name. */
+    private fun fromName(): String = settingsService.getMailFromName().ifBlank { brandingService.appName() }
+
+    /** A fresh install has no SMTP server; skipping beats an SMTP error per mail. */
+    private fun skipUnconfigured(subject: String): Boolean {
+        if (settingsService.isMailConfigured()) return false
+        logger.warn("Mail host not configured, not sending: $subject")
+        return true
+    }
+
     @Async
     fun sendSimple(to: String, subject: String, body: String) {
+        if (skipUnconfigured(subject)) return
         try {
             val sender = buildSender()
             val message = SimpleMailMessage()
-            message.from = "${settingsService.getMailFromName()} <${settingsService.getMailFromAddress()}>"
+            message.from = "${fromName()} <${settingsService.getMailFromAddress()}>"
             message.setTo(to)
             message.subject = subject
             message.text = body
@@ -52,11 +65,12 @@ class EmailService(
 
     @Async
     fun sendHtml(to: String, subject: String, htmlBody: String, headers: Map<String, String> = emptyMap()) {
+        if (skipUnconfigured(subject)) return
         try {
             val sender = buildSender()
             val mimeMessage = sender.createMimeMessage()
             val helper = MimeMessageHelper(mimeMessage, true, "UTF-8")
-            helper.setFrom(settingsService.getMailFromAddress(), settingsService.getMailFromName())
+            helper.setFrom(settingsService.getMailFromAddress(), fromName())
             helper.setTo(to)
             helper.setSubject(subject)
             helper.setText(htmlBody, true)
@@ -76,12 +90,13 @@ class EmailService(
         val sender = buildSender()
         val mimeMessage = sender.createMimeMessage()
         val helper = MimeMessageHelper(mimeMessage, true, "UTF-8")
-        helper.setFrom(settingsService.getMailFromAddress(), settingsService.getMailFromName())
+        val appName = brandingService.appName()
+        helper.setFrom(settingsService.getMailFromAddress(), fromName())
         helper.setTo(to)
-        helper.setSubject("DocuVault — test email")
+        helper.setSubject("$appName — test email")
         helper.setText(
             """
-            <p>If you're reading this, your DocuVault SMTP settings are working.</p>
+            <p>If you're reading this, your ${EmailLayout.escape(appName)} SMTP settings are working.</p>
             <p>Sent from <strong>${settingsService.getMailFromAddress()}</strong>
                via <code>${settingsService.getMailHost()}:${settingsService.getMailPort()}</code>.</p>
             """.trimIndent(),

@@ -12,17 +12,17 @@ import com.docuvault.domain.user.User
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.TaskRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.EmailLayout
 import com.docuvault.service.EmailService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.SettingsService
+import com.docuvault.service.branding.BrandingService
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
-import org.springframework.web.util.HtmlUtils
 import java.time.Instant
 import java.time.LocalDate
 import java.util.*
@@ -91,7 +91,7 @@ class TaskService(
     private val permissionService: PermissionService,
     private val emailService: EmailService,
     private val settingsService: SettingsService,
-    @Value("\${app.public-url:https://docuvault.systaro.de}") private val publicUrl: String
+    private val brandingService: BrandingService
 ) {
     private val logger = LoggerFactory.getLogger(TaskService::class.java)
 
@@ -329,38 +329,26 @@ class TaskService(
     private fun notifyAssignee(task: Task, actor: User) {
         val assignee = task.assignee ?: return
         if (assignee.id == actor.id || assignee.emailMode == EmailMode.NONE || !settingsService.isMailConfigured()) return
-        val url = "${publicUrl.trimEnd('/')}/tasks"
+        val brand = brandingService.emailBrand()
+        val url = "${brand.publicUrl}/tasks"
         val due = task.dueDate?.let { "<p style=\"color:#555;font-size:14px;margin:0 0 16px;\">Due ${it}</p>" } ?: ""
         emailService.sendHtml(
             to = assignee.email,
             subject = "${actor.name} assigned you a task: ${task.title.take(80)}",
-            htmlBody = """
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f5;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;">
+            htmlBody = EmailLayout.page("""
         <tr><td style="padding:36px 40px;">
           <p style="color:#7a9a9d;font-size:13px;margin:0 0 8px;">${esc(task.space.name)}</p>
           <h1 style="color:#1a2e30;font-size:20px;margin:0 0 16px;">${esc(task.title)}</h1>
           $due
           <p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 24px;">${esc(actor.name)} assigned this task to you.</p>
-          <table cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#4a8a8f;">
-            <a href="$url" style="display:inline-block;padding:12px 26px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;">Open my tasks</a>
-          </td></tr></table>
+          ${EmailLayout.button(brand, url, "Open my tasks")}
         </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>
-            """.trimIndent()
+${EmailLayout.footer(EmailLayout.signature(brand))}
+            """.trimIndent())
         )
     }
 
-    private fun esc(text: String): String = HtmlUtils.htmlEscape(text)
+    private fun esc(text: String): String = EmailLayout.escape(text)
 
     /** Edit access is looked up once per space, not once per task. */
     private fun dtos(tasks: List<Task>, viewer: User): List<TaskDto> {
