@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Systaro/DocuVault/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately by email, not as an issue.
+  - name: Install guide
+    url: https://github.com/Systaro/DocuVault/blob/main/docs/install.md
+    about: Most setup questions are answered here.

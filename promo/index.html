@@ -116,6 +116,13 @@
   .alpha-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; vertical-align: 2px; }
   .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: var(--teal); background: var(--teal-light); }
 
+  /* Real screenshots */
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .shot { margin: 0; }
+  .shot.wide { grid-column: 1 / -1; }
+  .shot img { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .shot figcaption { margin-top: 12px; color: var(--muted); font-size: 15px; text-align: center; }
+
   /* Grid of smaller features */
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
   @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, 1fr); } }
@@ -162,7 +169,7 @@
     .strip { grid-template-columns: 1fr 1fr; }
     .feature, .feature.flip { grid-template-columns: 1fr; gap: 28px; margin-bottom: 80px; }
     .feature.flip .copy { order: 0; }
-    .two { grid-template-columns: 1fr; }
+    .two, .shots { grid-template-columns: 1fr; }
     section.block { padding: 80px 0; }
   }
   @media (max-width: 520px) {
@@ -306,10 +313,35 @@
       </div>
       <div class="frame"><img src="assets/teams.gif" alt="Teams connected to spaces with Editor and Viewer roles. A new member joins Engineering and inherits its access." loading="lazy" width="1200" height="560"></div>
     </div>
+
+    <div class="feature flip reveal">
+      <div class="copy">
+        <span class="tag">Whitelabel</span>
+        <h3>Your name, your colour, your logo</h3>
+        <p>Give the instance its own name, a primary colour, logos for light and dark backgrounds and a favicon. It applies everywhere at once: the sign-in page, the app, shared pages, tab titles and emails.</p>
+        <p>Both themes derive their shades from one colour, and a very light colour is darkened on buttons so the labels stay readable.</p>
+      </div>
+      <div class="frame"><img src="assets/branding.gif" alt="The branding settings get a new name, colour and logo, and the app switches to them." loading="lazy" width="1200" height="560"></div>
+    </div>
   </div>
 </section>
 
-<section class="block alt">
+<section class="block alt" id="screenshots">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">The real thing</span>
+      <h2>What it looks like</h2>
+      <p>Screenshots of the app itself, with demo content.</p>
+    </div>
+    <div class="shots reveal">
+      <figure class="shot wide"><img src="assets/screens/document.png" alt="A Markdown document with a checklist and a table" loading="lazy" width="1600" height="1000"><figcaption>A document: plain Markdown in Git, edited in the browser</figcaption></figure>
+      <figure class="shot"><img src="assets/screens/history.png" alt="Version history listing the commits of a document" loading="lazy" width="1600" height="1000"><figcaption>Every save is a commit</figcaption></figure>
+      <figure class="shot"><img src="assets/screens/branded-document.png" alt="The same document in a custom orange brand" loading="lazy" width="1600" height="1000"><figcaption>The same page, whitelabeled</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="block">
   <div class="wrap">
     <div class="section-head reveal">
       <span class="kicker">And the rest</span>
@@ -336,7 +368,7 @@
   </div>
 </section>
 
-<section class="block" id="self-host">
+<section class="block alt" id="self-host">
   <div class="wrap">
     <div class="section-head reveal">
       <span class="kicker">Self-host</span>

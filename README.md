@@ -2,11 +2,11 @@
 
 Self-hosted team documentation with Git as the source of truth. Edit collaboratively in the browser; every save is a commit to your repo. Comes with a CRUD MCP server for local AI editing and a role-based permission system. AI features are optional.
 
-![Status](https://img.shields.io/badge/status-early%20access-yellow) ![License](https://img.shields.io/badge/license-BSL%201.1-blue)
+![Status](https://img.shields.io/badge/status-early%20access-yellow) ![License](https://img.shields.io/badge/license-BSL%201.1-blue) ![Images](https://img.shields.io/badge/images-amd64%20%7C%20arm64-informational)
 
-**[Website](https://docuvault-promo.systaro.de)** · [Install guide](docs/install.md) · [MCP server](#mcp-server-for-ai-agents)
+**[Website](https://docuvault-promo.systaro.de)** · [Install guide](docs/install.md) · [MCP server](#mcp-server-for-ai-agents) · [Contributing](CONTRIBUTING.md)
 
-<p align="center"><img src="promo/assets/git-commit.gif" alt="Typing in the DocuVault editor. It saves, and a new commit appears in the git log." width="900"></p>
+<p align="center"><img src="promo/assets/screens/document.png" alt="A Markdown document with a checklist and a table in the DocuVault web UI" width="900"></p>
 
 ## Why
 
@@ -16,9 +16,9 @@ For developers and AI tools, the same files are available locally — clone the 
 
 ## Features
 
-- **Git-backed storage.** Every save commits to your Git repository (GitLab today; GitHub coming). Full version history for free.
+- **Git-backed storage.** Every save is a commit, with full version history. A space syncs with a GitLab repository (GitHub is planned) or stays a local Git repository on the server.
 - **Local-first AI editing.** Clone the repo and edit with any LLM tool that works on files. No vendor lock-in.
-- **Full-CRUD MCP server.** Ships as `@systaro/docuvault-mcp` on npm. Drop it into any MCP-compatible client (Claude Desktop, Claude Code, Cursor) and your AI agent can list spaces, read documents, create them, edit them, and share them — directly.
+- **Built-in MCP server.** Point Claude Code, Claude Desktop or Cursor at `/api/mcp`, sign in once in the browser, and your agent can search, read, create, edit and share documents with your permissions.
 - **WYSIWYG editor.** TipTap-based rich editor that emits clean Markdown.
 - **Role-based permissions.** Super Admin, Org Admin, Editor, Viewer, plus fine-grained per-space permissions.
 - **Teams.** Group users into teams (a user can be in several) and grant space access once per team instead of once per person. Members inherit every grant of every team they're in; the strongest grant — personal or inherited — wins.
@@ -30,8 +30,15 @@ For developers and AI tools, the same files are available locally — clone the 
 - **Email notifications.** Per-user instant or digest mode for space changes; password reset; invitations.
 - **First-boot setup wizard.** No `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars to fumble — visit the URL, create the admin, done.
 - **Admin settings UI.** Configure SMTP, OpenAI, and GitLab from the browser; values stored encrypted in the database.
+- **Your brand.** Set the app name, a primary colour, logos for light and dark backgrounds and a favicon in the admin UI. They apply everywhere: sign-in page, app, shared pages, tab titles and emails. See [Whitelabeling](#whitelabeling).
 
-## A quick look
+## Screenshots
+
+| | |
+|---|---|
+| **Your spaces**<br><img src="promo/assets/screens/dashboard.png" alt="Dashboard with the groups Company and Engineering" width="440"> | **Every save is a commit**<br><img src="promo/assets/screens/history.png" alt="Version history panel listing the commits of a document" width="440"> |
+
+## How it works
 
 | | |
 |---|---|
@@ -64,11 +71,34 @@ $EDITOR .env                 # fill in PUBLIC_HOSTNAME, secrets, SMTP credential
 ./deploy.sh latest           # pulls the public images, backs up, swaps, health-checks
 ```
 
-The images are public on `ghcr.io/systaro/docuvault`, so no registry login is needed.
+The images are public on `ghcr.io/systaro/docuvault` for amd64 and arm64, signed with cosign, and need no registry login. `latest` is the newest release; pin a version (`./deploy.sh v0.8.0`) for production. If an update fails its health check, `deploy.sh` restarts the images that ran before.
 
-Then visit `https://<your-hostname>` in a browser — the first-time setup wizard will walk you through creating an admin account.
+Then visit `https://<your-hostname>` in a browser. The first-time setup wizard walks you through creating the admin account.
 
-Full install + upgrade documentation: [docs/install.md](docs/install.md).
+Full install and upgrade documentation: [docs/install.md](docs/install.md).
+
+## Whitelabeling
+
+Run DocuVault under your own name. As super admin, open **Admin → Branding** and set:
+
+- the app name, used in the header, tab titles, shared pages and every email
+- a primary colour; both themes derive their shades from it, and very light colours are darkened for readable buttons
+- a logo for light backgrounds, an optional one for dark backgrounds, and a favicon (PNG, JPEG, WebP or SVG, up to 1 MB)
+
+Changes apply immediately for everyone, including the sign-in page. Branding is one per installation.
+
+| | |
+|---|---|
+| <img src="promo/assets/screens/branded-login.png" alt="Sign-in page in a custom orange brand named Northwind Wiki" width="440"> | <img src="promo/assets/screens/branded-document.png" alt="The same document view in the Northwind Wiki brand" width="440"> |
+
+## Development
+
+```bash
+cp .env.example .env         # set DB_PASSWORD and JWT_SECRET
+docker compose up --build    # app on http://localhost:7031
+```
+
+Details for working on the backend, frontend and meeting bot are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## MCP server (for AI agents)
 
@@ -113,11 +143,13 @@ still works for clients without HTTP/OAuth support.
 
 ## Status
 
-DocuVault is in **early access**. The data model and APIs are stable for self-hosting; expect occasional breaking changes in minor versions until 1.0. Release notes live at [GitHub Releases](https://github.com/Systaro/DocuVault/releases) and the in-app banner will tell you when a new version is available.
+DocuVault is in **early access**. The data model and APIs are stable for self-hosting; expect occasional breaking changes in minor versions until 1.0. Tasks and the meeting bot are alpha. Release notes are on [GitHub Releases](https://github.com/Systaro/DocuVault/releases) and in the app (click the version next to the logo).
+
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). This repository is published from Systaro's internal repository, so pull requests are applied by a maintainer rather than merged here.
 
 ## License
 
-[Business Source License 1.1](LICENSE). Free to use and modify for self-hosting; **commercial production use as a competing hosted service requires a separate agreement**. The license auto-converts to Apache 2.0 after four years per version. For commercial licensing, contact `licensing@systaro.de`.
+DocuVault is **source-available**, not open source in the OSI sense: [Business Source License 1.1](LICENSE). Free to use and modify for self-hosting, including inside your company; **offering it as a competing hosted service requires a separate agreement**. The license auto-converts to Apache 2.0 after four years per version. For commercial licensing, contact `licensing@systaro.de`.
 
 ## Security
 
