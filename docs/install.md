@@ -14,7 +14,7 @@ Self-hosted DocuVault. ~10 minutes from a fresh server to a running install.
   send invitations, password resets, or notifications.
 
 No account or registry login is needed: the images are public on
-`ghcr.io/systaro/docuvault`.
+`ghcr.io/systaro/docuvault`, for `amd64` and `arm64` servers.
 
 ## 1. Get the install files
 
@@ -42,7 +42,11 @@ where indicated (`openssl rand -base64 48`). The fields that *must* be set:
 - `PUBLIC_HOSTNAME` (e.g. `docuvault.example.com`)
 - `LETSENCRYPT_EMAIL` (gets cert expiry notices)
 - `DB_PASSWORD`, `JWT_SECRET`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`
-- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` (your SMTP relay)
+
+Strongly recommended: `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`
+(your SMTP relay). Without them DocuVault runs, but sends no invitations,
+password resets or notifications. You can also set them later under
+Admin → Settings → Email.
 
 You do **not** set an admin account in `.env`. The first admin is created in
 the browser via the setup wizard the first time you visit your instance.
@@ -71,9 +75,13 @@ This will:
 5. Poll the backend health endpoint until it reports OK.
 
 If the health check fails, `deploy.sh` prints the last 80 lines of backend
-logs and rolls back to the previous version. On a fresh install there is no
-previous version, so the new container stays running but unhealthy — see
-*Troubleshooting* below.
+logs and starts the exact images that ran before, even when both versions
+share a tag such as `latest`. On a fresh install nothing ran before, so the
+new containers stay up but unhealthy; see *Troubleshooting* below.
+
+A rollback restores the images, not the database. If the failed version had
+already migrated the schema, restore the postgres dump from the backup folder
+the script prints.
 
 ## 4. Create the administrator (first-time setup)
 
@@ -102,9 +110,9 @@ git pull
 ./deploy.sh latest
 ```
 
-Same script. It backs up postgres + MinIO + repos before pulling, swaps the
-images, polls health, and rolls back automatically if the new version fails
-to start. Backups live under `./backups/` (last 10 retained by default).
+Same script. It backs up postgres, MinIO and the repositories before pulling,
+swaps the images, polls health, and rolls back automatically if the new
+version fails to start. Backups live under `./backups/` (last 10 retained by default).
 
 ## 6. Backup & restore
 

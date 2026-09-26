@@ -168,6 +168,17 @@ echo "$PREV_VERSION" > "$BACKUP_DIR/previous-version.txt"
 # ---------------------------------------------------------------------------
 # 2. Pull & restart with new version
 # ---------------------------------------------------------------------------
+# Remember the images that run now, by ID. A rollback restores exactly these,
+# even when old and new version carry the same tag (latest, edge).
+ROLLBACK_IMAGES=""
+for svc in $SERVICES_TO_PULL; do
+  # shellcheck disable=SC2086
+  cid="$(docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" ps -q "$svc" 2>/dev/null | head -1)"
+  [ -n "$cid" ] || continue
+  ROLLBACK_IMAGES="$ROLLBACK_IMAGES $(docker inspect -f '{{.Config.Image}}={{.Image}}' "$cid")"
+done
+echo "$ROLLBACK_IMAGES" > "$BACKUP_DIR/previous-images.txt"
+
 if [ -n "$REGISTRY_USER" ] && [ -n "$REGISTRY_TOKEN" ]; then
   echo "==> docker login $REGISTRY_HOST as $REGISTRY_USER"
   echo "$REGISTRY_TOKEN" | docker login "$REGISTRY_HOST" \
@@ -211,12 +222,15 @@ if ! $HEALTHY; then
   echo "!!! Backend logs (last 80 lines):"
   docker compose -f "$COMPOSE_FILE" logs backend --tail=80 || true
 
-  if [ "$PREV_VERSION" != "<none>" ] && [ -n "$PREV_VERSION" ]; then
-    echo "!!! Rolling back to $PREV_VERSION"
+  if [ -n "${ROLLBACK_IMAGES// /}" ]; then
+    echo "!!! Rolling back to the images that ran before ($PREV_VERSION)"
+    for pair in $ROLLBACK_IMAGES; do
+      docker tag "${pair#*=}" "${pair%%=*}"
+    done
     # shellcheck disable=SC2086
-    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" pull $SERVICES_TO_PULL
-    # shellcheck disable=SC2086
-    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d $SERVICES_TO_PULL
+    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d --pull never $SERVICES_TO_PULL \
+      || { DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" pull $SERVICES_TO_PULL \
+           && DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d $SERVICES_TO_PULL; }
     echo "!!! Rolled back to $PREV_VERSION"
   else
     echo "!!! No previous version recorded — manual recovery required."

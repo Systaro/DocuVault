@@ -187,7 +187,7 @@ Change Nickname. Pick your server and authorize.
 The bot is shipped as an opt-in compose service alongside backend and frontend.
 One bot per DocuVault installation (Discord identities are single-instance).
 
-**Production install (uses pre-built image from `registry.git.systaro.de`):**
+**Production install (uses the pre-built image from `ghcr.io/systaro/docuvault`):**
 
 ```bash
 # in the directory with docker-compose.product.yml and .env
