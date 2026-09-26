@@ -1,0 +1,7 @@
+{
+  "name": "docuvault-promo-gifs",
+  "private": true,
+  "type": "module",
+  "scripts": { "render": "node render.mjs" },
+  "devDependencies": { "playwright": "^1.55.0" }
+}

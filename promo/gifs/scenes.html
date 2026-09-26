@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DocuVault promo scenes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<!--
+  Source of the GIFs on the promo page. Every scene is a 1200×560 conceptual
+  mockup in the release-note house style (abstract cards, skeleton bars, real
+  labels only where they carry the point). Elements are animated from data
+  attributes by the script at the bottom, so a scene is edited in markup:
+
+    data-fx    fade | slide | pop | type | draw | sweep | grow | hl | move
+    data-in    start of the effect, as a fraction of the 8 s loop
+    data-end   end of the effect (default in + 0.05)
+    data-out   when it resets for the next loop (default 0.94)
+    data-path  for fx=move: "t:x,y; t:x,y; ..." pointer waypoints in px
+
+  Open scenes.html#<id> to preview one scene; render.mjs turns each into a GIF.
+-->
+<style>
+  :root {
+    --canvas: #f6f6f2; --card: #ffffff; --edge: #d4e5e7;
+    --teal: #388087; --teal-mid: #6fb3b8; --teal-light: #badfe7;
+    --skeleton: #e8f0f1; --skeleton-strong: #c9dcde; --muted: #7a9a9d;
+    --ink: #12343b; --term: #10292f; --add: #d8f0de; --add-ink: #2f7d4a;
+    --del: #f6dede; --del-ink: #a14646;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #ddd; font-family: Inter, system-ui, sans-serif; color: var(--ink); }
+  body.single { background: var(--canvas); }
+  body.single .scene:not(:target) { display: none; }
+  body.single .scene { margin: 0; }
+
+  .scene { position: relative; width: 1200px; height: 560px; margin: 0 0 24px; background: var(--canvas); overflow: hidden; }
+  .abs { position: absolute; }
+  .card { position: absolute; background: var(--card); border: 1px solid var(--edge); border-radius: 16px; }
+  .shadow { box-shadow: 0 14px 34px rgba(18, 52, 59, .13); }
+  .bar { height: 12px; border-radius: 999px; background: var(--skeleton); margin-bottom: 16px; }
+  .bar.strong { background: var(--skeleton-strong); }
+  .bar.head { height: 18px; background: var(--skeleton-strong); }
+  .label { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .title { font-size: 26px; font-weight: 700; margin: 0 0 18px; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .muted { color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--teal); color: #fff; font-size: 14px; font-weight: 600; }
+  .chip.soft { background: var(--teal-light); color: var(--ink); }
+  .chip.line { background: var(--card); color: var(--teal); border: 1px solid var(--edge); }
+  .dot { width: 28px; height: 28px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+  .dot.b { background: var(--teal-mid); } .dot.c { background: #8a7fd6; } .dot.d { background: #e0a458; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .type { display: inline-block; white-space: nowrap; }
+  .check { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--teal-mid); flex-shrink: 0; }
+  .btn { display: inline-block; padding: 10px 18px; border-radius: 10px; background: var(--teal); color: #fff; font-weight: 600; font-size: 15px; }
+  .pointer { position: absolute; left: 0; top: 0; width: 22px; height: 30px; z-index: 50; }
+  .pin { width: 34px; height: 34px; border-radius: 50% 50% 50% 0; background: var(--teal); transform: rotate(-45deg);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px; }
+  .pin > span { transform: rotate(45deg); }
+  .toggle { width: 42px; height: 24px; border-radius: 999px; background: var(--skeleton-strong); position: relative; flex-shrink: 0; }
+  .toggle .knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; }
+  .toggle .on { position: absolute; inset: 0; border-radius: 999px; background: var(--teal); }
+  .toggle .on .knob { left: 21px; }
+  .term { background: var(--term); border-color: #1d3d44; color: #d7e9ea; }
+  .term .line { font-size: 15px; line-height: 1.5; margin-bottom: 10px; white-space: nowrap; }
+  .term .prompt { color: var(--teal-mid); }
+  .term .tool { color: #9fd3d8; }
+  .term .ok { color: #7fd49b; }
+  .term .dim { color: #6c8e92; }
+  .kbd-dots { display: flex; gap: 7px; }
+  .kbd-dots i { width: 11px; height: 11px; border-radius: 50%; background: #2c4c53; }
+  svg.link { position: absolute; overflow: visible; pointer-events: none; }
+  svg.link path { fill: none; stroke: var(--teal-mid); stroke-width: 2.5; stroke-linecap: round; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. Every save is a commit ============ -->
+<section class="scene" id="git-commit">
+  <div class="card shadow" style="left:70px;top:70px;width:560px;height:420px;padding:34px">
+    <div class="row" style="justify-content:space-between;margin-bottom:26px">
+      <div class="row" style="gap:10px"><div class="bar strong" style="width:70px;margin:0"></div><div class="bar" style="width:46px;margin:0"></div><div class="bar" style="width:46px;margin:0"></div></div>
+      <span class="chip soft" data-fx="pop" data-in="0.5"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7.5l3 3 7-7" stroke="#388087" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>Saved</span>
+    </div>
+    <p class="title">Onboarding</p>
+    <div class="bar" style="width:100%"></div>
+    <div class="bar" style="width:86%"></div>
+    <div class="bar" style="width:92%;margin-bottom:22px"></div>
+    <div style="font-size:19px;height:30px;margin-bottom:18px">
+      <span class="type" data-fx="type" data-in="0.08" data-end="0.42">New hires get repo access on day one.</span>
+    </div>
+    <div class="bar" style="width:74%"></div>
+    <div class="bar" style="width:58%"></div>
+  </div>
+
+  <svg class="link" style="left:0;top:0" width="1200" height="560"><path d="M560 125 C 640 125, 640 170, 700 170" pathLength="1" data-fx="draw" data-in="0.55" data-end="0.63"/></svg>
+
+  <div class="card shadow" style="left:700px;top:110px;width:430px;height:340px;padding:28px 28px 0">
+    <div class="row" style="justify-content:space-between;margin-bottom:20px">
+      <span class="label mono" style="text-transform:none;letter-spacing:0">main · git log</span>
+      <div class="bar" style="width:60px;margin:0"></div>
+    </div>
+    <div class="abs" style="left:18px;right:18px;top:64px;height:0;overflow:hidden;border-radius:12px;background:#eef6f7" data-fx="grow" data-to="62" data-in="0.62" data-end="0.68">
+      <div class="row" style="padding:12px 12px;gap:12px">
+        <span class="dot" style="width:24px;height:24px"></span>
+        <div style="flex:1;min-width:0">
+          <div class="mono" style="font-size:14px;font-weight:600;white-space:nowrap">Update onboarding.md</div>
+          <div class="mono muted" style="font-size:12px">a41f9c2 · just now</div>
+        </div>
+      </div>
+    </div>
+    <div data-fx="shift" data-to="62" data-in="0.62" data-end="0.68">
+      <div class="row" style="padding:12px 0;border-top:1px solid var(--skeleton)"><span class="dot b" style="width:24px;height:24px"></span><div style="flex:1"><div class="bar strong" style="width:62%;margin-bottom:8px"></div><div class="bar" style="width:34%;height:9px;margin:0"></div></div></div>
+      <div class="row" style="padding:12px 0;border-top:1px solid var(--skeleton)"><span class="dot c" style="width:24px;height:24px"></span><div style="flex:1"><div class="bar strong" style="width:48%;margin-bottom:8px"></div><div class="bar" style="width:30%;height:9px;margin:0"></div></div></div>
+      <div class="row" style="padding:12px 0;border-top:1px solid var(--skeleton)"><span class="dot" style="width:24px;height:24px"></span><div style="flex:1"><div class="bar strong" style="width:70%;margin-bottom:8px"></div><div class="bar" style="width:38%;height:9px;margin:0"></div></div></div>
+      <div class="row" style="padding:12px 0;border-top:1px solid var(--skeleton)"><span class="dot d" style="width:24px;height:24px"></span><div style="flex:1"><div class="bar strong" style="width:54%;margin-bottom:8px"></div><div class="bar" style="width:28%;height:9px;margin:0"></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. AI agents write through MCP ============ -->
+<section class="scene" id="mcp-agent">
+  <div class="card term shadow" style="left:60px;top:70px;width:560px;height:420px;padding:22px 26px">
+    <div class="kbd-dots" style="margin-bottom:26px"><i></i><i></i><i></i></div>
+    <div class="line mono"><span class="prompt">&gt; </span><span class="type" data-fx="type" data-in="0.04" data-end="0.24">Write our release checklist into Ops</span></div>
+    <div class="line mono" data-fx="fade" data-in="0.3"><span class="tool">⏺ docuvault</span> <span class="dim">search_documentation</span>("release")</div>
+    <div class="line mono dim" data-fx="fade" data-in="0.36">&nbsp;&nbsp;⎿ 3 related documents</div>
+    <div class="line mono" data-fx="fade" data-in="0.44"><span class="tool">⏺ docuvault</span> <span class="dim">create_document</span></div>
+    <div class="line mono dim" data-fx="fade" data-in="0.47">&nbsp;&nbsp;&nbsp;&nbsp;ops/release-checklist.md</div>
+    <div class="line mono" data-fx="fade" data-in="0.56"><span class="ok">&nbsp;&nbsp;⎿ ✓ committed and pushed</span></div>
+    <div class="line mono" data-fx="fade" data-in="0.64" style="margin-top:14px">Done. The checklist is live in the Ops space.</div>
+  </div>
+
+  <div class="card shadow" style="left:660px;top:100px;width:480px;height:360px;display:flex;overflow:hidden">
+    <div style="width:170px;border-right:1px solid var(--edge);padding:22px 16px;background:#fbfcfa">
+      <div class="label" style="margin-bottom:16px">Ops</div>
+      <div class="row" style="gap:8px;margin-bottom:14px"><div class="check" style="border-radius:4px;background:var(--teal-light);border:0;width:14px;height:14px"></div><div class="bar" style="width:90px;margin:0"></div></div>
+      <div class="row" style="gap:8px;margin-bottom:14px"><div class="check" style="border-radius:4px;background:var(--teal-light);border:0;width:14px;height:14px"></div><div class="bar" style="width:70px;margin:0"></div></div>
+      <div style="height:0;overflow:hidden;margin:0 -8px" data-fx="grow" data-to="36" data-in="0.56" data-end="0.6">
+        <div class="row" style="gap:8px;padding:6px 8px;border-radius:8px;background:#e3f1f2" data-fx="hl" data-in="0.56" data-end="0.72">
+          <div style="width:14px;height:14px;border-radius:4px;background:var(--teal);flex-shrink:0"></div>
+          <span style="font-size:12.5px;font-weight:600;white-space:nowrap">release-checklist.md</span>
+        </div>
+      </div>
+      <div class="row" style="gap:8px;margin:14px 0"><div class="check" style="border-radius:4px;background:var(--teal-light);border:0;width:14px;height:14px"></div><div class="bar" style="width:80px;margin:0"></div></div>
+      <div class="row" style="gap:8px"><div class="check" style="border-radius:4px;background:var(--teal-light);border:0;width:14px;height:14px"></div><div class="bar" style="width:60px;margin:0"></div></div>
+    </div>
+    <div style="flex:1;padding:26px 24px;position:relative">
+      <div data-fx="fade" data-in="0" data-end="0" data-out="0.6" data-from="1" class="abs" style="inset:26px 24px">
+        <div class="bar head" style="width:50%;margin-bottom:22px"></div>
+        <div class="bar" style="width:100%"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:90%"></div>
+      </div>
+      <div data-fx="slide" data-in="0.62">
+        <p class="title" style="font-size:21px">Release checklist</p>
+        <div class="row" style="margin-bottom:14px" data-fx="fade" data-in="0.66"><div class="check"></div><div class="bar" style="width:70%;margin:0"></div></div>
+        <div class="row" style="margin-bottom:14px" data-fx="fade" data-in="0.69"><div class="check"></div><div class="bar" style="width:84%;margin:0"></div></div>
+        <div class="row" style="margin-bottom:14px" data-fx="fade" data-in="0.72"><div class="check"></div><div class="bar" style="width:62%;margin:0"></div></div>
+        <div class="row" data-fx="fade" data-in="0.75"><div class="check"></div><div class="bar" style="width:76%;margin:0"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. Comments anchored to words ============ -->
+<section class="scene" id="comments">
+  <div class="card shadow" style="left:150px;top:50px;width:620px;height:460px;padding:40px 44px">
+    <div class="bar head" style="width:40%;margin-bottom:26px"></div>
+    <div class="bar" style="width:100%"></div>
+    <div style="height:0;overflow:hidden" data-fx="grow" data-to="56" data-in="0.7" data-end="0.76">
+      <div class="bar" style="width:94%;background:var(--add)"></div>
+      <div class="bar" style="width:60%;background:var(--add)"></div>
+    </div>
+    <p style="font-size:19px;line-height:1.6;color:var(--muted);margin:0 0 16px;position:relative">
+      Refunds are <span data-fx="sweep" data-in="0.08" data-end="0.18" style="color:var(--ink);border-radius:4px;background:linear-gradient(var(--teal-light),var(--teal-light)) no-repeat;background-size:0 100%">processed within 14 days</span> of the request.
+      <span class="abs" style="right:-62px;top:-2px" data-fx="pop" data-in="0.5" data-end="0.55"><span class="pin"><span>1</span></span></span>
+    </p>
+    <div class="bar" style="width:88%"></div>
+    <div class="bar" style="width:96%"></div>
+    <div class="bar" style="width:52%"></div>
+  </div>
+
+  <div class="card shadow" style="left:400px;top:218px;width:250px;padding:8px" data-fx="slide" data-in="0.26" data-end="0.3" data-out="0.46">
+    <div class="row" style="padding:9px 10px;border-radius:8px;font-size:15px;font-weight:500" data-fx="hl" data-in="0.38" data-end="0.46"><div style="width:16px;height:16px;border-radius:4px;background:var(--teal-mid)"></div>Comment on selection</div>
+    <div class="row muted" style="padding:9px 10px;font-size:15px"><div style="width:16px;height:16px;border-radius:4px;background:var(--skeleton-strong)"></div>Copy</div>
+  </div>
+
+  <div class="card shadow" style="left:800px;top:130px;width:320px;padding:20px" data-fx="slide" data-in="0.54">
+    <div class="label" style="margin-bottom:10px;text-transform:none;letter-spacing:0;font-size:13px">“processed within 14 days”</div>
+    <div class="row" style="align-items:flex-start">
+      <span class="dot c"></span>
+      <div><div style="font-weight:600;font-size:15px">Maria</div><div style="font-size:15px;margin-top:3px">Business days or calendar days?</div></div>
+    </div>
+    <div class="row" style="margin-top:16px;align-items:flex-start" data-fx="fade" data-in="0.62">
+      <span class="dot b"></span>
+      <div><div style="font-weight:600;font-size:15px">Jonas</div><div style="font-size:15px;margin-top:3px">Calendar. I’ll make that explicit.</div></div>
+    </div>
+  </div>
+  <div class="abs" style="left:800px;top:350px;width:320px;font-size:15px;line-height:1.5;color:var(--teal);font-weight:600" data-fx="fade" data-in="0.78">Text was added above.<br>The comment stayed on its words.</div>
+
+  <svg class="pointer" viewBox="0 0 12 18" data-fx="move" data-path="0.02:300,250; 0.08:250,212; 0.18:470,214; 0.26:470,224; 0.36:470,238; 0.46:470,238; 0.52:560,300"><path d="M1 1l10 8-4.4.9L9.3 15 7 16l-2.6-5L1 14z" fill="#12343b" stroke="#fff"/></svg>
+</section>
+
+<!-- ============ 4. Version history time capsule ============ -->
+<section class="scene" id="history">
+  <div class="card shadow" style="left:150px;top:40px;width:900px;height:360px;padding:34px 40px">
+    <div class="row" style="justify-content:space-between;margin-bottom:24px">
+      <p class="title" style="margin:0">Pricing</p>
+      <div style="position:relative;width:260px;height:28px">
+        <span class="chip line abs" style="right:0" data-fx="fade" data-in="0" data-end="0" data-out="0.22" data-from="1">Current version</span>
+        <span class="chip line abs" style="right:0" data-fx="fade" data-in="0.22" data-end="0.24" data-out="0.5">Sep 12 · Jonas</span>
+        <span class="chip line abs" style="right:0" data-fx="fade" data-in="0.5" data-end="0.52" data-out="0.86">Aug 30 · Maria</span>
+      </div>
+    </div>
+    <div class="bar" style="width:100%"></div>
+    <div class="bar" style="width:84%" data-fx="tint" data-to="del" data-in="0.22" data-end="0.24" data-out="0.86"></div>
+    <div class="bar" style="width:90%"></div>
+    <div style="height:0;overflow:hidden" data-fx="grow" data-to="56" data-in="0.5" data-end="0.54" data-out="0.86">
+      <div class="bar" style="width:72%;background:var(--add)"></div>
+      <div class="bar" style="width:44%;background:var(--add)"></div>
+    </div>
+    <div class="bar" style="width:96%" data-fx="tint" data-to="add" data-in="0.22" data-end="0.24" data-out="0.86"></div>
+    <div class="bar" style="width:66%"></div>
+    <div class="bar" style="width:78%" data-fx="tint" data-to="del" data-in="0.5" data-end="0.52" data-out="0.86"></div>
+  </div>
+
+  <div class="card shadow" style="left:150px;top:430px;width:900px;height:90px;padding:0 50px">
+    <div class="abs" style="left:50px;right:50px;top:44px;height:3px;background:var(--skeleton-strong);border-radius:3px"></div>
+    <div class="abs" style="left:50px;top:37px;width:800px">
+      <span class="abs" style="left:0;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+      <span class="abs" style="left:190px;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+      <span class="abs" style="left:330px;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+      <span class="abs" style="left:520px;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+      <span class="abs" style="left:640px;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+      <span class="abs" style="left:784px;width:16px;height:16px;border-radius:50%;background:var(--teal-light)"></span>
+    </div>
+    <div class="abs" style="left:0;top:0" data-fx="move" data-show="1" data-path="0:826,31; 0.12:826,31; 0.22:682,31; 0.4:682,31; 0.5:562,31; 0.86:562,31; 0.94:826,31">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--teal);border:4px solid #fff;box-shadow:0 2px 8px rgba(18,52,59,.3)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. Share links ============ -->
+<section class="scene" id="share">
+  <div class="card shadow" style="left:80px;top:80px;width:470px;padding:30px">
+    <p class="title" style="font-size:21px">Share “Pricing FAQ”</p>
+    <div class="row" style="justify-content:space-between;padding:14px 0;border-top:1px solid var(--skeleton)">
+      <span style="font-size:16px">Anyone with the link</span>
+      <div class="toggle"><div class="knob"></div><div class="on" data-fx="fade" data-in="0.12" data-end="0.14"><div class="knob"></div></div></div>
+    </div>
+    <div class="row" style="justify-content:space-between;padding:14px 0;border-top:1px solid var(--skeleton)">
+      <span style="font-size:16px">Require a password</span>
+      <div class="toggle"><div class="knob"></div><div class="on" data-fx="fade" data-in="0.24" data-end="0.26"><div class="knob"></div></div></div>
+    </div>
+    <div class="row" style="justify-content:space-between;padding:14px 0;border-top:1px solid var(--skeleton)">
+      <span style="font-size:16px">Access</span>
+      <div class="row" style="gap:6px;background:var(--skeleton);padding:4px;border-radius:10px;font-size:14px;position:relative">
+        <span class="abs" style="left:4px;top:4px;width:62px;height:28px;border-radius:7px;background:#fff" data-fx="move" data-show="1" data-path="0:4,4; 0.32:4,4; 0.36:74,4; 0.94:74,4"></span>
+        <span style="padding:5px 10px;position:relative;width:62px;text-align:center">View</span>
+        <span style="padding:5px 10px;position:relative">Comment</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px;justify-content:space-between">
+      <span class="mono muted" style="font-size:13px">docs.example.com/s/7fk2q…</span>
+      <div style="position:relative">
+        <span class="btn">Copy link</span>
+        <span class="btn abs" style="left:0;top:0;right:0;text-align:center;background:var(--add-ink)" data-fx="fade" data-in="0.44" data-end="0.46">Copied</span>
+      </div>
+    </div>
+  </div>
+
+  <svg class="link" style="left:0;top:0" width="1200" height="560"><path d="M560 280 L 640 280" pathLength="1" data-fx="draw" data-in="0.5" data-end="0.55"/></svg>
+
+  <div class="card shadow" style="left:650px;top:70px;width:480px;height:420px;overflow:hidden" data-fx="slide" data-in="0.52">
+    <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--edge);background:#fbfcfa;gap:8px">
+      <div class="kbd-dots"><i style="background:var(--skeleton-strong)"></i><i style="background:var(--skeleton-strong)"></i><i style="background:var(--skeleton-strong)"></i></div>
+      <div class="mono" style="flex:1;margin-left:10px;padding:5px 12px;border-radius:8px;background:var(--skeleton);font-size:12.5px">🔒 docs.example.com/s/7fk2q…</div>
+    </div>
+    <div class="abs" style="left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px" data-fx="fade" data-in="0" data-end="0" data-from="1" data-out="0.72">
+      <div style="width:54px;height:54px;border-radius:50%;background:var(--teal-light);display:flex;align-items:center;justify-content:center">
+        <svg width="24" height="26" viewBox="0 0 24 26"><rect x="3" y="11" width="18" height="13" rx="3" fill="#388087"/><path d="M7 11V8a5 5 0 0110 0v3" stroke="#388087" stroke-width="2.6" fill="none"/></svg>
+      </div>
+      <div style="font-weight:600">This page is password protected</div>
+      <div style="width:240px;height:40px;border:1px solid var(--edge);border-radius:10px;padding:0 14px;display:flex;align-items:center;letter-spacing:4px;font-size:20px"><span class="type" data-fx="type" data-in="0.58" data-end="0.68">••••••••</span></div>
+    </div>
+    <div class="abs" style="left:32px;right:32px;top:84px" data-fx="slide" data-in="0.74">
+      <p class="title" style="font-size:21px">Pricing FAQ</p>
+      <div class="bar" style="width:100%"></div><div class="bar" style="width:86%"></div><div class="bar" style="width:92%"></div><div class="bar" style="width:60%;margin-bottom:26px"></div>
+      <div class="row" style="background:#eef6f7;border-radius:10px;padding:12px;gap:10px"><span class="dot b"></span><div class="bar" style="width:60%;margin:0"></div><span class="muted" style="margin-left:auto;font-size:13px">Add comment</span></div>
+    </div>
+  </div>
+
+  <svg class="pointer" viewBox="0 0 12 18" data-fx="move" data-path="0.02:400,120; 0.1:512,196; 0.14:512,196; 0.22:512,252; 0.26:512,252; 0.32:470,302; 0.36:470,302; 0.42:505,352; 0.48:505,352; 0.52:560,420"><path d="M1 1l10 8-4.4.9L9.3 15 7 16l-2.6-5L1 14z" fill="#12343b" stroke="#fff"/></svg>
+</section>
+
+<!-- ============ 6. Inbox / quick capture ============ -->
+<section class="scene" id="inbox">
+  <div class="card shadow" style="left:70px;top:90px;width:470px;height:200px;padding:26px">
+    <div class="row" style="justify-content:space-between;margin-bottom:18px">
+      <span class="label">Inbox</span>
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--teal-light);display:flex;align-items:center;justify-content:center">
+        <svg width="16" height="20" viewBox="0 0 16 20"><rect x="4" y="1" width="8" height="12" rx="4" fill="#388087"/><path d="M1.5 9a6.5 6.5 0 0013 0M8 15.5V19" stroke="#388087" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div style="font-size:18px;line-height:1.55">
+      <div><span class="type" data-fx="type" data-in="0.04" data-end="0.18">Launch moves to October 12.</span></div>
+      <div><span class="type" data-fx="type" data-in="0.19" data-end="0.34">Jonas updates the pricing page.</span></div>
+    </div>
+  </div>
+
+  <div class="card shadow" style="left:70px;top:320px;width:470px;padding:22px 26px" data-fx="slide" data-in="0.4">
+    <div class="row" style="gap:8px;margin-bottom:14px">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0l1.9 5.1L15 7l-5.1 1.9L8 14l-1.9-5.1L1 7l5.1-1.9z" fill="#6fb3b8"/></svg>
+      <span style="font-size:14px;font-weight:600;color:var(--teal)">Suggested</span>
+    </div>
+    <div class="row" style="margin-bottom:10px;font-size:15px"><span class="muted" style="width:60px">Space</span><span class="chip soft">Product launch</span></div>
+    <div class="row" style="margin-bottom:8px;font-size:15px"><span class="muted" style="width:60px">Tasks</span><div class="check"></div>Update pricing page <span class="muted">· Jonas</span></div>
+    <div class="row" style="font-size:15px"><span style="width:60px"></span><div class="check"></div>Move launch to Oct 12</div>
+  </div>
+
+  <svg class="link" style="left:0;top:0" width="1200" height="560"><path d="M550 380 C 640 380, 640 250, 730 250" pathLength="1" data-fx="draw" data-in="0.6" data-end="0.66"/></svg>
+
+  <div class="card shadow" style="left:730px;top:90px;width:400px;height:380px;padding:28px">
+    <div class="label" style="margin-bottom:14px">Product launch</div>
+    <div class="bar head" style="width:56%;margin-bottom:22px"></div>
+    <div class="bar" style="width:100%"></div>
+    <div style="height:0;overflow:hidden" data-fx="grow" data-to="30" data-in="0.66" data-end="0.7">
+      <div style="font-size:15px;padding:4px 8px;border-radius:6px;background:#eef6f7">Launch moves to October 12.</div>
+    </div>
+    <div class="bar" style="width:80%;margin-top:16px"></div>
+    <div class="label" style="margin:22px 0 12px">Tasks</div>
+    <div style="height:0;overflow:hidden" data-fx="grow" data-to="72" data-in="0.72" data-end="0.77">
+      <div class="row" style="font-size:15px;margin-bottom:12px"><div class="check"></div>Update pricing page <span class="dot b" style="width:20px;height:20px;margin-left:auto"></span></div>
+      <div class="row" style="font-size:15px"><div class="check"></div>Move launch to Oct 12</div>
+    </div>
+    <div class="row" style="font-size:15px;margin-top:12px"><div class="check"></div><div class="bar" style="width:60%;margin:0"></div></div>
+  </div>
+</section>
+
+<!-- ============ 7. Ask your docs ============ -->
+<section class="scene" id="ask">
+  <div class="card shadow" style="left:200px;top:50px;width:800px;padding:18px 22px">
+    <div class="row">
+      <svg width="20" height="20" viewBox="0 0 16 16"><path d="M8 0l1.9 5.1L15 7l-5.1 1.9L8 14l-1.9-5.1L1 7l5.1-1.9z" fill="#6fb3b8"/></svg>
+      <span style="font-size:19px"><span class="type" data-fx="type" data-in="0.04" data-end="0.22">How do we rotate the SMTP password?</span></span>
+    </div>
+  </div>
+  <div class="card shadow" style="left:200px;top:140px;width:800px;padding:28px 32px" data-fx="slide" data-in="0.28">
+    <div style="font-size:17px;line-height:1.6;margin-bottom:18px" data-fx="fade" data-in="0.32">Change it in <b>Admin → Settings → Email</b>. The value is stored encrypted, so no restart is needed.</div>
+    <div class="bar" style="width:96%" data-fx="sweep-w" data-in="0.38" data-end="0.44"></div>
+    <div class="bar" style="width:88%" data-fx="sweep-w" data-in="0.43" data-end="0.49"></div>
+    <div class="bar" style="width:70%;margin-bottom:28px" data-fx="sweep-w" data-in="0.48" data-end="0.53"></div>
+    <div class="label" style="margin-bottom:12px" data-fx="fade" data-in="0.56">Sources</div>
+    <div class="row" style="gap:10px">
+      <span class="chip line mono" style="font-size:13px" data-fx="pop" data-in="0.58">runbooks/smtp.md</span>
+      <span class="chip line mono" style="font-size:13px" data-fx="pop" data-in="0.61">install.md</span>
+      <span class="chip line mono" style="font-size:13px" data-fx="pop" data-in="0.64">security/secrets.md</span>
+    </div>
+    <div class="row" style="gap:10px;margin-top:26px" data-fx="fade" data-in="0.7">
+      <span class="btn">Create a document from this</span>
+      <span class="chip line" style="padding:10px 16px">Propose an edit</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. Teams and permissions ============ -->
+<section class="scene" id="teams">
+  <div class="abs" style="left:90px;top:60px"><span class="label">Teams</span></div>
+  <div class="card shadow" style="left:90px;top:95px;width:300px;padding:20px">
+    <div style="font-weight:600;margin-bottom:12px">Engineering</div>
+    <div class="row" style="gap:6px"><span class="dot"></span><span class="dot b"></span><span class="dot c"></span>
+      <span class="dot d" style="border:3px solid #fff;box-shadow:0 0 0 2px var(--teal)" data-fx="pop" data-in="0.62"></span></div>
+  </div>
+  <div class="card shadow" style="left:90px;top:230px;width:300px;padding:20px">
+    <div style="font-weight:600;margin-bottom:12px">Support</div>
+    <div class="row" style="gap:6px"><span class="dot b"></span><span class="dot c"></span></div>
+  </div>
+  <div class="card shadow" style="left:90px;top:365px;width:300px;padding:20px">
+    <div style="font-weight:600;margin-bottom:12px">Design</div>
+    <div class="row" style="gap:6px"><span class="dot d"></span><span class="dot"></span><span class="dot b"></span></div>
+  </div>
+
+  <div class="abs" style="left:810px;top:60px"><span class="label">Spaces</span></div>
+  <div class="card shadow" style="left:810px;top:95px;width:300px;padding:20px 20px 16px"><div style="font-weight:600;margin-bottom:10px">API docs</div><div class="bar" style="width:70%;margin:0"></div></div>
+  <div class="card shadow" style="left:810px;top:230px;width:300px;padding:20px 20px 16px"><div style="font-weight:600;margin-bottom:10px">Runbooks</div><div class="bar" style="width:55%;margin:0"></div></div>
+  <div class="card shadow" style="left:810px;top:365px;width:300px;padding:20px 20px 16px"><div style="font-weight:600;margin-bottom:10px">Handbook</div><div class="bar" style="width:62%;margin:0"></div></div>
+
+  <svg class="link" style="left:0;top:0" width="1200" height="560">
+    <path d="M390 140 L 810 140" pathLength="1" data-fx="draw" data-in="0.08" data-end="0.18"/>
+    <path d="M390 150 C 600 150, 600 275, 810 275" pathLength="1" data-fx="draw" data-in="0.2" data-end="0.3"/>
+    <path d="M390 275 C 600 275, 600 280, 810 280" pathLength="1" data-fx="draw" data-in="0.32" data-end="0.42" style="stroke:var(--skeleton-strong)"/>
+    <path d="M390 410 C 600 410, 600 410, 810 410" pathLength="1" data-fx="draw" data-in="0.44" data-end="0.54" style="stroke:var(--skeleton-strong)"/>
+  </svg>
+  <span class="chip abs" style="left:560px;top:124px" data-fx="pop" data-in="0.16">Editor</span>
+  <span class="chip abs" style="left:620px;top:190px" data-fx="pop" data-in="0.28">Editor</span>
+  <span class="chip soft abs" style="left:555px;top:262px" data-fx="pop" data-in="0.4">Viewer</span>
+  <span class="chip soft abs" style="left:555px;top:394px" data-fx="pop" data-in="0.52">Viewer</span>
+
+  <div class="card shadow abs" style="left:390px;top:480px;width:420px;padding:12px 16px;font-size:14.5px;white-space:nowrap" data-fx="slide" data-in="0.66">
+    <div class="row"><span class="dot d" style="width:22px;height:22px"></span>New member inherits every grant of the team.</div>
+  </div>
+</section>
+
+<script>
+// Loop length. render.mjs seeks through the same timeline frame by frame.
+const LOOP = 8000;
+const D = 0.04;
+
+// Each effect returns [hidden state, shown state] as WAAPI keyframes.
+const FX = {
+  fade:  () => [{ opacity: 0 }, { opacity: 1 }],
+  slide: () => [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }],
+  pop:   () => [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'scale(1)' }],
+  type:  () => [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }],
+  draw:  el => { el.style.strokeDasharray = '1'; return [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }]; },
+  sweep: () => [{ backgroundSize: '0% 100%' }, { backgroundSize: '100% 100%' }],
+  'sweep-w': el => [{ width: '0%' }, { width: el.style.width }],
+  grow:  el => [{ height: '0px' }, { height: el.dataset.to + 'px' }],
+  shift: el => [{ transform: 'none' }, { transform: `translateY(${el.dataset.to}px)` }],
+  hl:    () => [{ backgroundColor: 'transparent' }, { backgroundColor: '#e3f1f2' }],
+  tint:  el => [{ backgroundColor: getComputedStyle(el).backgroundColor }, { backgroundColor: `var(--${el.dataset.to})` }],
+};
+
+function animateTrack(el) {
+  const fx = el.dataset.fx;
+  if (fx === 'move') return animateMove(el);
+  const a = +el.dataset.in;
+  const e = el.dataset.end !== undefined ? +el.dataset.end : a + D;
+  const o = el.dataset.out !== undefined ? +el.dataset.out : 0.94;
+  let [off, on] = FX[fx](el);
+  // data-from="1" starts shown and hides at data-out (a thing that goes away).
+  if (el.dataset.from === '1') {
+    return el.animate([{ ...on, offset: 0 }, { ...on, offset: o }, { ...off, offset: Math.min(o + D, 1) }, { ...off, offset: 1 }],
+      { duration: LOOP, iterations: Infinity, fill: 'both' });
+  }
+  const easing = fx === 'type' ? `steps(${Math.max(el.textContent.length, 1)}, end)` : 'ease-out';
+  const kf = [
+    { ...off, offset: 0 }, { ...off, offset: a, easing }, { ...on, offset: e },
+    { ...on, offset: o }, { ...off, offset: Math.min(o + D, 1) },
+  ];
+  if (kf[kf.length - 1].offset < 1) kf.push({ ...off, offset: 1 });
+  return el.animate(kf, { duration: LOOP, iterations: Infinity, fill: 'both' });
+}
+
+// Pointer paths: visible between the first and the last waypoint, unless
+// data-show="1" keeps the element on screen all the time (sliders, handles).
+function animateMove(el) {
+  const pts = el.dataset.path.split(';').map(s => s.trim()).filter(Boolean).map(s => {
+    const [t, xy] = s.split(':'); const [x, y] = xy.split(',').map(Number);
+    return { t: +t, x, y };
+  });
+  const always = el.dataset.show === '1';
+  const tr = p => `translate(${p.x}px, ${p.y}px)`;
+  const last = pts.length - 1;
+  // The pointer fades in on its first waypoint and out on its way to the last.
+  const opacity = i => (always || (i > 0 && i < last)) ? 1 : 0;
+  const kf = [{ transform: tr(pts[0]), opacity: opacity(0), offset: 0 }];
+  pts.forEach((p, i) => kf.push({ transform: tr(p), opacity: opacity(i), offset: p.t, easing: 'ease-in-out' }));
+  if (pts[last].t < 1) kf.push({ transform: tr(pts[always ? 0 : last]), opacity: opacity(always ? 0 : last), offset: 1 });
+  return el.animate(kf, { duration: LOOP, iterations: Infinity, fill: 'both' });
+}
+
+document.querySelectorAll('[data-fx]').forEach(animateTrack);
+if (location.hash) document.body.classList.add('single');
+
+// Called by render.mjs: freeze every animation at `ms` into the loop.
+window.seek = ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; });
+</script>
+</body>
+</html>

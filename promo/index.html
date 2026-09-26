@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocuVault – Team docs that live in Git</title>
+<meta name="description" content="Self-hosted team documentation with Git as the source of truth. Edit in the browser, every save is a commit. AI agents read and write through a built-in MCP server.">
+<meta property="og:title" content="DocuVault – Team docs that live in Git">
+<meta property="og:description" content="Edit in the browser, every save is a commit. Clone the repo, let your AI agent work on it, push. Self-hosted.">
+<meta property="og:image" content="https://docuvault-promo.systaro.de/assets/og.png">
+<link rel="icon" type="image/png" href="assets/mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fbfbf8; --bg-alt: #f3f5f1; --surface: #ffffff; --border: #dde8e9;
+    --ink: #12343b; --ink-soft: #3f5d63; --muted: #6f8d91;
+    --teal: #388087; --teal-mid: #6fb3b8; --teal-light: #badfe7;
+    --grad-a: #16d6b4; --grad-b: #2b7bf0; --grad-c: #5a3ff0;
+    --code-bg: #10292f; --code-ink: #d7e9ea;
+    --glow: rgba(43, 123, 240, .16);
+    --shadow: 0 24px 60px rgba(18, 52, 59, .14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1a1e; --bg-alt: #0f2227; --surface: #132a30; --border: #21424a;
+      --ink: #e6f2f3; --ink-soft: #b3cdd0; --muted: #82a3a7;
+      --teal: #6fb3b8; --teal-light: #1d4a52;
+      --code-bg: #07161a; --glow: rgba(43, 123, 240, .28);
+      --shadow: 0 24px 60px rgba(0, 0, 0, .45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1a1e; --bg-alt: #0f2227; --surface: #132a30; --border: #21424a;
+    --ink: #e6f2f3; --ink-soft: #b3cdd0; --muted: #82a3a7;
+    --teal: #6fb3b8; --teal-light: #1d4a52;
+    --code-bg: #07161a; --glow: rgba(43, 123, 240, .28);
+    --shadow: 0 24px 60px rgba(0, 0, 0, .45);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--teal); }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  /* Nav */
+  .nav { position: sticky; top: 0; z-index: 10; backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  .nav .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; color: var(--ink); text-decoration: none; letter-spacing: -.01em; white-space: nowrap; }
+  .brand img { width: 30px; height: auto; }
+  .nav-links { display: flex; gap: 24px; margin-left: auto; }
+  .nav-links a { color: var(--ink-soft); text-decoration: none; font-size: 15px; font-weight: 500; white-space: nowrap; }
+  .nav-links a:hover { color: var(--ink); }
+  .gh { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border);
+    color: var(--ink); text-decoration: none; font-size: 15px; font-weight: 600; background: var(--surface); white-space: nowrap; }
+  .gh svg { width: 18px; height: 18px; fill: currentColor; }
+
+  /* Hero */
+  .hero { position: relative; overflow: hidden; padding: 96px 0 40px; text-align: center; }
+  .hero::before { content: ""; position: absolute; inset: -30% -10% auto; height: 720px; z-index: -1;
+    background: radial-gradient(40% 50% at 25% 40%, color-mix(in srgb, var(--grad-a) 22%, transparent), transparent 70%),
+                radial-gradient(40% 50% at 75% 30%, color-mix(in srgb, var(--grad-c) 18%, transparent), transparent 70%),
+                radial-gradient(50% 50% at 50% 70%, color-mix(in srgb, var(--grad-b) 14%, transparent), transparent 70%); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    color: var(--teal); background: var(--surface); border: 1px solid var(--border); }
+  .eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--grad-a); box-shadow: 0 0 0 4px color-mix(in srgb, var(--grad-a) 25%, transparent); }
+  h1 { font-size: clamp(40px, 6.4vw, 76px); line-height: 1.04; letter-spacing: -.035em; margin: 26px auto 22px; max-width: 900px; font-weight: 800; }
+  .grad { background: linear-gradient(100deg, var(--grad-a), var(--grad-b) 55%, var(--grad-c)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { font-size: clamp(18px, 2.1vw, 21px); color: var(--ink-soft); max-width: 700px; margin: 0 auto 36px; }
+  .ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border-radius: 12px; font-weight: 600; text-decoration: none; font-size: 16px; }
+  .btn.primary { color: #fff; background: linear-gradient(100deg, #1fb8a3, var(--grad-b)); box-shadow: 0 10px 26px var(--glow); }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost { color: var(--ink); background: var(--surface); border: 1px solid var(--border); }
+
+  .frame { position: relative; border-radius: 22px; padding: 10px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .frame img { border-radius: 14px; width: 100%; height: auto; aspect-ratio: 1200 / 560; background: #f6f6f2; }
+  .hero .frame { max-width: 1040px; margin: 64px auto 0; }
+  .hero .frame::before { content: ""; position: absolute; inset: 8% 4% -6%; z-index: -1; filter: blur(60px);
+    background: linear-gradient(100deg, var(--grad-a), var(--grad-b), var(--grad-c)); opacity: .28; border-radius: 40px; }
+
+  /* Proof strip */
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 72px auto 0; max-width: 1040px; background: var(--border);
+    border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .strip div { background: var(--surface); padding: 22px 20px; text-align: left; }
+  .strip b { display: block; font-size: 16px; margin-bottom: 4px; }
+  .strip span { color: var(--muted); font-size: 14.5px; line-height: 1.45; display: block; }
+
+  /* Features */
+  section.block { padding: 110px 0; }
+  section.alt { background: var(--bg-alt); }
+  .section-head { text-align: center; max-width: 720px; margin: 0 auto 70px; }
+  .kicker { font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+  h2 { font-size: clamp(30px, 4vw, 46px); line-height: 1.12; letter-spacing: -.025em; margin: 12px 0 16px; }
+  .section-head p { color: var(--ink-soft); font-size: 19px; margin: 0; }
+  .feature { display: grid; grid-template-columns: 5fr 7fr; gap: 64px; align-items: center; margin-bottom: 120px; }
+  .feature:last-child { margin-bottom: 0; }
+  .feature.flip { grid-template-columns: 7fr 5fr; }
+  .feature.flip .copy { order: 2; }
+  .feature h3 { font-size: 30px; line-height: 1.18; letter-spacing: -.02em; margin: 10px 0 14px; }
+  .feature p { color: var(--ink-soft); margin: 0 0 14px; }
+  .feature ul { margin: 18px 0 0; padding: 0; list-style: none; }
+  .feature li { position: relative; padding-left: 28px; margin-bottom: 10px; color: var(--ink-soft); }
+  .feature li::before { content: ""; position: absolute; left: 0; top: 7px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--teal-light) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 8.2l2.2 2.2 4.8-4.8' stroke='%23388087' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") center/100% no-repeat; }
+  .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: var(--teal); background: var(--teal-light); }
+
+  /* Grid of smaller features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 28px; }
+  .tile .ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--grad-a) 22%, transparent), color-mix(in srgb, var(--grad-c) 22%, transparent)); }
+  .tile .ico svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .tile h4 { margin: 0 0 8px; font-size: 18px; }
+  .tile p { margin: 0; color: var(--ink-soft); font-size: 15.5px; line-height: 1.55; }
+
+  /* Code */
+  .code { position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: 16px; padding: 22px 24px; font-size: 14.5px;
+    line-height: 1.7; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--border) 40%, transparent); margin: 0; }
+  .code .c { color: #6c8e92; }
+  .code .p { color: var(--teal-mid); }
+  .copy-btn { position: absolute; top: 12px; right: 12px; font: 600 13px Inter, sans-serif; color: var(--code-ink); background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  .copy-btn:hover { background: rgba(255,255,255,.14); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start; }
+  .two > div, .feature > * { min-width: 0; }
+  .two h3 { font-size: 22px; margin: 0 0 10px; }
+  .two p { color: var(--ink-soft); margin: 0 0 18px; }
+
+  .after-code { margin-top: 18px; }
+  .note { margin-top: 18px; padding: 16px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-soft); font-size: 15.5px; }
+
+  /* CTA + footer */
+  .final { text-align: center; padding: 120px 0; position: relative; overflow: hidden; }
+  .final::before { content: ""; position: absolute; inset: 20% 10%; z-index: -1; filter: blur(80px); opacity: .22;
+    background: linear-gradient(100deg, var(--grad-a), var(--grad-b), var(--grad-c)); border-radius: 50%; }
+  footer { border-top: 1px solid var(--border); padding: 36px 0 48px; color: var(--muted); font-size: 14.5px; }
+  footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  footer a { color: var(--ink-soft); text-decoration: none; margin-left: 20px; }
+
+  /* Reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } html { scroll-behavior: auto; } }
+
+  @media (max-width: 900px) {
+    .nav-links { display: none; }
+    .gh { margin-left: auto; }
+    .hero { padding-top: 64px; }
+    .strip { grid-template-columns: 1fr 1fr; }
+    .feature, .feature.flip { grid-template-columns: 1fr; gap: 28px; margin-bottom: 80px; }
+    .feature.flip .copy { order: 0; }
+    .grid, .two { grid-template-columns: 1fr; }
+    section.block { padding: 80px 0; }
+  }
+  @media (max-width: 520px) {
+    .wrap { padding: 0 16px; }
+    .strip { grid-template-columns: 1fr; }
+    .frame { padding: 6px; border-radius: 16px; }
+    .frame img { border-radius: 11px; }
+    footer a { margin: 0 16px 0 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/mark.png" alt="">DocuVault</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#agents">AI agents</a>
+      <a href="#self-host">Self-host</a>
+      <a href="https://github.com/Systaro/DocuVault/blob/main/docs/install.md">Docs</a>
+    </div>
+    <a class="gh" href="https://github.com/Systaro/DocuVault">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="eyebrow"><i></i>Self-hosted · Early access</span>
+    <h1>Team docs that <span class="grad">live in Git</span></h1>
+    <p class="lede">Edit in the browser and every save becomes a commit. Clone the same repo, let Claude Code or Cursor work on it, push, and the web UI shows the change. Your documents stay plain Markdown in a repository you own.</p>
+    <div class="ctas">
+      <a class="btn primary" href="#self-host">Run it on your server</a>
+      <a class="btn ghost" href="https://github.com/Systaro/DocuVault">View on GitHub</a>
+    </div>
+    <div class="frame reveal">
+      <img src="assets/git-commit.gif" alt="Typing a sentence in the DocuVault editor. It saves, and a new commit appears at the top of the git log." width="1200" height="560">
+    </div>
+    <div class="strip reveal">
+      <div><b>Git is the source of truth</b><span>Markdown files in your own GitLab repo, with real history.</span></div>
+      <div><b>Built-in MCP server</b><span>AI agents read, write and share documents with the user’s permissions.</span></div>
+      <div><b>Yours to run</b><span>Docker Compose on one Linux host. Your data stays on it.</span></div>
+      <div><b>AI is optional</b><span>Without an API key the AI features are hidden, not broken.</span></div>
+    </div>
+  </div>
+</header>
+
+<section class="block alt" id="agents">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">Made for AI agents</span>
+      <h2>Your agent writes the docs. Your team reads them.</h2>
+      <p>DocuVault runs its own MCP server. Connect a client with one URL, sign in once in the browser, and the agent works on documents like any other team member.</p>
+    </div>
+    <div class="feature reveal">
+      <div class="copy">
+        <span class="tag">MCP over HTTP + OAuth</span>
+        <h3>From a prompt to a committed page</h3>
+        <p>Ask Claude Code to write a runbook and it searches the space, creates the document and commits it. Everyone sees it in the web UI straight away.</p>
+        <ul>
+          <li>19 tools: search, read, create, edit and share documents, plus spaces, space state and tasks</li>
+          <li>Every call runs as the signed-in user, with that user’s space permissions</li>
+          <li>Binaries and large files move by one-time URL, so no bytes pass through the model</li>
+        </ul>
+      </div>
+      <div class="frame"><img src="assets/mcp-agent.gif" alt="A terminal where an AI agent calls DocuVault tools. The new release checklist appears in the Ops space of the web UI." loading="lazy" width="1200" height="560"></div>
+    </div>
+    <div class="feature flip reveal">
+      <div class="copy">
+        <span class="tag">Optional AI</span>
+        <h3>Ask your documentation</h3>
+        <p>Ask a question across spaces and get an answer that names its sources. Turn the answer into a new document, or let the assistant propose an edit that you apply.</p>
+        <ul>
+          <li>Semantic search with pgvector and OpenAI embeddings</li>
+          <li>Drafts status reports and meeting protocols from a space’s notes and tasks</li>
+          <li>Voice input and writing help in the editor</li>
+        </ul>
+      </div>
+      <div class="frame"><img src="assets/ask.gif" alt="A question about rotating the SMTP password, answered with three linked source documents." loading="lazy" width="1200" height="560"></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="features">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">For the whole team</span>
+      <h2>A real editor on top of a real repository</h2>
+      <p>Developers keep their Git workflow. Everyone else gets a WYSIWYG editor, comments, history and sharing, without ever seeing a merge conflict.</p>
+    </div>
+
+    <div class="feature reveal">
+      <div class="copy">
+        <span class="tag">Comments</span>
+        <h3>Comment on the words you mean</h3>
+        <p>Select a phrase, comment on it, discuss it in a thread. Comments are anchored to the quoted text, not to a position, so they stay put when the page around them changes.</p>
+        <p>If the words are deleted, the comment is marked as orphaned instead of quietly disappearing.</p>
+      </div>
+      <div class="frame"><img src="assets/comments.gif" alt="A phrase is selected and commented on. New lines are added above it and the comment pin moves with the phrase." loading="lazy" width="1200" height="560"></div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="copy">
+        <span class="tag">Version history</span>
+        <h3>Scrub back through every version</h3>
+        <p>Every space is versioned in Git, including spaces without a remote. Drag through a page’s history and see what was added and removed at each step, and by whom.</p>
+        <p>Renames and moves are tracked, so old links forward to the new location and the original author stays the author.</p>
+      </div>
+      <div class="frame"><img src="assets/history.gif" alt="A timeline slider moves back through versions of a Pricing page while added and removed lines are highlighted." loading="lazy" width="1200" height="560"></div>
+    </div>
+
+    <div class="feature reveal">
+      <div class="copy">
+        <span class="tag">Public links</span>
+        <h3>Share a page with anyone</h3>
+        <p>Create a link for people outside your team. Add a password, and choose whether they can only read or also comment.</p>
+        <p>Shared pages render embedded HTML and JavaScript on purpose, so interactive pages keep working. <a href="https://github.com/Systaro/DocuVault/blob/main/SECURITY.md">SECURITY.md</a> explains the trade-off.</p>
+      </div>
+      <div class="frame"><img src="assets/share.gif" alt="A share dialog with link, password and comment access turned on. The shared page asks for the password, then opens." loading="lazy" width="1200" height="560"></div>
+    </div>
+
+    <div class="feature flip reveal">
+      <div class="copy">
+        <span class="tag">Inbox</span>
+        <h3>Write it down now, file it later</h3>
+        <p>Type or speak a note into the inbox. The assistant suggests the space it belongs to and the tasks hiding in it. You confirm, and it lands in the right document.</p>
+      </div>
+      <div class="frame"><img src="assets/inbox.gif" alt="A spoken note becomes a suggestion with a target space and two tasks, then appears in the Product launch space." loading="lazy" width="1200" height="560"></div>
+    </div>
+
+    <div class="feature reveal">
+      <div class="copy">
+        <span class="tag">Permissions</span>
+        <h3>Grant access once per team</h3>
+        <p>Super Admin, Org Admin, Editor and Viewer, plus per-space roles. Put people in teams and give a team access to a space. New members get every grant of the team, and the strongest grant wins.</p>
+      </div>
+      <div class="frame"><img src="assets/teams.gif" alt="Teams connected to spaces with Editor and Viewer roles. A new member joins Engineering and inherits its access." loading="lazy" width="1200" height="560"></div>
+    </div>
+  </div>
+</section>
+
+<section class="block alt">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">And the rest</span>
+      <h2>What you need to run it for real</h2>
+    </div>
+    <div class="grid reveal">
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+        <h4>Tasks</h4><p>Tasks with assignee, due date and status. Create them by hand, from inbox notes, over MCP, or from meeting action items.</p></div>
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></div>
+        <h4>WYSIWYG that writes Markdown</h4><p>A TipTap editor that emits clean Markdown. HTML pages can be edited in the browser too.</p></div>
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 20V9"/></svg></div>
+        <h4>First-boot setup wizard</h4><p>Open the URL and create the first admin in the browser. No admin credentials in environment variables.</p></div>
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+        <h4>Settings in the admin UI</h4><p>SMTP, OpenAI and GitLab are configured in the browser. Secrets are stored encrypted in the database.</p></div>
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H5.2L4 17.2z"/><path d="M8 9h8M8 12h5"/></svg></div>
+        <h4>Email notifications</h4><p>Instant mails or a digest per user for changes in their spaces, plus invitations and password reset.</p></div>
+      <div class="tile"><div class="ico"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+        <h4>Mobile apps</h4><p>Optional iOS and Android apps built with Capacitor on top of the same web app.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="self-host">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="kicker">Self-host</span>
+      <h2>One Linux host, Docker Compose, done</h2>
+      <p>You need a server with Docker, a DNS name and ports 80 and 443. TLS comes from Let’s Encrypt automatically.</p>
+    </div>
+    <div class="two reveal">
+      <div>
+        <h3>Install</h3>
+        <p>Spring Boot and Kotlin, Angular, PostgreSQL with pgvector, Redis and MinIO, behind nginx-proxy. <code>deploy.sh</code> backs up, pulls, swaps and health-checks, and rolls back if the new version does not come up.</p>
+<pre class="code"><button class="copy-btn" type="button">Copy</button><span class="c"># on the server, in /opt/docuvault</span>
+<span class="p">$</span> cp .env.example.product .env
+<span class="p">$</span> $EDITOR .env
+<span class="p">$</span> ./deploy.sh vX.Y.Z</pre>
+        <div class="note">The prebuilt images are served from Systaro’s registry and need an access token for now. Write to <a href="mailto:licensing@systaro.de">licensing@systaro.de</a>, or build the images from the Dockerfiles in this repository. The <a href="https://github.com/Systaro/DocuVault/blob/main/docs/install.md">install guide</a> has every step.</div>
+      </div>
+      <div>
+        <h3>Connect your AI client</h3>
+        <p>One URL, then sign in once in the browser. Claude Desktop, Cursor and other clients with HTTP and OAuth support use the same URL.</p>
+<pre class="code"><button class="copy-btn" type="button">Copy</button><span class="p">$</span> claude mcp add --transport http docuvault \
+    https://docs.example.com/api/mcp
+<span class="c"># in a session: /mcp → docuvault → Authenticate</span></pre>
+        <p class="after-code">For scripts and CI, the same endpoint accepts a personal API token as a bearer header.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap reveal">
+    <h2>Keep your docs where your code is</h2>
+    <p class="lede">DocuVault is source-available under the Business Source License 1.1. Self-hosting is free. Each version turns into Apache 2.0 after four years.</p>
+    <div class="ctas">
+      <a class="btn primary" href="https://github.com/Systaro/DocuVault">Star it on GitHub</a>
+      <a class="btn ghost" href="https://github.com/Systaro/DocuVault/blob/main/docs/install.md">Read the install guide</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© Systaro GmbH · DocuVault is in early access</span>
+    <span><a href="https://github.com/Systaro/DocuVault/blob/main/LICENSE">License</a><a href="https://github.com/Systaro/DocuVault/blob/main/SECURITY.md">Security</a><a href="https://github.com/Systaro/DocuVault/issues">Issues</a></span>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver(entries => entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  document.querySelectorAll('.copy-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const text = [...btn.parentElement.childNodes].filter(n => n !== btn).map(n => n.textContent).join('')
+      .split('\n').filter(l => !l.trim().startsWith('#')).map(l => l.replace(/^\$ /, '')).join('\n').trim();
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+    catch { btn.textContent = 'Select and copy'; }
+    setTimeout(() => btn.textContent = 'Copy', 1600);
+  }));
+</script>
+</body>
+</html>
