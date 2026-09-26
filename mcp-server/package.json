@@ -2,14 +2,14 @@
   "name": "@systaro/docuvault-mcp",
   "version": "1.3.0",
   "description": "MCP server for DocuVault — Claude Code integration for reading and writing documentation",
-  "homepage": "https://github.com/dularion/DocuVault#readme",
+  "homepage": "https://github.com/Systaro/DocuVault#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dularion/DocuVault.git",
+    "url": "https://github.com/Systaro/DocuVault.git",
     "directory": "mcp-server"
   },
   "bugs": {
-    "url": "https://github.com/dularion/DocuVault/issues"
+    "url": "https://github.com/Systaro/DocuVault/issues"
   },
   "author": "Systaro GmbH",
   "main": "dist/index.js",

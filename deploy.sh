@@ -14,20 +14,22 @@
 #                   edge     latest main-branch build (unstable)
 #
 # Required files in the working directory:
-#   docker-compose.yml (or set COMPOSE_FILE env var)
-#   .env  (copy from .env.example and fill in values)
+#   docker-compose.product.yml, or docker-compose.yml when there is no product
+#   file (or set COMPOSE_FILE env var)
+#   .env  (copy from .env.example.product and fill in values)
 #
 # The compose file must reference image tags via ${DOCUVAULT_VERSION},
 # e.g.  image: ghcr.io/example/docuvault-backend:${DOCUVAULT_VERSION:-latest}
 #
 # Configurable env vars:
-#   COMPOSE_FILE                compose file to use (default: docker-compose.yml)
+#   COMPOSE_FILE                compose file to use (default: docker-compose.product.yml
+#                               if present, else docker-compose.yml)
 #   HEALTH_URL                  URL to poll after restart (default: http://localhost:7030/api/actuator/health)
 #   HEALTH_TIMEOUT              seconds to wait for health (default: 90)
 #   BACKUP_RETAIN               number of recent backup folders to keep (default: 10)
 #   DOCUVAULT_REGISTRY_HOST     image registry host (default: registry.git.systaro.de)
 #   DOCUVAULT_REGISTRY_USER     deploy-token username for image pulls (optional;
-#                               only needed if docker is not already logged in)
+#                               the public images on ghcr.io need no login)
 #   DOCUVAULT_REGISTRY_TOKEN    deploy-token secret for image pulls (optional)
 #
 # Exits non-zero if the health check fails. On health failure, rolls back
@@ -50,7 +52,10 @@ USAGE
   exit 1
 fi
 
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+# A checkout of the repository has both files; the product one is the install.
+if [ -z "${COMPOSE_FILE:-}" ]; then
+  if [ -f docker-compose.product.yml ]; then COMPOSE_FILE=docker-compose.product.yml; else COMPOSE_FILE=docker-compose.yml; fi
+fi
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"
 BACKUP_RETAIN="${BACKUP_RETAIN:-10}"
 STATE_FILE=".docuvault-current-version"
@@ -187,9 +192,10 @@ HEALTHY=false
 while true; do
   ATTEMPT=$((ATTEMPT + 1))
   if [ -n "$HEALTH_HOST_HEADER" ]; then
-    STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 -H "Host: $HEALTH_HOST_HEADER" "$HEALTH_URL" 2>/dev/null || echo "000")
+    # -L: nginx-proxy answers plain http with a redirect to https once the cert exists.
+    STATUS=$(curl -sSL -o /dev/null -w "%{http_code}" -m 5 -H "Host: $HEALTH_HOST_HEADER" "$HEALTH_URL" 2>/dev/null || echo "000")
   else
-    STATUS=$(curl -sS -o /dev/null -w "%{http_code}" -m 5 "$HEALTH_URL" 2>/dev/null || echo "000")
+    STATUS=$(curl -sSL -o /dev/null -w "%{http_code}" -m 5 "$HEALTH_URL" 2>/dev/null || echo "000")
   fi
   echo "    attempt $ATTEMPT: HTTP $STATUS"
   if [ "$STATUS" = "200" ]; then

@@ -3,15 +3,18 @@
 # Used to install or operate a DocuVault instance from published images.
 # NOT for local development — see docker-compose.yml for that.
 #
-# Quickstart:
-#   1. Copy .env.example.product → .env, fill in values.
-#   2. Place db/bootstrap.sql next to this file (download from the release).
+# Quickstart (see docs/install.md):
+#   1. git clone https://github.com/Systaro/DocuVault.git /opt/docuvault
+#   2. Copy .env.example.product → .env, fill in values.
 #   3. Point your domain (PUBLIC_HOSTNAME) at this server, open ports 80/443.
-#   4. Run ./deploy.sh <version>   (e.g. ./deploy.sh v0.1.0)
+#   4. Run ./deploy.sh latest   (or a version, e.g. ./deploy.sh v0.7.0)
 #
 # Image tags are controlled by $DOCUVAULT_VERSION, which deploy.sh sets.
 # When invoking docker compose directly:
-#   DOCUVAULT_VERSION=v0.1.0 docker compose -f docker-compose.product.yml up -d
+#   DOCUVAULT_VERSION=v0.7.0 docker compose -f docker-compose.product.yml up -d
+#
+# Images are public on ghcr.io/systaro/docuvault. Set DOCUVAULT_IMAGE_PREFIX
+# in .env to pull them from another registry instead.
 #
 # TLS:
 #   nginx-proxy + acme-companion handle automatic Let's Encrypt certs based
@@ -104,7 +107,7 @@ services:
       retries: 5
 
   backend:
-    image: registry.git.systaro.de/systaro/docuvault/backend:${DOCUVAULT_VERSION:-latest}
+    image: ${DOCUVAULT_IMAGE_PREFIX:-ghcr.io/systaro/docuvault}/backend:${DOCUVAULT_VERSION:-latest}
     container_name: docuvault-backend
     restart: unless-stopped
     environment:
@@ -147,7 +150,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: registry.git.systaro.de/systaro/docuvault/frontend:${DOCUVAULT_VERSION:-latest}
+    image: ${DOCUVAULT_IMAGE_PREFIX:-ghcr.io/systaro/docuvault}/frontend:${DOCUVAULT_VERSION:-latest}
     container_name: docuvault-frontend
     restart: unless-stopped
     environment:
@@ -168,7 +171,7 @@ services:
   #   2) running `docker compose --profile meeting-bot up -d`
   # deploy.sh detects either credential and includes this service automatically.
   meeting-bot:
-    image: registry.git.systaro.de/systaro/docuvault/meeting-bot:${DOCUVAULT_VERSION:-latest}
+    image: ${DOCUVAULT_IMAGE_PREFIX:-ghcr.io/systaro/docuvault}/meeting-bot:${DOCUVAULT_VERSION:-latest}
     container_name: docuvault-meeting-bot
     restart: unless-stopped
     profiles:

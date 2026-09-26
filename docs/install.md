@@ -12,23 +12,22 @@ Self-hosted DocuVault. ~10 minutes from a fresh server to a running install.
 - An SMTP relay you can send mail through (any provider — Postmark, Sendgrid,
   Postal, or your existing mail server). Without one the app runs but cannot
   send invitations, password resets, or notifications.
-- Registry credentials provided by Systaro (`DOCUVAULT_REGISTRY_USER` +
-  `DOCUVAULT_REGISTRY_TOKEN`).
 
-## 1. Get the install bundle
+No account or registry login is needed: the images are public on
+`ghcr.io/systaro/docuvault`.
 
-Extract the bundle into a working directory on the server:
+## 1. Get the install files
 
-```
-/opt/docuvault/
-├── docker-compose.product.yml
-├── .env.example.product
-├── deploy.sh
-└── db/
-    └── bootstrap.sql
+Clone the repository into a working directory on the server:
+
+```bash
+git clone --depth 1 https://github.com/Systaro/DocuVault.git /opt/docuvault
+cd /opt/docuvault
 ```
 
-`cd` into that directory before any commands below.
+Only `docker-compose.product.yml`, `.env.example.product`, `deploy.sh` and
+`db/bootstrap.sql` are used; nothing is built on the server. Run every command
+below from this directory.
 
 ## 2. Configure
 
@@ -42,7 +41,6 @@ where indicated (`openssl rand -base64 48`). The fields that *must* be set:
 
 - `PUBLIC_HOSTNAME` (e.g. `docuvault.example.com`)
 - `LETSENCRYPT_EMAIL` (gets cert expiry notices)
-- `DOCUVAULT_REGISTRY_USER` + `DOCUVAULT_REGISTRY_TOKEN` (from Systaro)
 - `DB_PASSWORD`, `JWT_SECRET`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`
 - `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` (your SMTP relay)
 
@@ -57,13 +55,16 @@ and other MCP clients from connecting, while the web UI keeps working.
 ## 3. Install
 
 ```bash
-./deploy.sh v0.1.0
+./deploy.sh latest
 ```
+
+`latest` is the newest release. Pin a version instead (`./deploy.sh v0.7.0`)
+if you want upgrades to happen only when you ask for them; `edge` follows the
+main branch and is not meant for production.
 
 This will:
 
-1. Log in to `registry.git.systaro.de` using your token.
-2. Pull the `v0.1.0` images for backend and frontend.
+1. Pull the images for backend and frontend from `ghcr.io/systaro/docuvault`.
 3. Run `db/bootstrap.sql` against a fresh postgres on first start.
 4. Bring up nginx-proxy + acme-companion, which request a Let's Encrypt cert
    for `PUBLIC_HOSTNAME` automatically (this can take 30–90 seconds).
@@ -93,10 +94,12 @@ curl https://<PUBLIC_HOSTNAME>/api/actuator/health
 
 ## 5. Upgrade
 
-When a new version is released, run:
+When a new version is released, update the install files and run the script
+with the new version:
 
 ```bash
-./deploy.sh v0.2.0
+git pull
+./deploy.sh latest
 ```
 
 Same script. It backs up postgres + MinIO + repos before pulling, swaps the
@@ -151,12 +154,13 @@ docker compose -f docker-compose.product.yml logs backend --tail=100
 Most common causes: bad `JWT_SECRET` (too short), wrong `DB_PASSWORD`, or
 postgres not yet ready (deploy.sh waits, but may need longer with slow disk).
 
-**`docker login` fails.**
-Confirm `DOCUVAULT_REGISTRY_USER` and `DOCUVAULT_REGISTRY_TOKEN` are set
-correctly in `.env`. Test manually:
+**Pulling images fails.**
+The public images need no login. If `deploy.sh` still tries one, remove
+`DOCUVAULT_REGISTRY_USER` and `DOCUVAULT_REGISTRY_TOKEN` from `.env`. When you
+pull from your own registry (`DOCUVAULT_IMAGE_PREFIX`), test the login by hand:
 
 ```bash
-echo "$DOCUVAULT_REGISTRY_TOKEN" | docker login registry.git.systaro.de \
+echo "$DOCUVAULT_REGISTRY_TOKEN" | docker login "$DOCUVAULT_REGISTRY_HOST" \
   -u "$DOCUVAULT_REGISTRY_USER" --password-stdin
 ```
 
@@ -196,6 +200,6 @@ if you've enabled file logging via `LOGGING_FILE_NAME`.
 
 ## Support
 
-- Bug reports / install help: open an issue at https://github.com/dularion/DocuVault/issues
+- Bug reports / install help: open an issue at https://github.com/Systaro/DocuVault/issues
 - Security disclosure: see [SECURITY.md](../SECURITY.md)
 - Status of your install: `docker compose -f docker-compose.product.yml ps`

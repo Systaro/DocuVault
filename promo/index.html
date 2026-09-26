@@ -334,11 +334,13 @@
       <div>
         <h3>Install</h3>
         <p>Spring Boot and Kotlin, Angular, PostgreSQL with pgvector, Redis and MinIO, behind nginx-proxy. <code>deploy.sh</code> backs up, pulls, swaps and health-checks, and rolls back if the new version does not come up.</p>
-<pre class="code"><button class="copy-btn" type="button">Copy</button><span class="c"># on the server, in /opt/docuvault</span>
+<pre class="code"><button class="copy-btn" type="button">Copy</button><span class="c"># on the server</span>
+<span class="p">$</span> git clone --depth 1 https://github.com/Systaro/DocuVault.git /opt/docuvault
+<span class="p">$</span> cd /opt/docuvault
 <span class="p">$</span> cp .env.example.product .env
 <span class="p">$</span> $EDITOR .env
-<span class="p">$</span> ./deploy.sh vX.Y.Z</pre>
-        <div class="note">The prebuilt images are served from Systaro’s registry and need an access token for now. Write to <a href="mailto:licensing@systaro.de">licensing@systaro.de</a>, or build the images from the Dockerfiles in this repository. The <a href="https://github.com/Systaro/DocuVault/blob/main/docs/install.md">install guide</a> has every step.</div>
+<span class="p">$</span> ./deploy.sh latest</pre>
+        <div class="note">The images are public on <code>ghcr.io/systaro/docuvault</code>, so there is no account to create and no registry login. The <a href="https://github.com/Systaro/DocuVault/blob/main/docs/install.md">install guide</a> explains every setting.</div>
       </div>
       <div>
         <h3>Connect your AI client</h3>

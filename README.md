@@ -4,6 +4,10 @@ Self-hosted team documentation with Git as the source of truth. Edit collaborati
 
 ![Status](https://img.shields.io/badge/status-early%20access-yellow) ![License](https://img.shields.io/badge/license-BSL%201.1-blue)
 
+**[Website](https://docuvault-promo.systaro.de)** · [Install guide](docs/install.md) · [MCP server](#mcp-server-for-ai-agents)
+
+<p align="center"><img src="promo/assets/git-commit.gif" alt="Typing in the DocuVault editor. It saves, and a new commit appears in the git log." width="900"></p>
+
 ## Why
 
 Most documentation tools either lock your content into a proprietary store (Notion, Confluence) or make you choose between web-editing and Git workflow (raw GitLab/GitHub, plain Markdown sites). DocuVault keeps both: your documents live as Markdown files in a Git repository you control, while the team gets a real WYSIWYG editor, search, sharing, and permissions on top.
@@ -26,6 +30,14 @@ For developers and AI tools, the same files are available locally — clone the 
 - **First-boot setup wizard.** No `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars to fumble — visit the URL, create the admin, done.
 - **Admin settings UI.** Configure SMTP, OpenAI, and GitLab from the browser; values stored encrypted in the database.
 
+## A quick look
+
+| | |
+|---|---|
+| **AI agents write through MCP**<br><img src="promo/assets/mcp-agent.gif" alt="An AI agent creates a document through the MCP server" width="440"> | **Ask your documentation**<br><img src="promo/assets/ask.gif" alt="A question answered with linked source documents" width="440"> |
+| **Comments that stay on their words**<br><img src="promo/assets/comments.gif" alt="A comment anchored to a phrase follows it when text is added above" width="440"> | **Scrub through version history**<br><img src="promo/assets/history.gif" alt="A timeline slider moves back through versions with added and removed lines" width="440"> |
+| **Public links with password and comments**<br><img src="promo/assets/share.gif" alt="Share dialog and the password-protected shared page" width="440"> | **Inbox with AI routing**<br><img src="promo/assets/inbox.gif" alt="A note becomes a suggested space and tasks" width="440"> |
+
 ## Tech stack
 
 - **Backend:** Spring Boot 3.2, Kotlin, JPA/Hibernate
@@ -42,16 +54,16 @@ You need a Linux server with Docker, a DNS name pointing at it, and ports 80 + 4
 
 ```bash
 # On the target server
-mkdir -p /opt/docuvault && cd /opt/docuvault
+git clone --depth 1 https://github.com/Systaro/DocuVault.git /opt/docuvault
+cd /opt/docuvault
 
-# Drop in the install bundle (docker-compose.yml, deploy.sh, db/bootstrap.sql, .env.example)
-# from the latest GitHub Release: https://github.com/dularion/DocuVault/releases
-
-cp .env.example .env
+cp .env.example.product .env
 $EDITOR .env                 # fill in PUBLIC_HOSTNAME, secrets, SMTP credentials
 
-./deploy.sh v0.1.5           # pulls images, backs up, swaps, health-checks
+./deploy.sh latest           # pulls the public images, backs up, swaps, health-checks
 ```
+
+The images are public on `ghcr.io/systaro/docuvault`, so no registry login is needed.
 
 Then visit `https://<your-hostname>` in a browser — the first-time setup wizard will walk you through creating an admin account.
 
@@ -100,7 +112,7 @@ still works for clients without HTTP/OAuth support.
 
 ## Status
 
-DocuVault is in **early access**. The data model and APIs are stable for self-hosting; expect occasional breaking changes in minor versions until 1.0. Release notes live at [GitHub Releases](https://github.com/dularion/DocuVault/releases) and the in-app banner will tell you when a new version is available.
+DocuVault is in **early access**. The data model and APIs are stable for self-hosting; expect occasional breaking changes in minor versions until 1.0. Release notes live at [GitHub Releases](https://github.com/Systaro/DocuVault/releases) and the in-app banner will tell you when a new version is available.
 
 ## License
 

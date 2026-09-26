@@ -5,12 +5,12 @@
   "license": "BUSL-1.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dularion/DocuVault.git",
+    "url": "https://github.com/Systaro/DocuVault.git",
     "directory": "frontend"
   },
-  "homepage": "https://github.com/dularion/DocuVault#readme",
+  "homepage": "https://github.com/Systaro/DocuVault#readme",
   "bugs": {
-    "url": "https://github.com/dularion/DocuVault/issues"
+    "url": "https://github.com/Systaro/DocuVault/issues"
   },
   "scripts": {
     "ng": "ng",
