@@ -1,5 +1,8 @@
 # Meeting Transcription Bot — Feature & Setup
 
+> **Status: alpha.** The bot works but is still being calibrated against live
+> meetings. Expect rough edges and changes between minor versions.
+
 ## Overview
 
 The meeting bot joins a meeting, transcribes it, and files the result into a

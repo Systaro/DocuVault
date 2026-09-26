@@ -1,5 +1,8 @@
 # Tasks
 
+> **Status: alpha.** Tasks work end to end but the data model and UI may still
+> change between minor versions.
+
 A task is something someone has to do in a repository space: a title, optional details, a status, an assignee, a due date, a priority, and the place it came from. Tasks live in the database (`tasks`, V029), not in Git, because status changes all the time and a commit per checkbox would bury the document history.
 
 ## Where tasks come from
