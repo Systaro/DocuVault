@@ -119,10 +119,16 @@ version fails to start. Backups live under `./backups/` (last 10 retained by def
 Backups are taken automatically before every `deploy.sh` run. Each backup is
 a folder under `./backups/` containing:
 
-- `postgres.sql` — full database dump
-- `minio_data.tar.gz` — uploaded files (logos, etc.)
-- `repos_data.tar.gz` — synced GitLab repos
-- `previous-version.txt` — the version that was running before the upgrade
+- `postgres.sql`: full database dump. The deploy stops before changing
+  anything if the dump is incomplete or postgres is not running.
+- `minio_data.tar.gz`: uploaded files (logos, attachments)
+- `backend_data_repos.tar.gz`: the Git repositories of all spaces
+- `meeting-bot_data_recordings.tar.gz`: in-progress meeting recordings, if the
+  bot runs
+- `previous-version.txt` and `previous-images.txt`: what ran before the upgrade
+
+Every mount of those containers is archived, whether it is a Docker volume or a
+folder on the host.
 
 To restore postgres from a backup:
 
@@ -131,10 +137,10 @@ docker compose -f docker-compose.product.yml exec -T postgres \
   psql -U docuvault docuvault < backups/<TIMESTAMP>/postgres.sql
 ```
 
-To roll back to the previous version manually:
+To go back to an earlier release manually:
 
 ```bash
-./deploy.sh "$(cat backups/<TIMESTAMP>/previous-version.txt)"
+./deploy.sh v0.8.0
 ```
 
 We recommend an off-server backup of the `./backups/` directory as well —

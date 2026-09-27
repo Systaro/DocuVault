@@ -90,7 +90,6 @@ DB_USERNAME="$(env_get DB_USERNAME)"
 DB_NAME="$(env_get DB_NAME)"
 DB_USERNAME="${DB_USERNAME:-docuvault}"
 DB_NAME="${DB_NAME:-docuvault}"
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')}"
 
 # Meeting-bot is opt-in: deploy.sh includes it whenever an adapter credential is
 # set in .env — DISCORD_BOT_TOKEN (Discord) or MEETING_BOT_DISPATCH_TOKEN (Teams).
@@ -144,24 +143,43 @@ if docker compose -f "$COMPOSE_FILE" ps --status running --services 2>/dev/null 
   echo "==> Backup: postgres dump"
   docker compose -f "$COMPOSE_FILE" exec -T postgres \
     pg_dump -U "$DB_USERNAME" "$DB_NAME" > "$BACKUP_DIR/postgres.sql"
+  # A dump that stopped half way still exits 0 on some errors; only a complete
+  # one ends with this marker. Nothing has been changed yet, so stop here.
+  if ! tail -n 5 "$BACKUP_DIR/postgres.sql" | grep -q 'PostgreSQL database dump complete'; then
+    echo "!!! postgres dump is incomplete, aborting before anything changes" >&2
+    exit 1
+  fi
+elif [ -n "$(docker compose -f "$COMPOSE_FILE" ps -a -q 2>/dev/null)" ]; then
+  # The stack exists but its database is not running: an upgrade without a
+  # dump is not allowed.
+  echo "!!! postgres is not running, so no dump can be taken; start it or fix the stack first" >&2
+  exit 1
 else
-  echo "==> Backup: postgres not running (fresh install?), skipping dump"
+  echo "==> Backup: no containers yet (fresh install), skipping dump"
 fi
 
-snapshot_volume() {
-  local short="$1"
-  local volume="${PROJECT_NAME}_${short}"
-  if docker volume inspect "$volume" >/dev/null 2>&1; then
-    echo "==> Backup: $volume"
-    docker run --rm \
-      -v "${volume}:/data:ro" \
-      -v "$(pwd)/$BACKUP_DIR:/backup" \
-      alpine tar czf "/backup/${short}.tar.gz" -C /data .
-  fi
+# Back up what the containers actually mount, named volume or host folder, so
+# an install that keeps its data in bind mounts is covered too.
+snapshot_mounts() {
+  local svc="$1" cid
+  # shellcheck disable=SC2086
+  cid="$(docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" ps -q "$svc" 2>/dev/null | head -1)"
+  [ -n "$cid" ] || return 0
+  docker inspect -f '{{range .Mounts}}{{.Type}}|{{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}}|{{.Destination}}{{"\n"}}{{end}}' "$cid" |
+  while IFS='|' read -r type src dest; do
+    [ -n "$src" ] || continue
+    local name="${svc}$(printf '%s' "$dest" | tr '/' '_')"
+    echo "==> Backup: $svc $dest ($type)"
+    docker run --rm -v "$src:/data:ro" -v "$(pwd)/$BACKUP_DIR:/backup" \
+      alpine tar czf "/backup/$name.tar.gz" -C /data .
+  done
 }
-snapshot_volume minio_data
-snapshot_volume repos_data
-snapshot_volume postgres_data  # raw fallback in case pg_dump above was skipped
+snapshot_mounts minio
+snapshot_mounts backend
+snapshot_mounts meeting-bot
+# Raw postgres files only when there is no dump (a copy of a running database
+# is not consistent, the dump is the real backup).
+[ -f "$BACKUP_DIR/postgres.sql" ] || snapshot_mounts postgres
 
 echo "$PREV_VERSION" > "$BACKUP_DIR/previous-version.txt"
 
@@ -175,7 +193,7 @@ for svc in $SERVICES_TO_PULL; do
   # shellcheck disable=SC2086
   cid="$(docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" ps -q "$svc" 2>/dev/null | head -1)"
   [ -n "$cid" ] || continue
-  ROLLBACK_IMAGES="$ROLLBACK_IMAGES $(docker inspect -f '{{.Config.Image}}={{.Image}}' "$cid")"
+  ROLLBACK_IMAGES="$ROLLBACK_IMAGES $svc=$(docker inspect -f '{{.Image}}' "$cid")"
 done
 echo "$ROLLBACK_IMAGES" > "$BACKUP_DIR/previous-images.txt"
 
@@ -224,14 +242,18 @@ if ! $HEALTHY; then
 
   if [ -n "${ROLLBACK_IMAGES// /}" ]; then
     echo "!!! Rolling back to the images that ran before ($PREV_VERSION)"
+    # The old images are re-tagged as :rollback under the image names the
+    # compose file uses now, so this also works when they came from another
+    # registry or carried the same tag as the failed version.
     for pair in $ROLLBACK_IMAGES; do
-      docker tag "${pair#*=}" "${pair%%=*}"
+      svc="${pair%%=*}"
+      # shellcheck disable=SC2086
+      ref="$(docker inspect -f '{{.Config.Image}}' "$(docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" ps -a -q "$svc" | head -1)")"
+      docker tag "${pair#*=}" "${ref%:*}:rollback"
     done
     # shellcheck disable=SC2086
-    DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d --pull never $SERVICES_TO_PULL \
-      || { DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" pull $SERVICES_TO_PULL \
-           && DOCUVAULT_VERSION="$PREV_VERSION" docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d $SERVICES_TO_PULL; }
-    echo "!!! Rolled back to $PREV_VERSION"
+    DOCUVAULT_VERSION=rollback docker compose $COMPOSE_PROFILE_ARGS -f "$COMPOSE_FILE" up -d --pull never $SERVICES_TO_PULL
+    echo "!!! Rolled back: the images of $PREV_VERSION run as :rollback. Deploy a fixed version with ./deploy.sh <version>."
   else
     echo "!!! No previous version recorded — manual recovery required."
   fi
