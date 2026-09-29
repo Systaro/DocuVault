@@ -1,5 +1,8 @@
 # DocuVault
 
+<img width="1239" height="599" alt="image" src="https://github.com/user-attachments/assets/df2c1fc2-874c-49ad-90b9-3348fa949176" />
+
+
 Self-hosted team documentation with Git as the source of truth. Edit collaboratively in the browser; every save is a commit to your repo. Comes with a CRUD MCP server for local AI editing and a role-based permission system. AI features are optional.
 
 ![Status](https://img.shields.io/badge/status-early%20access-yellow) ![License](https://img.shields.io/badge/license-BSL%201.1-blue) ![Images](https://img.shields.io/badge/images-amd64%20%7C%20arm64-informational)
