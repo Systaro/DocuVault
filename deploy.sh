@@ -268,10 +268,12 @@ fi
 # ---------------------------------------------------------------------------
 echo "$VERSION" > "$STATE_FILE"
 
-# Prune old backups beyond retention (keep most recent BACKUP_RETAIN folders)
+# Prune old backups beyond retention (keep the most recent BACKUP_RETAIN).
+# Only folders this script created (<timestamp>-pre-<version>) are touched;
+# anything else in ./backups was put there by hand and stays.
 if [ -d ./backups ]; then
   # shellcheck disable=SC2012
-  ls -1dt ./backups/*/ 2>/dev/null | tail -n +"$((BACKUP_RETAIN + 1))" | xargs -r rm -rf
+  ls -1dt ./backups/[0-9]*-pre-*/ 2>/dev/null | tail -n +"$((BACKUP_RETAIN + 1))" | xargs -r rm -rf
 fi
 
 echo "==> Pruning dangling images"
