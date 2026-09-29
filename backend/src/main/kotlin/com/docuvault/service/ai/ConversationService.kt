@@ -364,10 +364,9 @@ class ConversationService(
         }
 
         val effects = session.effects
-        // An answer about attached files draws on them; the best search hit is no stand-in for a source then.
         val candidates = chunks.map { MessageSource(it.spaceId, it.documentPath, it.documentTitle) } +
             effects.found.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) }
-        val namedSources = retrievalSources(candidates, answer, fallback = turn.attachments.isEmpty() && turn.historyAttachments.isEmpty())
+        val namedSources = retrievalSources(candidates, answer)
         val sources = (listOfNotNull(turn.documentSource) + effects.sources.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) } + namedSources)
             .distinctBy { it.spaceId to it.path }
             .take(MAX_SOURCES)
@@ -686,17 +685,14 @@ class ConversationService(
      * The passages the answer actually drew on, from the retrieval before the
      * turn and from the model's own searches. Both always return something,
      * often from unrelated documents, so only documents the answer names count,
-     * in the order it names them; when it names none, the best retrieval match
-     * stands in.
+     * in the order it names them. No best match stands in when it names none:
+     * a guessed source is worse than none.
      */
-    internal fun retrievalSources(candidates: List<MessageSource>, answer: String, fallback: Boolean = true): List<MessageSource> {
-        val unique = candidates.distinctBy { it.spaceId to it.path }
-        val named = unique
+    internal fun retrievalSources(candidates: List<MessageSource>, answer: String): List<MessageSource> =
+        candidates.distinctBy { it.spaceId to it.path }
             .mapNotNull { source -> mentionIndex(source, answer)?.let { source to it } }
             .sortedBy { it.second }
             .map { it.first }
-        return named.ifEmpty { if (fallback) unique.take(1) else emptyList() }
-    }
 
     private fun mentionIndex(source: MessageSource, answer: String): Int? =
         answer.indexOf(source.path).takeIf { it >= 0 }

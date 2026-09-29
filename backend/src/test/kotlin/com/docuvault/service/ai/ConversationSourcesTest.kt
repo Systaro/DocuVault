@@ -40,14 +40,9 @@ class ConversationSourcesTest {
     }
 
     @Test
-    fun `falls back to the best match when the answer names nothing`() {
-        assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit, onboarding), "Mondays.").map { it.path })
-    }
-
-    @Test
-    fun `an answer about attached files gets no stand-in source`() {
-        assertEquals(emptyList<String>(), service.retrievalSources(listOf(fruit, onboarding), "Your note says to call the movers.", fallback = false).map { it.path })
-        assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit), "As ops/fruit-policy.md says", fallback = false).map { it.path })
+    fun `an answer that names nothing gets no stand-in source`() {
+        assertEquals(emptyList<String>(), service.retrievalSources(listOf(fruit, onboarding), "Mondays.").map { it.path })
+        assertEquals(emptyList<String>(), service.retrievalSources(listOf(fruit, onboarding), "Your note says to call the movers.").map { it.path })
     }
 
     @Test
