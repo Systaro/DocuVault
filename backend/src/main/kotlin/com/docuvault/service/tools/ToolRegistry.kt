@@ -136,6 +136,7 @@ class ToolRegistry(
             else results.mapIndexed { i, r ->
                 val fullPath = r.text("spaceFullPath")
                 val docPath = r.text("documentPath") ?: ""
+                r.text("spaceId")?.takeIf { docPath.isNotEmpty() }?.let { s.effects.found(ToolSource(it, docPath, r.text("documentTitle"))) }
                 val header = if (fullPath != null) {
                     "[${i + 1}] ${r.text("documentTitle")} ($fullPath/$docPath)\nURL: ${s.documentUrl(fullPath, docPath)}"
                 } else {
@@ -160,6 +161,7 @@ class ToolRegistry(
             else results.mapIndexed { i, r ->
                 val fullPath = r.text("spaceFullPath") ?: ""
                 val docPath = r.text("documentPath") ?: ""
+                r.text("spaceId")?.takeIf { docPath.isNotEmpty() }?.let { s.effects.found(ToolSource(it, docPath, r.text("documentTitle"))) }
                 val snippet = r.text("snippet")?.let { "\n  Preview: $it" } ?: ""
                 "[${i + 1}] ${r.text("documentTitle")}\n  Space: ${r.text("spaceName")} ($fullPath)\n  Path: $docPath\n  URL: ${s.documentUrl(fullPath, docPath)}\n  Updated: ${r.text("updatedAt")}$snippet"
             }.joinToString("\n\n")

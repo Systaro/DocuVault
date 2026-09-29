@@ -1,13 +1,13 @@
 package com.docuvault.service.ai
 
 import com.docuvault.config.OpenAIProvider
+import com.docuvault.domain.ai.MessageSource
 import com.docuvault.infrastructure.repository.ConversationMessageRepository
 import com.docuvault.infrastructure.repository.ConversationRepository
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
 import com.docuvault.service.PermissionService
 import com.docuvault.service.branding.BrandingService
-import com.docuvault.service.embedding.CrossSpaceChunk
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.git.GitService
 import com.docuvault.service.tools.ToolRegistry
@@ -28,7 +28,7 @@ class ConversationSourcesTest {
     )
 
     private val space = UUID.randomUUID()
-    private fun chunk(path: String, title: String?) = CrossSpaceChunk(UUID.randomUUID(), path, title, 0, "text", space)
+    private fun chunk(path: String, title: String?) = MessageSource(space, path, title)
 
     private val fruit = chunk("ops/fruit-policy.md", "Fruit policy")
     private val onboarding = chunk("ops/onboarding-checklist.md", "Onboarding Checklist")
@@ -48,5 +48,23 @@ class ConversationSourcesTest {
     fun `an answer about attached files gets no stand-in source`() {
         assertEquals(emptyList<String>(), service.retrievalSources(listOf(fruit, onboarding), "Your note says to call the movers.", fallback = false).map { it.path })
         assertEquals(listOf("ops/fruit-policy.md"), service.retrievalSources(listOf(fruit), "As ops/fruit-policy.md says", fallback = false).map { it.path })
+    }
+
+    @Test
+    fun `a search hit the answer names is a source, one it only saw is not`() {
+        val importedData = chunk("developer-docs/imported-data.html", "ImportedData")
+        val searched = listOf(fruit, importedData, onboarding)
+        assertEquals(
+            listOf("developer-docs/imported-data.html"),
+            service.retrievalSources(searched, "Details in `developer-docs/imported-data.html`.").map { it.path }
+        )
+    }
+
+    @Test
+    fun `sources follow the order the answer names them in`() {
+        assertEquals(
+            listOf("ops/onboarding-checklist.md", "ops/fruit-policy.md"),
+            service.retrievalSources(listOf(fruit, onboarding), "First ops/onboarding-checklist.md, then ops/fruit-policy.md").map { it.path }
+        )
     }
 }

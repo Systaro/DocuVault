@@ -65,12 +65,18 @@ data class ToolProposal(
 /** What a run did besides answering, collected for the in-app assistant. MCP ignores it. */
 class ToolEffects {
     val sources = LinkedHashMap<String, ToolSource>()
+    /** Search hits: the model saw passages of them, so they count as sources once the answer names them. */
+    val found = LinkedHashMap<String, ToolSource>()
     val created = mutableListOf<ToolSource>()
     val proposals = mutableListOf<ToolProposal>()
     val createdTasks = mutableListOf<ToolTask>()
 
     fun read(source: ToolSource) {
         sources.putIfAbsent("${source.spaceId}:${source.path}", source)
+    }
+
+    fun found(source: ToolSource) {
+        found.putIfAbsent("${source.spaceId}:${source.path}", source)
     }
 }
 

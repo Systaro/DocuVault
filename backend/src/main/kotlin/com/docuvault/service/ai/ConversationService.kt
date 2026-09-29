@@ -365,8 +365,10 @@ class ConversationService(
 
         val effects = session.effects
         // An answer about attached files draws on them; the best search hit is no stand-in for a source then.
-        val chunkSources = retrievalSources(chunks, answer, fallback = turn.attachments.isEmpty() && turn.historyAttachments.isEmpty())
-        val sources = (listOfNotNull(turn.documentSource) + effects.sources.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) } + chunkSources)
+        val candidates = chunks.map { MessageSource(it.spaceId, it.documentPath, it.documentTitle) } +
+            effects.found.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) }
+        val namedSources = retrievalSources(candidates, answer, fallback = turn.attachments.isEmpty() && turn.historyAttachments.isEmpty())
+        val sources = (listOfNotNull(turn.documentSource) + effects.sources.values.map { MessageSource(UUID.fromString(it.spaceId), it.path, it.title) } + namedSources)
             .distinctBy { it.spaceId to it.path }
             .take(MAX_SOURCES)
         val stored = messageRepository.save(
@@ -627,10 +629,19 @@ class ConversationService(
             |$overview
             |
             |How to answer:
-            |- Answer in the language the user writes in. Be concise. Use Markdown.
+            |- Answer in the language the user writes in. Be concise.
+            |- Format with Markdown, the way a careful technical writer would:
+            |  - **bold** for the few terms and conclusions the reader must not miss;
+            |  - `inline code` for endpoints, HTTP methods with paths, file paths, class, field and entity names,
+            |    config keys, status values and commands;
+            |  - fenced code blocks with a language tag (```json, ```bash, ...) for every payload, request, config
+            |    snippet or code, never JSON or code written out inside a plain list item;
+            |  - ## headings only when the answer has several distinct parts; lists nested at most two levels.
             |- Base answers on the documents. When the context below is not enough, search and read with the tools
-            |  before answering. If the documents do not say, say that instead of guessing.
-            |- Name the documents you used by their path.
+            |  before answering. If the documents do not say, say that instead of guessing. Search results are
+            |  excerpts: before you state endpoints, payloads or steps, read the document they come from.
+            |- Name the documents you drew on by their exact path, in `inline code`. Name only those the answer
+            |  actually takes information from, not documents you merely saw in a list or a search result.
             |
             |$writing
             |
@@ -672,17 +683,24 @@ class ConversationService(
     }
 
     /**
-     * The retrieved passages the answer actually drew on. Retrieval always
-     * returns something, often from unrelated documents, so only documents the
-     * answer names count; when it names none, the best match stands in.
+     * The passages the answer actually drew on, from the retrieval before the
+     * turn and from the model's own searches. Both always return something,
+     * often from unrelated documents, so only documents the answer names count,
+     * in the order it names them; when it names none, the best retrieval match
+     * stands in.
      */
-    internal fun retrievalSources(chunks: List<CrossSpaceChunk>, answer: String, fallback: Boolean = true): List<MessageSource> {
-        val named = chunks.filter { chunk ->
-            answer.contains(chunk.documentPath) ||
-                chunk.documentTitle?.takeIf { it.length > 3 }?.let { answer.contains(it, ignoreCase = true) } == true
-        }
-        return named.ifEmpty { if (fallback) chunks.take(1) else emptyList() }.map { MessageSource(it.spaceId, it.documentPath, it.documentTitle) }
+    internal fun retrievalSources(candidates: List<MessageSource>, answer: String, fallback: Boolean = true): List<MessageSource> {
+        val unique = candidates.distinctBy { it.spaceId to it.path }
+        val named = unique
+            .mapNotNull { source -> mentionIndex(source, answer)?.let { source to it } }
+            .sortedBy { it.second }
+            .map { it.first }
+        return named.ifEmpty { if (fallback) unique.take(1) else emptyList() }
     }
+
+    private fun mentionIndex(source: MessageSource, answer: String): Int? =
+        answer.indexOf(source.path).takeIf { it >= 0 }
+            ?: source.title?.takeIf { it.length > 3 }?.let { answer.indexOf(it, ignoreCase = true) }?.takeIf { it >= 0 }
 
     private fun retrievedContext(chunks: List<CrossSpaceChunk>): String =
         if (chunks.isEmpty()) ""

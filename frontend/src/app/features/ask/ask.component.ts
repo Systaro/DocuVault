@@ -2,7 +2,7 @@ import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { PageTitleService } from '../../core/branding/page-title.service';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 import {
@@ -150,7 +150,7 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
                     </ul>
                   </details>
                 }
-                <div class="answer markdown-readonly" [innerHTML]="render(m.content)"></div>
+                <div class="answer markdown-readonly" [innerHTML]="render(m)" (click)="copyCode($event)"></div>
                 @for (p of m.proposals; track p.id) {
                   <app-proposal-card
                     [proposal]="p"
@@ -508,6 +508,45 @@ import { DraftDialogComponent, DraftSubmission } from './draft-dialog.component'
       overflow-wrap: anywhere;
     }
 
+    /* The answer is [innerHTML], which scoped styles do not reach. */
+    .answer ::ng-deep {
+      a.doc-ref {
+        text-decoration: none;
+        border-bottom: 1px solid var(--primary-light, currentColor);
+
+        code { color: var(--primary-dark); }
+        &:hover code { text-decoration: underline; }
+      }
+
+      .code-block {
+        position: relative;
+
+        pre { padding-right: 44px; }
+      }
+
+      .code-copy {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        color: var(--text-muted);
+        cursor: pointer;
+        opacity: 0.7;
+
+        .material-icons { font-size: 16px; }
+        &:hover { opacity: 1; color: var(--primary-dark); border-color: var(--primary); }
+      }
+
+      .code-block:hover .code-copy { opacity: 1; }
+    }
+
     .tool-log {
       margin-bottom: var(--spacing-sm);
       font-size: 13px;
@@ -644,6 +683,7 @@ export class AskComponent implements OnInit, OnDestroy {
   private ai = inject(AiService);
   private spacesService = inject(SpacesService);
   private markdown = inject(MarkdownRenderService);
+  private sanitizer = inject(DomSanitizer);
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -934,13 +974,106 @@ export class AskComponent implements OnInit, OnDestroy {
     );
   }
 
-  render(content: string): SafeHtml {
-    let html = this.rendered.get(content);
+  render(message: ConversationMessage): SafeHtml {
+    const key = message.id + message.content;
+    let html = this.rendered.get(key);
     if (!html) {
-      html = this.markdown.renderInline(content);
-      this.rendered.set(content, html);
+      const markup = this.markdown.renderToHtml(message.content);
+      html = this.sanitizer.bypassSecurityTrustHtml(
+        this.decorateAnswer(markup, [...message.sources, ...message.createdDocuments])
+      );
+      this.rendered.set(key, html);
     }
     return html;
+  }
+
+  /**
+   * Links every mention of a document the answer drew on to that document,
+   * opening in a new tab, and gives code blocks a copy button. Links come only
+   * from the message's resolved sources, never from URLs the model writes.
+   */
+  private decorateAnswer(markup: string, documents: MessageSource[]): string {
+    const template = document.createElement('template');
+    template.innerHTML = markup;
+    const root = template.content;
+
+    const linkable = documents
+      .filter(d => d.spaceFullPath && d.path)
+      .sort((a, b) => b.path.length - a.path.length);
+    if (linkable.length) this.linkDocumentPaths(root, linkable);
+
+    root.querySelectorAll('pre:not(.mermaid)').forEach(pre => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-block';
+      pre.replaceWith(wrapper);
+      wrapper.innerHTML = '<button type="button" class="code-copy" title="Copy code" aria-label="Copy code">' +
+        '<span translate="no" class="material-icons">content_copy</span></button>';
+      wrapper.appendChild(pre);
+    });
+    return template.innerHTML;
+  }
+
+  private linkDocumentPaths(root: DocumentFragment, documents: MessageSource[]): void {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const texts: Text[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.parentElement?.closest('a, pre')) texts.push(n as Text);
+    }
+
+    for (const text of texts) {
+      const value = text.data;
+      const parent = text.parentElement;
+      // `path` as inline code: link the whole code element.
+      const exact = parent?.tagName === 'CODE' && parent.childNodes.length === 1
+        ? documents.find(d => value.trim() === d.path) : undefined;
+      if (exact && parent) {
+        const anchor = this.docAnchor(exact);
+        parent.replaceWith(anchor);
+        anchor.appendChild(parent);
+        continue;
+      }
+
+      const parts: (string | MessageSource)[] = [];
+      let rest = value;
+      while (rest) {
+        const hit = documents
+          .map(d => ({ d, at: rest.indexOf(d.path) }))
+          .filter(h => h.at >= 0)
+          .sort((a, b) => a.at - b.at)[0];
+        if (!hit) { parts.push(rest); break; }
+        if (hit.at) parts.push(rest.slice(0, hit.at));
+        parts.push(hit.d);
+        rest = rest.slice(hit.at + hit.d.path.length);
+      }
+      if (parts.length === 1 && typeof parts[0] === 'string') continue;
+
+      text.replaceWith(...parts.map(p => {
+        if (typeof p === 'string') return p;
+        const anchor = this.docAnchor(p);
+        anchor.textContent = p.path;
+        return anchor;
+      }));
+    }
+  }
+
+  private docAnchor(source: MessageSource): HTMLAnchorElement {
+    const anchor = document.createElement('a');
+    anchor.className = 'doc-ref';
+    anchor.href = this.router.serializeUrl(this.router.createUrlTree(this.docLink(source), { queryParams: { path: source.path } }));
+    anchor.target = '_blank';
+    anchor.rel = 'noopener';
+    anchor.title = `Open ${source.title || source.path} in a new tab`;
+    return anchor;
+  }
+
+  copyCode(event: MouseEvent): void {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('.code-copy');
+    const code = button?.parentElement?.querySelector('pre')?.textContent;
+    if (code == null) return;
+    navigator.clipboard.writeText(code.replace(/\n$/, '')).then(
+      () => this.toast.success('Copied', 'The code is on your clipboard.'),
+      () => this.toast.error('Copy failed', 'Your browser did not allow it.')
+    );
   }
 
   /** The growing answer changes on every delta, so it is rendered fresh and not cached. */
