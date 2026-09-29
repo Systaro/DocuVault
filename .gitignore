@@ -76,3 +76,4 @@ frontend/android/app/build/
 frontend/android/captures/
 frontend/android/local.properties
 frontend/.capacitor/
+frontend/android/app/google-services.json
