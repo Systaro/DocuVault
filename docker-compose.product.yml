@@ -7,7 +7,7 @@
 #   1. git clone https://github.com/Systaro/DocuVault.git /opt/docuvault
 #   2. Copy .env.example.product → .env, fill in values.
 #   3. Point your domain (PUBLIC_HOSTNAME) at this server, open ports 80/443.
-#   4. Run ./deploy.sh latest   (or a version, e.g. ./deploy.sh v0.7.0)
+#   4. Run ./deploy.sh          (newest release; or a version, e.g. ./deploy.sh v0.8.3)
 #
 # Image tags are controlled by $DOCUVAULT_VERSION, which deploy.sh sets.
 # When invoking docker compose directly:

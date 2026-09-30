@@ -59,11 +59,11 @@ and other MCP clients from connecting, while the web UI keeps working.
 ## 3. Install
 
 ```bash
-./deploy.sh latest
+./deploy.sh
 ```
 
-`latest` is the newest release. Pin a version instead (`./deploy.sh v0.7.0`)
-if you want upgrades to happen only when you ask for them; `edge` follows the
+Without an argument this installs the newest release and records its version
+number. Give a version (`./deploy.sh v0.8.3`) to pin one; `edge` follows the
 main branch and is not meant for production.
 
 This will:
@@ -103,12 +103,16 @@ curl https://<PUBLIC_HOSTNAME>/api/actuator/health
 ## 5. Upgrade
 
 When a new version is released, update the install files and run the script
-with the new version:
+without a version:
 
 ```bash
 git pull
-./deploy.sh latest
+./deploy.sh
 ```
+
+Without a version, `deploy.sh` looks up the newest release on GitHub and does
+nothing if that one already runs, so it is safe to run on a schedule (cron,
+systemd timer). Give a version (`./deploy.sh v0.8.3`) to pin one or to go back.
 
 Same script. It backs up postgres, MinIO and the repositories before pulling,
 swaps the images, polls health, and rolls back automatically if the new

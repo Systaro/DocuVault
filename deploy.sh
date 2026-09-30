@@ -5,6 +5,7 @@
 # anywhere. To deploy to a remote host, run this script there.
 #
 # Usage:
+#   ./deploy.sh             the newest release; does nothing if it already runs
 #   ./deploy.sh <version>
 #
 #     <version>   Image tag to deploy. Examples:
@@ -27,7 +28,7 @@
 #   HEALTH_URL                  URL to poll after restart (default: http://localhost:7030/api/actuator/health)
 #   HEALTH_TIMEOUT              seconds to wait for health (default: 90)
 #   BACKUP_RETAIN               number of recent backup folders to keep (default: 10)
-#   DOCUVAULT_REGISTRY_HOST     image registry host (default: registry.git.systaro.de)
+#   DOCUVAULT_REGISTRY_HOST     registry to log in to when user and token are set (default: ghcr.io)
 #   DOCUVAULT_REGISTRY_USER     deploy-token username for image pulls (optional;
 #                               the public images on ghcr.io need no login)
 #   DOCUVAULT_REGISTRY_TOKEN    deploy-token secret for image pulls (optional)
@@ -42,14 +43,23 @@ set -euo pipefail
 # Args & config
 # ---------------------------------------------------------------------------
 VERSION="${1:-}"
+UPGRADE=false
 if [ -z "$VERSION" ]; then
-  cat <<'USAGE' >&2
-Usage: ./deploy.sh <version>
+  # No version given: upgrade to the newest release, like an apt upgrade.
+  UPGRADE=true
+  VERSION="$(curl -fsSL https://api.github.com/repos/Systaro/DocuVault/releases/latest 2>/dev/null \
+    | sed -nE 's/^ *"tag_name": *"([^"]+)".*/\1/p' | head -1)"
+  if [ -z "$VERSION" ]; then
+    cat <<'USAGE' >&2
+Could not look up the newest release on GitHub. Give the version instead:
+Usage: ./deploy.sh [<version>]
+  ./deploy.sh           newest release
   ./deploy.sh v1.2.3
-  ./deploy.sh latest
   ./deploy.sh edge
 USAGE
-  exit 1
+    exit 1
+  fi
+  echo "==> Newest release: $VERSION"
 fi
 
 # A checkout of the repository has both files; the product one is the install.
@@ -59,6 +69,10 @@ fi
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"
 BACKUP_RETAIN="${BACKUP_RETAIN:-10}"
 STATE_FILE=".docuvault-current-version"
+if $UPGRADE && [ -f "$STATE_FILE" ] && [ "$(cat "$STATE_FILE")" = "$VERSION" ]; then
+  echo "==> Already on $VERSION, nothing to do"
+  exit 0
+fi
 SAFE_VERSION="${VERSION//\//_}"
 BACKUP_DIR="./backups/$(date +%Y%m%d-%H%M%S)-pre-${SAFE_VERSION}"
 
@@ -102,7 +116,7 @@ if [ -n "$(env_get DISCORD_BOT_TOKEN)" ] || [ -n "$(env_get MEETING_BOT_DISPATCH
   echo "==> meeting-bot enabled (Discord and/or Teams adapter present in .env)"
 fi
 
-REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-registry.git.systaro.de}"
+REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-ghcr.io}"
 REGISTRY_USER="${DOCUVAULT_REGISTRY_USER:-$(env_get DOCUVAULT_REGISTRY_USER)}"
 REGISTRY_TOKEN="${DOCUVAULT_REGISTRY_TOKEN:-$(env_get DOCUVAULT_REGISTRY_TOKEN)}"
 

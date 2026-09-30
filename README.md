@@ -71,10 +71,10 @@ cd /opt/docuvault
 cp .env.example.product .env
 $EDITOR .env                 # fill in PUBLIC_HOSTNAME, secrets, SMTP credentials
 
-./deploy.sh latest           # pulls the public images, backs up, swaps, health-checks
+./deploy.sh                  # newest release: pulls the public images, backs up, swaps, health-checks
 ```
 
-The images are public on `ghcr.io/systaro/docuvault` for amd64 and arm64, signed with cosign, and need no registry login. `latest` is the newest release; pin a version (`./deploy.sh v0.8.0`) for production. If an update fails its health check, `deploy.sh` restarts the images that ran before.
+The images are public on `ghcr.io/systaro/docuvault` for amd64 and arm64, signed with cosign, and need no registry login. Run `./deploy.sh` again later to update: it does nothing when the newest release already runs, so it is fine in a cron job. `./deploy.sh v0.8.3` pins a version. If an update fails its health check, `deploy.sh` restarts the images that ran before.
 
 Then visit `https://<your-hostname>` in a browser. The first-time setup wizard walks you through creating the admin account.
 
@@ -148,7 +148,7 @@ still works for clients without HTTP/OAuth support.
 
 DocuVault is in **early access**. The data model and APIs are stable for self-hosting; expect occasional breaking changes in minor versions until 1.0. Tasks and the meeting bot are alpha. Release notes are on [GitHub Releases](https://github.com/Systaro/DocuVault/releases) and in the app (click the version next to the logo).
 
-Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). This repository is published from Systaro's internal repository, so pull requests are applied by a maintainer rather than merged here.
+Issues and pull requests are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
