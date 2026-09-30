@@ -945,6 +945,46 @@ body {
   color: var(--text-muted);
 }
 
+// A labelled form field inside a dialog.
+.modal-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: var(--spacing-md);
+
+  textarea { resize: vertical; font: inherit; }
+}
+
+.modal-field-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+
+// Radio choices shown as cards (icon, title, one-line hint).
+.choice-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+
+  input { position: absolute; opacity: 0; pointer-events: none; }
+  .material-icons { font-size: 20px; color: var(--primary-dark); }
+  &.selected { border-color: var(--primary-dark); background: var(--background-darker); }
+  &:focus-within { outline: 2px solid var(--primary); outline-offset: 1px; }
+}
+
+.choice-card-text { display: flex; flex-direction: column; gap: 2px; }
+.choice-card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.choice-card-sub { font-size: 12px; color: var(--text-muted); }
+
 // Consequences the dialog's subject does not show on its own — deleting a
 // folder takes files the user cannot see from where they clicked.
 .modal-warning {

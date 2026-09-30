@@ -30,16 +30,16 @@ export interface DraftSubmission {
         <div class="modal-body">
           <p class="modal-hint intro">The draft is written from the notes, meeting notes, tasks and changed documents of the period. Nothing is saved until you save it.</p>
 
-          <div class="field">
-            <span class="field-label">What</span>
-            <div class="template-options" role="radiogroup" aria-label="Kind of draft">
+          <div class="modal-field">
+            <span class="modal-field-label">What</span>
+            <div class="choice-cards" role="radiogroup" aria-label="Kind of draft">
               @for (option of templates; track option.value) {
-                <label class="template-option" [class.selected]="template() === option.value">
+                <label class="choice-card" [class.selected]="template() === option.value">
                   <input type="radio" name="template" [value]="option.value" [checked]="template() === option.value" (change)="template.set(option.value)" />
                   <span translate="no" class="material-icons">{{ option.icon }}</span>
-                  <span class="option-text">
-                    <span class="option-title">{{ option.label }}</span>
-                    <span class="option-sub">{{ option.hint }}</span>
+                  <span class="choice-card-text">
+                    <span class="choice-card-title">{{ option.label }}</span>
+                    <span class="choice-card-sub">{{ option.hint }}</span>
                   </span>
                 </label>
               }
@@ -47,18 +47,18 @@ export interface DraftSubmission {
           </div>
 
           <div class="field-row">
-            <label class="field">
-              <span class="field-label">Space</span>
+            <label class="modal-field">
+              <span class="modal-field-label">Space</span>
               <app-searchable-select name="space" [options]="spaceOptions()" [ngModel]="spaceId()" (ngModelChange)="spaceId.set($event)" placeholder="Choose a space" />
             </label>
-            <label class="field period">
-              <span class="field-label">Period</span>
+            <label class="modal-field period">
+              <span class="modal-field-label">Period</span>
               <app-searchable-select name="days" [options]="periodOptions" [ngModel]="days()" (ngModelChange)="days.set($event)" [searchable]="false" />
             </label>
           </div>
 
-          <label class="field">
-            <span class="field-label">{{ template() === 'CUSTOM' ? 'What should it be?' : 'Anything to add (optional)' }}</span>
+          <label class="modal-field">
+            <span class="modal-field-label">{{ template() === 'CUSTOM' ? 'What should it be?' : 'Anything to add (optional)' }}</span>
             <textarea class="input" name="instructions" rows="3" [(ngModel)]="instructions"
               [placeholder]="template() === 'CUSTOM' ? 'e.g. A short update for the customer about the move to the new office' : 'e.g. Keep it under a page, in German'"></textarea>
           </label>
@@ -77,19 +77,6 @@ export interface DraftSubmission {
 
     .intro { margin: 0 0 var(--spacing-md); }
 
-    .field {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 0;
-      margin-bottom: var(--spacing-md);
-
-      textarea { resize: vertical; font: inherit; }
-    }
-
-    .field-label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-
     .field-row {
       display: flex;
       gap: var(--spacing-md);
@@ -97,31 +84,6 @@ export interface DraftSubmission {
       .period { flex: 0 0 170px; }
       @media (max-width: 520px) { flex-direction: column; gap: 0; .period { flex: 1; } }
     }
-
-    .template-options {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: var(--spacing-sm);
-    }
-
-    .template-option {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      cursor: pointer;
-
-      input { position: absolute; opacity: 0; pointer-events: none; }
-      .material-icons { font-size: 20px; color: var(--primary-dark); }
-      &.selected { border-color: var(--primary-dark); background: var(--background-darker); }
-      &:focus-within { outline: 2px solid var(--primary); outline-offset: 1px; }
-    }
-
-    .option-text { display: flex; flex-direction: column; gap: 2px; }
-    .option-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-    .option-sub { font-size: 12px; color: var(--text-muted); }
   `]
 })
 export class DraftDialogComponent {

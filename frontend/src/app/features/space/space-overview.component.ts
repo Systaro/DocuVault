@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SpacesService, Space } from '../../core/api/spaces.service';
-import { DocumentsService, Document, FileNode, FileVersion } from '../../core/api/documents.service';
+import { DocumentsService, Document, DocumentContent, FileNode, FileVersion } from '../../core/api/documents.service';
 import { GitService, GitOperationResult, UncommittedFilesResponse, ConflictMrResponse } from '../../core/api/git.service';
 import { ToastService } from '../../shared/services/toast.service';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
@@ -22,6 +22,8 @@ import { FileActionsService } from '../../shared/services/file-actions.service';
 import { StateExportService } from '../../shared/services/state-export.service';
 import { ShareLinkDialogComponent } from '../../shared/components/share-link-dialog.component';
 import { ExportStateDialogComponent } from '../../shared/components/export-state-dialog.component';
+import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
+import { AiCreateDocumentDialogComponent } from './ai-create-document-dialog.component';
 
 /** A file shown in the folder listing — any type, optionally enriched with the
  *  markdown title + last-sync date when a Document row exists for it. */
@@ -43,7 +45,7 @@ interface ListingEntry extends FileEntry {
   standalone: true,
   imports: [
     CommonModule, FormsModule, RouterLink, SpaceRoutePipe, FileThumbComponent,
-    ShareLinkDialogComponent, ExportStateDialogComponent
+    ShareLinkDialogComponent, ExportStateDialogComponent, AiCreateDocumentDialogComponent
   ],
   template: `
     @if (isDragOver()) {
@@ -130,6 +132,12 @@ interface ListingEntry extends FileEntry {
                     <span translate="no" class="material-icons">description</span>
                     New document
                   </button>
+                  @if (caps.aiEnabled()) {
+                    <button class="new-menu-item" (click)="showAiCreate.set(true); showNewMenu.set(false)">
+                      <span translate="no" class="material-icons">auto_awesome</span>
+                      New document with AI
+                    </button>
+                  }
                   <button class="new-menu-item" (click)="fileInput.click(); showNewMenu.set(false)">
                     <span translate="no" class="material-icons">upload_file</span>
                     Upload files
@@ -604,6 +612,16 @@ interface ListingEntry extends FileEntry {
       />
     }
 
+    @if (showAiCreate() && space(); as space) {
+      <app-ai-create-document-dialog
+        [spaceId]="space.id"
+        [folder]="currentFolder()"
+        [files]="allFiles()"
+        (created)="onAiDocumentCreated($event)"
+        (cancelled)="showAiCreate.set(false)"
+      />
+    }
+
     @if (exportStatePath(); as path) {
       <app-export-state-dialog
         [fileName]="path.split('/').pop() ?? path"
@@ -1069,6 +1087,7 @@ interface ListingEntry extends FileEntry {
       border: none;
       cursor: pointer;
       text-align: left;
+      white-space: nowrap;
       font-size: 13px;
       color: var(--text-primary);
       border-radius: 6px;
@@ -1341,6 +1360,7 @@ export class SpaceOverviewComponent implements OnInit {
 
   /** + New dropdown state — closed by default, toggled by the button. */
   showNewMenu = signal(false);
+  showAiCreate = signal(false);
   /** Inline "new folder" input visible when the user picks New folder from the menu. */
   creatingFolderInline = signal(false);
   /** Folder-create request in flight — the row shows a spinner instead of
@@ -1348,6 +1368,7 @@ export class SpaceOverviewComponent implements OnInit {
   creatingFolderBusy = signal(false);
   newFolderName = '';
   private readonly treeSync = inject(FileTreeSyncService);
+  readonly caps = inject(CapabilitiesService);
   private readonly bulkUpload = inject(BulkUploadService);
   private readonly fileActions = inject(FileActionsService);
   private readonly stateExportService = inject(StateExportService);
@@ -1733,6 +1754,16 @@ export class SpaceOverviewComponent implements OnInit {
     if (!space) return;
     const folder = this.currentFolder();
     this.router.navigate(spaceRoute(space.fullPath, 'doc'), folder ? { queryParams: { folder } } : {});
+  }
+
+  /** Opens the document the AI just wrote; the sidebar tree picks it up from the sync notice. */
+  onAiDocumentCreated(doc: DocumentContent): void {
+    const space = this.space();
+    this.showAiCreate.set(false);
+    if (!space) return;
+    this.toastService.success('Document created', doc.path);
+    this.treeSync.notify(space.id);
+    this.router.navigate(spaceRoute(space.fullPath, 'doc'), { queryParams: { path: doc.path } });
   }
 
   startNewFolder(): void {

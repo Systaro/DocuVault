@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, filter, map, of } from 'rxjs';
 import { EventStreamService, ServerEvent, StreamRejectedError } from './event-stream.service';
+import { DocumentContent } from './documents.service';
 
 export interface SearchResult {
   documentId: string;
@@ -108,6 +109,18 @@ export interface AiEditResult {
   previousContent: string;
 }
 
+export type DocumentLayout = 'AUTO' | 'MEETING_NOTES' | 'SUMMARY' | 'HOW_TO';
+
+export interface AiCreateDocumentRequest {
+  /** Folder to create the document in; '' for the space root. */
+  folder: string;
+  /** What the document is written from: a transcript, an email, notes, an instruction. */
+  material: string;
+  layout: DocumentLayout;
+  /** An existing document whose structure the new one copies; overrides layout. */
+  examplePath?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AiService {
   private eventStream = inject(EventStreamService);
@@ -185,6 +198,11 @@ export class AiService {
       path,
       instruction
     });
+  }
+
+  /** Writes, names and commits a new document; the response carries the path it got. */
+  createDocument(spaceId: string, request: AiCreateDocumentRequest): Observable<DocumentContent> {
+    return this.http.post<DocumentContent>(`/api/spaces/${spaceId}/documents/ai-create`, request);
   }
 
   generate(prompt: string, documentContext?: string): Observable<{ content?: string }> {

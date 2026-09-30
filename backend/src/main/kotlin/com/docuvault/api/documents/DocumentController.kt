@@ -19,6 +19,12 @@ import com.docuvault.service.ProgressUpdate
 import com.docuvault.service.TransferMode
 import com.docuvault.service.TransferResult
 import com.docuvault.service.ai.DocumentEditResult
+import com.docuvault.service.ai.DocumentFormat
+import com.docuvault.service.ai.DocumentGenerationResult
+import com.docuvault.service.ai.DocumentGenerationService
+import com.docuvault.service.ai.DocumentLayout
+import com.docuvault.service.ai.ExampleDocument
+import com.docuvault.service.ai.GenerationInput
 import com.docuvault.service.ai.WritingAssistantService
 import com.docuvault.service.embedding.EmbeddingService
 import com.docuvault.service.requireSpaceWritable
@@ -29,6 +35,7 @@ import com.docuvault.service.git.GitService
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -54,6 +61,7 @@ class DocumentController(
     private val gitDiffService: GitDiffService,
     private val embeddingService: EmbeddingService,
     private val writingAssistantService: WritingAssistantService,
+    private val documentGenerationService: DocumentGenerationService,
     private val documentPersistService: DocumentPersistService,
     private val documentTransferService: DocumentTransferService,
     private val annotationService: AnnotationService,
@@ -410,6 +418,87 @@ class DocumentController(
                 content = editedContent,
                 previousContent = previousContent,
                 strategy = (edit as DocumentEditResult.Success).strategy.name
+            )
+        )
+    }
+
+    /**
+     * Writes a new document from pasted or dictated material, names it and
+     * saves it into [AiCreateDocumentRequest.folder] as a commit. An existing
+     * file is never overwritten: a taken name gets a counter.
+     */
+    @PostMapping("/ai-create")
+    fun aiCreateDocument(
+        @PathVariable spaceId: UUID,
+        @AuthenticationPrincipal userDetails: UserDetails,
+        @Valid @RequestBody request: AiCreateDocumentRequest
+    ): ResponseEntity<Any> {
+        val user = userRepository.findByEmail(userDetails.username)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val space = spaceRepository.findById(spaceId).orElse(null)
+            ?: return ResponseEntity.notFound().build()
+
+        if (!permissionService.hasEditAccess(user.id!!, space.id!!, user.role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        requireSpaceWritable(space)
+
+        val folder = request.folder.orEmpty().trim().trim('/')
+        val siblings = try {
+            gitService.listFiles(space, folder).filter { !it.isDirectory && !it.name.startsWith(".") }.map { it.name }
+        } catch (_: IllegalArgumentException) {
+            return ResponseEntity.badRequest().body(mapOf("error" to "Invalid folder."))
+        }
+
+        val example = request.examplePath?.trim()?.trimStart('/')?.ifEmpty { null }?.let { path ->
+            if (path.substringAfterLast('.', "").lowercase() !in AI_CREATE_EXAMPLE_EXTENSIONS) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf("error" to "Only Markdown, HTML or text documents can serve as a layout."))
+            }
+            val content = try {
+                gitService.readFile(space, path)
+            } catch (_: Exception) {
+                null
+            } ?: return ResponseEntity.badRequest().body(mapOf("error" to "The layout document $path was not found."))
+            ExampleDocument(path, content)
+        }
+
+        val generated = when (val result = documentGenerationService.generate(
+            GenerationInput(request.material, request.layout, example, folder, siblings)
+        )) {
+            is DocumentGenerationResult.Success -> result
+            is DocumentGenerationResult.NotConfigured ->
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(mapOf("error" to "AI is not configured on this installation."))
+            is DocumentGenerationResult.Failed ->
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(mapOf("error" to result.message))
+        }
+
+        val taken = siblings.map { it.lowercase() }.toSet()
+        val path = documentGenerationService.freePath(
+            folder, generated.fileName, DocumentFormat.forExample(example?.path)
+        ) { candidate -> candidate.substringAfterLast('/').lowercase() in taken }
+
+        val saved = persistDocument(
+            space = space,
+            user = user,
+            documentPath = path,
+            content = generated.content,
+            title = generated.title,
+            autoCommit = true,
+            commitMessage = "Add $path (written with AI)"
+        ) ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            DocumentContentDto(
+                id = saved.id,
+                path = saved.path,
+                title = saved.title,
+                content = generated.content,
+                contentHash = saved.contentHash,
+                lastSyncedAt = saved.lastSyncedAt
             )
         )
     }
@@ -878,12 +967,29 @@ val AI_EDIT_BLOCKED_EXTENSIONS = setOf(
     "exe", "dll", "sys", "bat", "ttf", "otf", "woff", "woff2", "eot"
 )
 
+/** Files whose text can show the AI the layout a new document should follow. */
+val AI_CREATE_EXAMPLE_EXTENSIONS = setOf("md", "markdown", "html", "htm", "txt")
+
 data class AiEditDocumentRequest(
     @field:NotBlank(message = "Path is required")
     val path: String,
 
     @field:NotBlank(message = "Instruction is required")
     val instruction: String
+)
+
+data class AiCreateDocumentRequest(
+    /** Folder to create the document in; blank for the space root. */
+    val folder: String? = null,
+
+    @field:NotBlank(message = "Paste or dictate something to write the document from")
+    @field:Size(max = DocumentGenerationService.MAX_MATERIAL_CHARS, message = "The material is too long")
+    val material: String,
+
+    val layout: DocumentLayout = DocumentLayout.AUTO,
+
+    /** An existing document in the space whose structure the new one copies; overrides [layout]. */
+    val examplePath: String? = null
 )
 
 data class AiEditDocumentResponse(
