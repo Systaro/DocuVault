@@ -5,14 +5,10 @@ most at this stage.
 
 ## How this repository works
 
-DocuVault is developed in an internal repository at Systaro, and this GitHub
-repository is published from it. Each public commit is a snapshot and lists
-the internal changes it contains. That has two consequences for contributions:
-
-- **Issues and discussions happen here.** Please open issues on GitHub.
-- **Pull requests are welcome, but are not merged with the GitHub button.**
-  A maintainer reviews the PR here, applies the change internally with you as
-  co-author, and closes the PR with a link to the snapshot that contains it.
+DocuVault is developed here, in the open. Issues, discussions and pull requests
+all happen on GitHub, and pull requests are reviewed and merged here. CI runs
+the backend tests, the frontend production build and a secret scan on every
+pull request.
 
 For anything bigger than a bug fix, open an issue first so we can agree on the
 approach before you spend time on it.
