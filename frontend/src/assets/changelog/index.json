@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.8.4",
+    "date": "2026-10-01",
+    "title": "New document with AI"
+  },
+  {
     "version": "v0.8.3",
     "date": "2026-09-30",
     "title": "Word documents open in the browser"
