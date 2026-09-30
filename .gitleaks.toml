@@ -1,0 +1,8 @@
+# Default gitleaks rules, minus a known false positive.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vendored third-party code"
+# The drawio viewer ships drawio's public Dropbox app id.
+paths = ['''frontend/src/assets/drawio/''']

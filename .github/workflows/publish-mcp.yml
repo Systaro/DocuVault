@@ -1,0 +1,32 @@
+# Publishes the stdio MCP client (mcp-server/) to npm as @systaro/docuvault-mcp
+# when a tag mcp-vX.Y.Z is pushed. Uses npm trusted publishing (OIDC): no token
+# is stored anywhere; npmjs.com trusts this workflow of this repository.
+name: Publish MCP client
+
+on:
+  push:
+    tags: ['mcp-v*.*.*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json
+        run: |
+          want="${GITHUB_REF_NAME#mcp-v}"
+          have="$(node -p "require('./package.json').version")"
+          [ "$want" = "$have" ] || { echo "tag $GITHUB_REF_NAME but package.json has $have"; exit 1; }
+      - run: npm ci
+      - run: npm publish --provenance
