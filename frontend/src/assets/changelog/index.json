@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.8.3",
+    "date": "2026-09-30",
+    "title": "Word documents open in the browser"
+  },
+  {
     "version": "v0.8.1",
     "date": "2026-09-29",
     "title": "Answers you can check"
