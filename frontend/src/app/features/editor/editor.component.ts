@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewChild, ElementRef, HostListener, effect, inject, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -30,6 +30,8 @@ import { PdfExportService } from '../../core/api/pdf-export.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
 import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
+import { loadVendorScript } from '../../shared/utils/vendor-script';
+import { DocxRenderService } from '../../shared/services/docx-render.service';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
 import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 import { AuthService } from '../../core/auth/auth.service';
@@ -423,7 +425,7 @@ interface SheetView {
         <!-- Preview topbar — fixed row, not scrollable -->
         <div class="preview-topbar" [class.with-history-panel]="showHistoryPanel()">
           <div class="preview-filename">
-            <span translate="no" class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : 'image' }}</span>
+            <span translate="no" class="material-icons preview-file-icon">{{ previewType() === 'html' ? 'code' : previewType() === 'pdf' ? 'picture_as_pdf' : previewType() === 'drawio' ? 'schema' : previewType() === 'spreadsheet' ? 'grid_on' : previewType() === 'docx' ? 'article' : 'image' }}</span>
             @if (space()) {
               <a [routerLink]="space()!.fullPath | spaceRoute" class="editor-crumb">{{ space()!.name }}</a>
               @for (seg of fileBreadcrumb(); track seg.path) {
@@ -591,6 +593,33 @@ interface SheetView {
           } @else if (previewType() === 'drawio') {
             <div class="drawio-preview-container">
               <div #drawioElement class="drawio" [attr.data-drawio-src]="previewUrl()"></div>
+            </div>
+          } @else if (previewType() === 'docx') {
+            <div class="docx-preview-container">
+              @if (loading()) {
+                <div class="flex items-center justify-center py-12">
+                  <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                </div>
+              }
+              @if (docxError()) {
+                <div class="media-preview-container">
+                  <div class="unsupported-card">
+                    <span translate="no" class="material-icons unsupported-icon">article</span>
+                    <h2 class="unsupported-name">{{ documentPath.split('/').pop() }}</h2>
+                    <p class="unsupported-hint">{{ docxError() }}</p>
+                    <a class="unsupported-download" [href]="previewUrl() + '?download=true'" download>
+                      <span translate="no" class="material-icons">download</span>
+                      Download file
+                    </a>
+                  </div>
+                </div>
+              }
+              <!-- docx-preview fills this host itself; it stays in the DOM while
+                   loading so the render has somewhere to go. -->
+              <div #docxHost class="docx-host" translate="no" [class.hidden]="loading() || docxError()"></div>
             </div>
           } @else if (previewType() === 'download') {
             <div class="media-preview-container">
@@ -2189,6 +2218,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   @ViewChild(AutosizeTextareaDirective) private titleAutosize?: AutosizeTextareaDirective;
   private readonly treeSync = inject(FileTreeSyncService);
   protected readonly branding = inject(BrandingService);
+  private readonly docxRenderService = inject(DocxRenderService);
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
   @ViewChild(HtmlEditorComponent) private htmlEditor?: HtmlEditorComponent;
 
@@ -2201,6 +2231,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private static readonly VIDEO_EXTENSIONS = VIDEO_EXTENSIONS;
  static readonly AUDIO_EXTENSIONS = AUDIO_EXTENSIONS;
  static readonly SPREADSHEET_EXTENSIONS = new Set(['xlsx', 'xls']);
+  // Word documents — fetched as bytes and rendered client-side by docx-preview.
+  private static readonly DOCX_EXTENSIONS = new Set(['docx']);
 
   space = signal<Space | null>(null);
   document = signal<DocumentContent | null>(null);
@@ -2319,7 +2351,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     !(this.viewingVersion() && this.historyViewMode() === 'diff')
   );
   isPreviewFile = signal(false);
-  previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet' | 'video' | 'audio' | 'download'>('image');
+  previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet' | 'docx' | 'video' | 'audio' | 'download'>('image');
+  docxError = signal<string | null>(null);
   previewUrl = signal('');
   // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order.
   sheets = signal<SheetView[]>([]);
@@ -2443,6 +2476,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   readonlyHtml = signal<SafeHtml>('');
   @ViewChild('readonlyElement') readonlyElement?: ElementRef<HTMLElement>;
   @ViewChild('drawioElement') drawioElement?: ElementRef<HTMLElement>;
+  @ViewChild('docxHost') docxHost?: ElementRef<HTMLElement>;
 
   // Drag-resizable content width — persisted on the backend per (space, file) so the whole team sees it.
   private static readonly CONTENT_WIDTH_DEFAULT = 896; // matches Tailwind max-w-4xl
@@ -2584,6 +2618,14 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         el.innerHTML = '';
         this.markdownService.runDrawio(el.parentElement);
       }, 0);
+    });
+
+    // A .docx file: render whatever previewUrl points at — the live file, or a
+    // historic version picked in the time capsule.
+    effect(() => {
+      const url = this.previewUrl();
+      if (this.previewType() !== 'docx' || !url) return;
+      untracked(() => this.loadDocx(url));
     });
   }
 
@@ -3299,6 +3341,13 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           if (space) {
             this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
           }
+        } else if (EditorComponent.DOCX_EXTENSIONS.has(ext)) {
+          this.isPreviewFile.set(true);
+          this.previewType.set('docx');
+          const space = this.space();
+          if (space) {
+            this.previewUrl.set(`/api/spaces/${space.id}/files/${path}`);
+          }
         } else if (isUnrenderable(path)) {
           // No viewer for this one. Without this branch it fell through to the
           // text editor and opened a blank "Untitled" page, which reads as if
@@ -3653,6 +3702,34 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     ));
   }
 
+  /** Fetch a Word document and render it page by page into the docx host. */
+  private loadDocx(url: string): void {
+    // The user may have moved on to another file or version while this loaded.
+    const stale = () => this.previewType() !== 'docx' || this.previewUrl() !== url;
+    this.loading.set(true);
+    this.docxError.set(null);
+    fetch(url, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
+      .then(buffer => {
+        if (stale()) return;
+        // The host is in the template's docx branch, rendered by the time the fetch returns.
+        const host = this.docxHost?.nativeElement;
+        if (!host) throw new Error('docx host missing');
+        return this.docxRenderService.render(buffer, host);
+      })
+      .then(() => {
+        if (!stale()) this.loading.set(false);
+      })
+      .catch(() => {
+        if (stale()) return;
+        this.docxError.set(`${this.branding.appName()} could not read this Word document. You can download it and open it locally.`);
+        this.loading.set(false);
+      });
+  }
+
   /**
    * Fetch a binary spreadsheet (xlsx/xls) and render each sheet as a table.
    * SheetJS is loaded on demand from a self-hosted asset (see loadXlsxLib) so
@@ -3867,29 +3944,9 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     return `This workbook contains ${list}, which editing here would remove. Open it in Excel to change it.`;
   }
 
-  private xlsxLoader?: Promise<any>;
-
-  /** Load the SheetJS UMD bundle from our own assets, once, and resolve the
-   *  global it defines. Kept out of the Angular bundle on purpose. */
+  /** SheetJS, loaded from our own assets on first use (kept out of the bundle). */
   private loadXlsxLib(): Promise<any> {
-    const existing = (window as any).XLSX;
-    if (existing) return Promise.resolve(existing);
-    if (this.xlsxLoader) return this.xlsxLoader;
-    this.xlsxLoader = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = '/vendor/xlsx.full.min.js';
-      script.async = true;
-      script.onload = () => {
-        const lib = (window as any).XLSX;
-        lib ? resolve(lib) : reject(new Error('XLSX failed to initialise'));
-      };
-      script.onerror = () => {
-        this.xlsxLoader = undefined;
-        reject(new Error('Failed to load the spreadsheet parser'));
-      };
-      document.head.appendChild(script);
-    });
-    return this.xlsxLoader;
+    return loadVendorScript('/vendor/xlsx.full.min.js', 'XLSX');
   }
 
   // Relative links inside a rendered doc (e.g. ../ONBOARDING.md) are rewritten by the

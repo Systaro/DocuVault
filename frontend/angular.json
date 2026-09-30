@@ -37,6 +37,16 @@
                 "glob": "xlsx.full.min.js",
                 "input": "node_modules/xlsx/dist",
                 "output": "vendor"
+              },
+              {
+                "glob": "jszip.min.js",
+                "input": "node_modules/jszip/dist",
+                "output": "vendor"
+              },
+              {
+                "glob": "docx-preview.min.js",
+                "input": "node_modules/docx-preview/dist",
+                "output": "vendor"
               }
             ],
             "styles": [

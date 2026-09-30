@@ -15,15 +15,15 @@ export const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'oga', 'ogg', 'fla
 /**
  * Files DocuVault has no viewer for. They are offered as a download rather than
  * opened, because the fallback is the text editor — and handing it a zip or a
- * .docx produced an empty "Untitled" page that looked like the file was gone.
+ * .pptx produced an empty "Untitled" page that looked like the file was gone.
  *
  * This is a list of known-binary formats rather than "anything unrecognised":
  * an unknown extension is far more likely to be text (`.conf`, `.env`, `.rb`)
  * and those still open in the editor, which is the useful behaviour.
  */
 const UNRENDERABLE_EXTENSIONS = new Set([
-  // Office documents with no in-app viewer (xlsx/xls render as sheets, so not here)
-  'doc', 'docx', 'odt', 'rtf', 'ppt', 'pptx', 'pps', 'odp', 'pages', 'key', 'numbers',
+  // Office documents with no in-app viewer (xlsx/xls render as sheets, docx as pages, so not here)
+  'doc', 'odt', 'rtf', 'ppt', 'pptx', 'pps', 'odp', 'pages', 'key', 'numbers',
   // Archives and disk images
   'zip', '7z', 'rar', 'gz', 'gz2', 'tgz', 'tar', 'bz2', 'xz', 'iso', 'dmg', 'jar', 'apk', 'msi', 'deb', 'rpm',
   // Media the browser cannot play in a <video>/<audio> element

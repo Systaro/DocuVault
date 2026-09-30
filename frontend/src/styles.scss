@@ -1889,6 +1889,33 @@ body {
 .unsupported-hint { margin: 0 0 4px; line-height: 1.5; }
 .media-audio-card .media-player { width: min(70vw, 420px); }
 
+/* Word documents (editor preview). docx-preview lays out real pages with fixed
+   widths, so the pane scrolls sideways on narrow screens instead of squashing
+   them. Its markup is generated at runtime, which is why these rules are global. */
+.docx-preview-container {
+  min-height: 100%;
+  overflow-x: auto;
+}
+
+/* docx-preview centres the pages with align-items: center, which pushes a page
+   wider than the pane off its left edge where no scrollbar reaches. Growing the
+   wrapper to the page width and centring with auto margins keeps it centred on
+   wide screens and scrollable from the left on phones. */
+.docx-host .docx-wrapper {
+  background: transparent;
+  padding: 32px 16px;
+  align-items: flex-start;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.docx-host .docx-wrapper > section.docx {
+  margin: 0 auto 24px;
+  box-shadow: var(--shadow-md);
+  border-radius: 2px;
+}
+
 .unsupported-download {
   display: inline-flex;
   align-items: center;
