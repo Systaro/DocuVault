@@ -47,7 +47,7 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
             }
           </nav>
         }
-        @if (currentPath()) {
+        @if (currentPath() && !currentFolder()) {
           <button class="header-icon-btn header-action-end" (click)="showShareDialog.set(true)" title="Share">
             <span translate="no" class="material-icons">share</span>
           </button>
@@ -120,6 +120,30 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
               <span translate="no" class="material-icons welcome-icon">folder_open</span>
               <h2>{{ space()?.name }}</h2>
               <p>Select a file from the sidebar to view its contents.</p>
+            </div>
+          } @else if (currentFolder()) {
+            <div class="folder-view">
+              <ul class="folder-listing">
+                @for (entry of folderEntries(); track entry.path) {
+                  <li>
+                    <button class="folder-entry" (click)="navigateTo(entry)">
+                      @if (entry.isDirectory) {
+                        <span translate="no" class="material-icons tree-icon folder-icon">folder</span>
+                      } @else {
+                        <img class="tree-icon file-icon-img" [src]="getFileIcon(entry.name)" [alt]="entry.name" />
+                      }
+                      <span class="tree-name">{{ entry.name }}</span>
+                    </button>
+                  </li>
+                } @empty {
+                  <li class="folder-empty">This folder is empty.</li>
+                }
+              </ul>
+              @if (folderReadme()) {
+                <div class="markdown-container" (click)="onMarkdownClick($event)">
+                  <article class="prose prose-lg max-w-none" [innerHTML]="renderedHtml()"></article>
+                </div>
+              }
             </div>
           } @else if (renderMode() === 'markdown') {
             <div class="markdown-container annotation-host" (click)="onMarkdownClick($event)">
@@ -231,7 +255,12 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
     <ng-template #treeTemplate let-nodes="nodes" let-level="level">
       @for (node of nodes; track node.path) {
         @if (node.isDirectory) {
-          <div class="tree-folder" [style.paddingLeft.px]="level * 16 + 12" (click)="toggleFolder(node.path)">
+          <div
+            class="tree-folder"
+            [style.paddingLeft.px]="level * 16 + 12"
+            [class.active]="currentPath() === node.path"
+            (click)="toggleFolder(node.path)"
+          >
             <span translate="no" class="material-icons tree-icon">{{ isExpanded(node.path) ? 'expand_more' : 'chevron_right' }}</span>
             <span translate="no" class="material-icons tree-icon folder-icon">{{ isExpanded(node.path) ? 'folder_open' : 'folder' }}</span>
             <span class="tree-name">{{ node.name }}</span>
@@ -244,7 +273,7 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
             class="tree-file"
             [style.paddingLeft.px]="level * 16 + 12"
             [class.active]="currentPath() === node.path"
-            (click)="navigateToFile(node)"
+            (click)="navigateTo(node)"
           >
             <img class="tree-icon file-icon-img" [src]="getFileIcon(node.name)" [alt]="node.name" />
             <span class="tree-name">{{ node.name }}</span>
@@ -447,7 +476,7 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
 
     .tree-folder:hover, .tree-file:hover { background: #f3f4f6; }
 
-    .tree-file.active {
+    .tree-folder.active, .tree-file.active {
       background: color-mix(in srgb, var(--primary) 14%, white);
       color: color-mix(in srgb, var(--primary) 55%, black);
       font-weight: 500;
@@ -544,6 +573,41 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
 
     .download-state .btn:hover { background: color-mix(in srgb, var(--primary) 85%, black); }
 
+    .folder-view {
+      padding: 24px;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .folder-listing {
+      list-style: none;
+      margin: 0 0 24px;
+      padding: 4px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+    }
+
+    .folder-entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      background: none;
+      color: #374151;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .folder-entry:hover { background: #f3f4f6; }
+
+    .folder-empty { padding: 8px 12px; font-size: 14px; color: #6b7280; }
+
     .html-container, .pdf-container { flex: 1; display: flex; }
 
     .html-iframe, .pdf-iframe {
@@ -618,6 +682,13 @@ export class PreviewComponent implements OnInit, OnDestroy {
   treeLoading = signal(true);
   expandedFolders = signal<Set<string>>(new Set());
   currentPath = signal('');
+  /** Set when the path is a folder: the view lists its contents instead of rendering a file. */
+  currentFolder = signal<FileNode | null>(null);
+  folderEntries = computed(() => withoutHiddenNodes(this.currentFolder()?.children ?? []));
+  /** Whether the open folder's README.md is rendered into renderedHtml below the listing. */
+  folderReadme = signal(false);
+  /** The tree as the server sent it. The sidebar hides dot-entries, but a link to one must still resolve. */
+  private fullTree: FileNode[] = [];
 
   annotationPermission = signal<AnnotationPermission>('VIEW');
   currentUserId = signal<string | null>(null);
@@ -679,7 +750,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
     const url = this.router.url.split('?')[0].split('#')[0];
     const prefix = `/preview/${this.spaceId}`;
     if (url.length > prefix.length + 1) {
-      this.filePath = decodeURIComponent(url.substring(prefix.length + 1));
+      this.filePath = decodeURIComponent(url.substring(prefix.length + 1)).replace(/\/+$/, '');
     }
 
     forkJoin({
@@ -690,6 +761,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
         this.space.set(space);
         // No "Pretty names" toggle in this view, so dot-entries are always
         // hidden here — same as the public viewer, which filters them server-side.
+        this.fullTree = tree;
         this.fileTree.set(withoutHiddenNodes(tree));
         this.treeLoading.set(false);
 
@@ -730,12 +802,16 @@ export class PreviewComponent implements OnInit, OnDestroy {
 
   // ── File tree ──
 
-  navigateToFile(node: FileNode): void {
-    if (node.isDirectory) return;
+  navigateTo(node: FileNode): void {
+    this.openPath(node.path);
+  }
+
+  private openPath(path: string): void {
     this.resetAiEditState();
-    this.currentPath.set(node.path);
-    this.loadFileContent(node.path);
-    this.location.replaceState(`/preview/${this.spaceId}/${node.path}`);
+    this.currentPath.set(path);
+    this.expandTreeToPath(path);
+    this.loadFileContent(path);
+    this.location.replaceState(`/preview/${this.spaceId}/${path}`);
   }
 
   toggleFolder(path: string): void {
@@ -749,11 +825,13 @@ export class PreviewComponent implements OnInit, OnDestroy {
     return this.expandedFolders().has(path);
   }
 
+  /** Expands every folder above [path], and [path] itself when it is a folder. */
   private expandTreeToPath(path: string): void {
     const parts = path.split('/');
+    const depth = findNode(this.fullTree, path)?.isDirectory ? parts.length : parts.length - 1;
     const expanded = new Set(this.expandedFolders());
     let current = '';
-    for (let i = 0; i < parts.length - 1; i++) {
+    for (let i = 0; i < depth; i++) {
       current = current ? `${current}/${parts[i]}` : parts[i];
       expanded.add(current);
     }
@@ -766,7 +844,15 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set(null);
     this.renderMode.set(null);
+    this.currentFolder.set(null);
+    this.folderReadme.set(false);
     this.imgZoom.reset();
+
+    const node = findNode(this.fullTree, path);
+    if (node?.isDirectory) {
+      this.loadFolder(node);
+      return;
+    }
 
     const ext = getExtension(path);
     const mode = getRenderMode(ext);
@@ -797,6 +883,12 @@ export class PreviewComponent implements OnInit, OnDestroy {
             });
           }
         });
+    } else if (!node) {
+      // Not in the tree, so neither a file nor a folder: it moved, or never existed.
+      this.forwardToMovedFile(path, () => {
+        this.error.set('There is no file or folder at this path.');
+        this.loading.set(false);
+      });
     } else {
       this.renderMode.set(mode);
       this.loading.set(false);
@@ -805,6 +897,31 @@ export class PreviewComponent implements OnInit, OnDestroy {
       // react to. So ask up front instead of waiting for a failure.
       this.forwardToMovedFile(path, () => {});
     }
+  }
+
+  private loadFolder(folder: FileNode): void {
+    this.currentFolder.set(folder);
+    this.renderedHtml.set('');
+    this.loading.set(false);
+
+    const readme = folder.children?.find(child => !child.isDirectory && child.name.toLowerCase() === 'readme.md');
+    if (!readme) return;
+    this.documentsService.getDocument(this.spaceId, readme.path)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (doc) => {
+          // The answer can arrive after the reader has opened something else.
+          if (this.currentPath() !== folder.path) return;
+          this.renderedHtml.set(this.markdownService.render(
+            doc.content,
+            `${folder.path}/`,
+            `/api/spaces/${this.spaceId}/files`,
+            `/preview/${this.spaceId}`
+          ));
+          this.folderReadme.set(true);
+        },
+        error: () => {} // the listing is still useful without it
+      });
   }
 
   /**
@@ -849,13 +966,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
     handleMarkdownClick(
       event,
       `/preview/${this.spaceId}/`,
-      (filePath) => {
-        this.resetAiEditState();
-        this.currentPath.set(filePath);
-        this.expandTreeToPath(filePath);
-        this.loadFileContent(filePath);
-        this.location.replaceState(`/preview/${this.spaceId}/${filePath}`);
-      }
+      (filePath) => this.openPath(filePath)
     );
   }
 
@@ -897,4 +1008,16 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.viewingAiPrevious.set(false);
     this.loadFileContent(this.currentPath());
   }
+}
+
+/** The node at [path] in [nodes], or null when nothing sits there. */
+function findNode(nodes: FileNode[], path: string): FileNode | null {
+  let level = nodes;
+  let found: FileNode | null = null;
+  for (const name of path.split('/').filter(p => p)) {
+    found = level.find(node => node.name === name) ?? null;
+    if (!found) return null;
+    level = found.children ?? [];
+  }
+  return found;
 }
