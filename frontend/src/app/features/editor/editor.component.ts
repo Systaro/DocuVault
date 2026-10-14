@@ -31,7 +31,8 @@ import { AnnotationsService, AnnotationPermission } from '../../core/api/annotat
 import { AiService, AiEditResult } from '../../core/api/ai.service';
 import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
 import { loadVendorScript } from '../../shared/utils/vendor-script';
-import { DocxRenderService } from '../../shared/services/docx-render.service';
+import { DocxComment, DocxRenderService } from '../../shared/services/docx-render.service';
+import { DocxCommentsComponent } from '../../shared/components/docx-comments.component';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
 import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 import { AuthService } from '../../core/auth/auth.service';
@@ -119,7 +120,7 @@ interface SheetView {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent, DocxCommentsComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -620,6 +621,9 @@ interface SheetView {
               <!-- docx-preview fills this host itself; it stays in the DOM while
                    loading so the render has somewhere to go. -->
               <div #docxHost class="docx-host" translate="no" [class.hidden]="loading() || docxError()"></div>
+              @if (!loading() && !docxError()) {
+                <app-docx-comments [host]="docxHost" [comments]="docxComments()" />
+              }
             </div>
           } @else if (previewType() === 'download') {
             <div class="media-preview-container">
@@ -2353,6 +2357,8 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet' | 'docx' | 'video' | 'audio' | 'download'>('image');
   docxError = signal<string | null>(null);
+  /** The comment threads inside the open Word document. */
+  docxComments = signal<DocxComment[]>([]);
   previewUrl = signal('');
   // One entry per sheet of a spreadsheet (xlsx/xls) preview, in workbook order.
   sheets = signal<SheetView[]>([]);
@@ -3708,6 +3714,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     const stale = () => this.previewType() !== 'docx' || this.previewUrl() !== url;
     this.loading.set(true);
     this.docxError.set(null);
+    this.docxComments.set([]);
     fetch(url, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3720,8 +3727,10 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         if (!host) throw new Error('docx host missing');
         return this.docxRenderService.render(buffer, host);
       })
-      .then(() => {
-        if (!stale()) this.loading.set(false);
+      .then(comments => {
+        if (stale()) return;
+        this.docxComments.set(comments ?? []);
+        this.loading.set(false);
       })
       .catch(() => {
         if (stale()) return;

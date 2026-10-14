@@ -15,6 +15,7 @@ import { ToastService } from '../services/toast.service';
 import { anchorRecord, describePoint, describeRange, Anchored, AnchorState } from '../annotations/anchoring/anchoring';
 import { TextIndex } from '../annotations/anchoring/text-index';
 import { AnchorRecord, ANCHOR_VERSION, TextQuoteSelector, findSelector, toAnchorRecord } from '../annotations/anchoring/selectors';
+import { threadPositionBeside } from '../annotations/thread-placement';
 
 /** One painted line of a range, in host coordinates. */
 interface Rect { x: number; y: number; w: number; h: number; }
@@ -69,10 +70,6 @@ function firstVisibleRect(range: Range): DOMRect | null {
   const fallback = range.getBoundingClientRect();
   return fallback.width || fallback.height ? fallback : null;
 }
-
-/** The thread card's own size, from annotation-thread.component. */
-const THREAD_WIDTH = 320;
-const THREAD_HEIGHT = 320;
 
 @Component({
   selector: 'app-annotation-overlay',
@@ -1997,43 +1994,11 @@ export class AnnotationOverlayComponent implements OnInit, OnDestroy {
     );
   }
 
-  /**
-   * Put the thread card next to [passage], on whichever side has more room.
-   *
-   * A document is usually a column with margins either side, and which margin
-   * is roomier depends on where the passage sits and how wide the window is —
-   * so the side is measured rather than assumed. The card only falls back to
-   * overlapping the text when neither margin can hold it.
-   */
+  /** Put the thread card next to [passage], in the host's margin when it has one. */
   private placeThreadBeside(passage: DOMRect): void {
-    const gutter = 16;
-    const column = this.host?.getBoundingClientRect();
-    const roomLeft = passage.left;
-    const roomRight = window.innerWidth - passage.right;
-    const preferRight = roomRight >= roomLeft;
-
-    // In the margin when the page has one to spare — there the card covers no
-    // text at all, which is the whole point of putting it beside the passage.
-    // A narrow window has no such margin, and then sitting next to the marked
-    // words beats being pushed off to an edge far from them.
-    const marginRight = column ? window.innerWidth - column.right : 0;
-    const marginLeft = column ? column.left : 0;
-    const fitsRightMargin = column && marginRight >= THREAD_WIDTH + gutter * 2;
-    const fitsLeftMargin = column && marginLeft >= THREAD_WIDTH + gutter * 2;
-
-    let x: number;
-    if (preferRight && fitsRightMargin) x = column!.right + gutter;
-    else if (!preferRight && fitsLeftMargin) x = column!.left - THREAD_WIDTH - gutter;
-    else if (fitsRightMargin) x = column!.right + gutter;
-    else if (fitsLeftMargin) x = column!.left - THREAD_WIDTH - gutter;
-    else x = preferRight ? passage.right + gutter : passage.left - THREAD_WIDTH - gutter;
-
-    this.threadPosX.set(
-      Math.min(Math.max(8, x), Math.max(8, window.innerWidth - THREAD_WIDTH - 8))
-    );
-    this.threadPosY.set(
-      Math.min(Math.max(10, passage.top - 8), Math.max(10, window.innerHeight - THREAD_HEIGHT))
-    );
+    const { x, y } = threadPositionBeside(passage, this.host?.getBoundingClientRect() ?? null);
+    this.threadPosX.set(x);
+    this.threadPosY.set(y);
   }
 
   openThreadFromList(annotation: Annotation): void {

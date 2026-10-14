@@ -4,8 +4,16 @@ import { FormsModule } from '@angular/forms';
 import { Annotation, AnnotationPermission } from '../../core/api/annotations.service';
 import { TextQuoteSelector, findSelector, toAnchorRecord } from '../annotations/anchoring/selectors';
 
+/**
+ * What the card reads from a comment. DocuVault's own annotations are one
+ * source; the comments inside a Word file are another, shown read-only.
+ */
+export type ThreadEntry = Pick<Annotation,
+  'id' | 'userId' | 'authorName' | 'body' | 'createdAt' | 'anchor' | 'anchorState' | 'resolved' | 'resolvedByName'
+> & { replies: ThreadEntry[] };
+
 /** The words a comment was originally written against, if it recorded any. */
-function originalQuote(annotation: Annotation): string | null {
+function originalQuote(annotation: ThreadEntry): string | null {
   const quote = findSelector<TextQuoteSelector>(toAnchorRecord(annotation.anchor), 'TextQuote');
   return quote?.exact?.trim() || null;
 }
@@ -30,6 +38,15 @@ function truncate(value: string, limit = 140): string {
           </div>
         </div>
         <div class="thread-actions">
+          @if (total() > 1) {
+            <button class="thread-btn" (click)="previous.emit()" title="Previous comment">
+              <span translate="no" class="material-icons">chevron_left</span>
+            </button>
+            <span class="thread-count">{{ position() }} / {{ total() }}</span>
+            <button class="thread-btn" (click)="next.emit()" title="Next comment">
+              <span translate="no" class="material-icons">chevron_right</span>
+            </button>
+          }
           @if (canResolve()) {
             <button class="thread-btn" [class.resolved]="annotation().resolved"
                     (click)="resolve.emit(annotation().id)" [title]="annotation().resolved ? 'Reopen' : 'Resolve'">
@@ -114,6 +131,10 @@ function truncate(value: string, limit = 140): string {
           </button>
         </div>
       }
+
+      @if (note(); as text) {
+        <div class="thread-note">{{ text }}</div>
+      }
     </div>
   `,
   encapsulation: ViewEncapsulation.None,
@@ -144,6 +165,7 @@ function truncate(value: string, limit = 140): string {
       display: flex;
       align-items: center;
       gap: 8px;
+      min-width: 0;
     }
 
     .author-avatar, .reply-avatar {
@@ -169,6 +191,13 @@ function truncate(value: string, limit = 140): string {
     .author-info {
       display: flex;
       flex-direction: column;
+      min-width: 0;
+    }
+
+    .author-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .author-name, .reply-author {
@@ -184,7 +213,16 @@ function truncate(value: string, limit = 140): string {
 
     .thread-actions {
       display: flex;
+      align-items: center;
       gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .thread-count {
+      font-size: 12px;
+      color: var(--text-muted, #7a9a9d);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .thread-btn {
@@ -364,21 +402,35 @@ function truncate(value: string, limit = 140): string {
     .reply-submit:hover { background: #d97706; }
     .reply-submit:disabled { opacity: 0.5; cursor: default; }
     .reply-submit .material-icons { font-size: 18px; }
+
+    .thread-note {
+      padding: 8px 14px;
+      border-top: 1px solid var(--border, #e5e7eb);
+      font-size: 11px;
+      color: var(--text-muted, #7a9a9d);
+    }
   `]
 })
 export class AnnotationThreadComponent {
-  annotation = input.required<Annotation>();
+  annotation = input.required<ThreadEntry>();
   permission = input.required<AnnotationPermission>();
   currentUserId = input<string | null>(null);
   posX = input<number>(0);
   posY = input<number>(0);
   /** What the document says where this comment now sits, when it has drifted. */
   currentText = input<string | null>(null);
+  /** Where this comment sits among its siblings (1-based); arrows show when there are several. */
+  position = input<number>(0);
+  total = input<number>(0);
+  /** A line under the thread, e.g. where the comment comes from. */
+  note = input<string | null>(null);
 
   close = output<void>();
   reply = output<string>();
   resolve = output<string>();
   remove = output<string>();
+  previous = output<void>();
+  next = output<void>();
 
   replyText = '';
 
@@ -409,7 +461,7 @@ export class AnnotationThreadComponent {
     return false;
   }
 
-  canDelete(a: Annotation): boolean {
+  canDelete(a: ThreadEntry): boolean {
     const p = this.permission();
     if (p === 'ADMIN') return true;
     if (p === 'EDIT' || p === 'COMMENT') {
@@ -427,6 +479,7 @@ export class AnnotationThreadComponent {
 
   formatDate(iso: string): string {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     const now = new Date();
     const diff = now.getTime() - d.getTime();
     const minutes = Math.floor(diff / 60000);
