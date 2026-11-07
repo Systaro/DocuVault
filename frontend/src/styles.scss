@@ -1,8 +1,19 @@
+@use 'sass:meta';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @import 'highlight.js/styles/github.css';
+
+// Dark syntax colours, only on the theme-aware document surfaces: the white
+// `.markdown-container` paper (share links, preview) keeps the light ones.
+// `:where()` adds no specificity, so these rules weigh exactly what the light
+// theme's do: they win by source order in dark mode, and the `pre` / `code`
+// rules further down still override their background and padding.
+:where([data-theme="dark"] :is(.ProseMirror, .markdown-readonly)) {
+  @include meta.load-css('highlight.js/styles/github-dark');
+}
 @import '@angular/cdk/overlay-prebuilt.css';
 
 // ============================================
@@ -29,6 +40,14 @@
   --success: #4caf50;
   --warning: #ff9800;
   --error: #f44336;
+
+  // Code in documents (.ProseMirror / .markdown-readonly). The syntax colours
+  // come from the highlight.js GitHub themes loaded at the top of this file.
+  --code-bg: #f6f8fa;
+  --code-text: #24292f;
+  --code-border: #eaecef;
+  --code-inline-bg: #f3f4f6;
+  --code-inline-text: #374151;
 
   // Spacing
   --spacing-xs: 4px;
@@ -76,6 +95,12 @@
   --text-primary: #e8eaed;
   --text-secondary: #9aa0a8;
   --text-muted: #6b7280;
+
+  --code-bg: #161b22;
+  --code-text: #c9d1d9;
+  --code-border: var(--border);
+  --code-inline-bg: rgba(110, 118, 129, 0.3);
+  --code-inline-text: #e6edf3;
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -1099,24 +1124,24 @@ body {
   }
 
   code {
-    background: #f3f4f6;
+    background: var(--code-inline-bg);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 0.875em;
-    color: #374151;
+    color: var(--code-inline-text);
   }
 
   pre {
-    background: #f6f8fa;
-    color: #24292f;
+    background: var(--code-bg);
+    color: var(--code-text);
     padding: 14px 18px;
     border-radius: var(--radius-md);
     overflow-x: auto;
     margin-bottom: 16px;
     line-height: 1.55;
     font-size: 13px;
-    border: 1px solid #eaecef;
+    border: 1px solid var(--code-border);
 
     code {
       background: none;

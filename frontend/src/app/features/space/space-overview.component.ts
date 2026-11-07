@@ -514,7 +514,7 @@ interface ListingEntry extends FileEntry {
               >{{ readme.name }}</a>
             </div>
             @if (readmeHtml()) {
-              <div class="readme-card-body markdown-container" (click)="onReadmeClick($event)">
+              <div class="readme-card-body" (click)="onReadmeClick($event)">
                 <div class="markdown-readonly" [innerHTML]="readmeHtml()"></div>
               </div>
             } @else {
