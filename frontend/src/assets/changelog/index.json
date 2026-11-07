@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.8.8",
+    "date": "2026-11-07",
+    "title": "Dark mode for READMEs and code"
+  },
+  {
     "version": "v0.8.7",
     "date": "2026-10-20",
     "title": "A space for one folder of a repository"
