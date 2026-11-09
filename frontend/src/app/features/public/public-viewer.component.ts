@@ -15,6 +15,8 @@ import { FileThumbComponent } from '../../shared/components/file-thumb.component
 import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 import { BrandingService } from '../../core/branding/branding.service';
 import { PageTitleService } from '../../core/branding/page-title.service';
+import { PdfExportService } from '../../core/api/pdf-export.service';
+import { ToastService } from '../../shared/services/toast.service';
 
 /** Near the top of a document the bar always shows. */
 const HEADER_REVEAL_ZONE_PX = 40;
@@ -39,6 +41,20 @@ const SCROLL_JITTER_PX = 4;
               }
             }
           </nav>
+        }
+        @if (fileActionsVisible()) {
+          <div class="header-actions">
+            @if (canExportPdf()) {
+              <button type="button" class="header-action" (click)="exportAsPdf()" title="Export as PDF" aria-label="Export as PDF">
+                <span translate="no" class="material-icons">picture_as_pdf</span>
+                <span class="header-action-label">Export as PDF</span>
+              </button>
+            }
+            <a class="header-action" [href]="downloadUrl()" download title="Download file" aria-label="Download file">
+              <span translate="no" class="material-icons">download</span>
+              <span class="header-action-label">Download</span>
+            </a>
+          </div>
         }
       </header>
 
@@ -466,6 +482,50 @@ const SCROLL_JITTER_PX = 4;
       font-size: 18px;
       color: #d1d5db;
       flex-shrink: 0;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .header-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: white;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease, color 0.15s ease;
+
+      .material-icons { font-size: 18px; }
+
+      &:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+    }
+
+    /* On a phone the labels would push the breadcrumb out entirely; the icons
+       keep their titles for a long press or a screen reader. What is left of
+       the breadcrumb goes to the file name alone. */
+    @media (max-width: 640px) {
+      .header-action { padding: 6px 8px; }
+      .header-action-label { display: none; }
+      .breadcrumb-segment:not(.breadcrumb-current),
+      .breadcrumb-separator { display: none; }
+      .breadcrumb-current { flex-shrink: 1; }
     }
 
     .viewer-content {
@@ -1018,6 +1078,24 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     ];
   });
 
+  /** Download and export apply to the file on screen, so only once one is. */
+  fileActionsVisible = computed(() =>
+    !this.requiresPassword() && !this.loading() && !this.error() && !this.maintenanceMode()
+    && !this.subFileLoading() && this.renderMode() !== null
+    && (this.shareType() === 'FILE' || !!this.currentSubPath())
+  );
+
+  /** A PDF, an image or a video already is the file; only documents are worth printing. */
+  canExportPdf = computed(() => this.renderMode() === 'markdown' || this.renderMode() === 'html');
+
+  downloadUrl = computed(() => {
+    const subPath = this.currentSubPath();
+    const base = this.shareType() === 'FOLDER' && subPath
+      ? sharedFileUrl(this.token, subPath)
+      : `/api/shared/${this.token}/raw`;
+    return `${base}?download=true`;
+  });
+
   constructor(
     private router: Router,
     private location: Location,
@@ -1028,7 +1106,9 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     private metaService: Meta,
     private markdownService: MarkdownRenderService,
     private elementRef: ElementRef<HTMLElement>,
-    private zone: NgZone
+    private zone: NgZone,
+    private pdfExportService: PdfExportService,
+    private toastService: ToastService
   ) {
     // Render any ```mermaid blocks once Angular has flushed the new innerHTML.
     effect(() => {
@@ -1139,6 +1219,30 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
     this.imgZoom.destroy();
+  }
+
+  /**
+   * An HTML page prints as it is, with its own styles. A Markdown document goes
+   * through the same printable layout the editor uses, from the rendered
+   * article, so drawn diagrams and resolved images come along.
+   */
+  exportAsPdf(): void {
+    const fileName = this.currentFileName();
+    let opened: boolean;
+    if (this.renderMode() === 'html') {
+      opened = this.pdfExportService.printUrl(this.rawUrl());
+    } else {
+      const article = this.elementRef.nativeElement.querySelector<HTMLElement>('.markdown-container article');
+      if (!article?.innerHTML.trim()) {
+        this.toastService.error('Export failed', 'There is nothing to export yet.');
+        return;
+      }
+      const title = article.querySelector('h1')?.textContent?.trim() || fileName.replace(/\.[^.]+$/, '');
+      opened = this.pdfExportService.print(title, this.markdownService.exportableHtml(article));
+    }
+    if (!opened) {
+      this.toastService.error('Export failed', 'The browser blocked the print window.');
+    }
   }
 
   retryLoad(): void {

@@ -26,7 +26,7 @@ import { DocumentsService, DocumentContent, UploadedFile } from '../../core/api/
 import { HttpResponse } from '@angular/common/http';
 import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
-import { PdfExportService } from '../../core/api/pdf-export.service';
+import { PdfExportService, escapeHtml } from '../../core/api/pdf-export.service';
 import { AnnotationsService, AnnotationPermission } from '../../core/api/annotations.service';
 import { AiService, AiEditResult } from '../../core/api/ai.service';
 import { isAiEditable, isUnrenderable, getFileIconGlyph, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../shared/utils/file-utils';
@@ -3084,7 +3084,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private exportBodyHtml(): string | null {
     if (this.showEditor() && this.editor) return this.editor.getHTML();
     const readonly = this.readonlyElement?.nativeElement;
-    if (readonly?.innerHTML.trim()) return readonly.innerHTML;
+    if (readonly?.innerHTML.trim()) return this.markdownService.exportableHtml(readonly);
     // Neither view has content — the document is still loading, or failed to.
     return null;
   }
@@ -3102,7 +3102,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         return;
       }
       this.exportingPdf.set(true);
-      this.pdfExportService.render(this.printableDocument(title, html), title).subscribe({
+      this.pdfExportService.render(this.pdfExportService.printableDocument(title, html), title).subscribe({
         next: (pdf) => {
           this.exportingPdf.set(false);
           this.pdfExportService.save(pdf, title);
@@ -3122,39 +3122,6 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   /** True while the server is rendering, so the menu entry can say so. */
   exportingPdf = signal(false);
 
-  /**
-   * The standalone HTML that becomes the PDF, whether it is rendered on the
-   * server or run through the browser's print dialog. One source for both, so
-   * a change to the styling cannot land in one output and miss the other.
-   */
-  private printableDocument(title: string, bodyContent: string, forPrint = false): string {
-    return `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<title>${this.escapeHtml(title)}</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 24px; color: #1a1a1a; line-height: 1.6; }
-  h1 { font-size: 1.8em; margin-bottom: 0.5em; }
-  h2 { font-size: 1.4em; margin-top: 1.5em; }
-  h3 { font-size: 1.2em; margin-top: 1.2em; }
-  pre { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
-  code { background: #f5f5f5; padding: 2px 4px; border-radius: 3px; font-size: 0.9em; }
-  pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 16px; color: #555; }
-  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-  th { background: #f5f5f5; font-weight: 600; }
-  img { max-width: 100%; height: auto; }
-  ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-  ul[data-type="taskList"] li { display: flex; align-items: baseline; gap: 8px; }
-  ul[data-type="taskList"] li::before { content: "\u2610"; }
-  ul[data-type="taskList"] li[data-checked="true"]::before { content: "\u2611"; }
-  a { color: #2563eb; }
-  ${forPrint ? '@media print { body { padding: 0; } }' : '@page { margin: 18mm 16mm; } body { padding: 0; max-width: none; }'}
-</style>
-</head><body>${bodyContent}</body></html>`;
-  }
-
   private printAsPdf(title: string): void {
 
     let bodyContent = '';
@@ -3172,34 +3139,12 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         this.toastService.error('Export failed', 'There is nothing to export yet.');
         return;
       }
-      bodyContent = `<h1>${this.escapeHtml(title)}</h1>${html}`;
+      bodyContent = `<h1>${escapeHtml(title)}</h1>${html}`;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
+    if (!this.pdfExportService.print(title, bodyContent)) {
       this.toastService.error('Export failed', 'The browser blocked the print window.');
-      return;
     }
-
-    printWindow.document.write(this.printableDocument(title, bodyContent, true));
-    printWindow.document.close();
-
-    // document.write() often finishes before this line runs, so waiting for
-    // `onload` alone can mean waiting forever. Check the state first, and give
-    // images a chance to arrive — printing before they load prints gaps.
-    const print = (): void => {
-      const images = Array.from(printWindow.document.images);
-      const pending = images.filter(img => !img.complete);
-      let left = pending.length;
-      const go = (): void => { printWindow.focus(); printWindow.print(); };
-      if (!left) { go(); return; }
-      const done = (): void => { if (--left === 0) go(); };
-      pending.forEach(img => { img.addEventListener('load', done); img.addEventListener('error', done); });
-      // A stuck image must not hold the export hostage.
-      setTimeout(() => { if (left > 0) { left = 0; go(); } }, 3000);
-    };
-    if (printWindow.document.readyState === 'complete') print();
-    else printWindow.addEventListener('load', print);
   }
 
   downloadFile(): void {
@@ -3265,12 +3210,6 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.aiEditUndo.set(null);
     this.viewingAiPrevious.set(false);
     this.loadDocument();
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 
   ngOnInit(): void {

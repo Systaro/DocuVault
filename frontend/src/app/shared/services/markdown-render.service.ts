@@ -248,6 +248,17 @@ export class MarkdownRenderService {
     }));
   }
 
+  /**
+   * The rendered document as HTML for an export, without the controls this
+   * service added to it: a diagram's expand button would print as its icon
+   * name.
+   */
+  exportableHtml(root: HTMLElement): string {
+    const copy = root.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('.dv-mermaid-expand').forEach(btn => btn.remove());
+    return copy.innerHTML;
+  }
+
   private makeExpandButton(onClick: () => void): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';

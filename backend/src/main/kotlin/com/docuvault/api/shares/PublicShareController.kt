@@ -20,6 +20,8 @@ import jakarta.servlet.http.HttpServletResponse
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import org.springframework.http.CacheControl
+import org.springframework.http.ContentDisposition
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -166,7 +168,11 @@ class PublicShareController(
     }
 
     @GetMapping("/{token}/raw")
-    fun getRaw(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<ByteArray> {
+    fun getRaw(
+        @PathVariable token: String,
+        @RequestParam(required = false) download: Boolean?,
+        request: HttpServletRequest
+    ): ResponseEntity<ByteArray> {
         val link = sharedLinkService.findActiveByToken(token)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
@@ -185,30 +191,7 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val contentType = probeContentType(resolved)
-        val extension = resolved.fileName.toString().substringAfterLast('.', "").lowercase()
-        val isHtml = contentType.startsWith("text/html") || extension == "html" || extension == "htm"
-
-        val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
-            CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
-        } else {
-            CacheControl.noCache()
-        }
-
-        if (isHtml) {
-            val html = Files.readString(resolved)
-            val injected = injectBaseTag(html, assetBaseHref(link.token, link.filePath))
-            return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_HTML)
-                .cacheControl(cachePolicy)
-                .body(injected.toByteArray(Charsets.UTF_8))
-        }
-
-        val bytes = Files.readAllBytes(resolved)
-        return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(contentType))
-            .cacheControl(cachePolicy)
-            .body(bytes)
+        return serveFile(resolved, link.filePath, link.token, download == true)
     }
 
     @GetMapping("/{token}/files/**")
@@ -346,6 +329,7 @@ class PublicShareController(
     fun getFolderRaw(
         @PathVariable token: String,
         @PathVariable subPath: String,
+        @RequestParam(required = false) download: Boolean?,
         request: HttpServletRequest
     ): ResponseEntity<ByteArray> {
         val link = sharedLinkService.findActiveByToken(token)
@@ -373,33 +357,7 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val contentType = probeContentType(resolved)
-        val extension = resolved.fileName.toString().substringAfterLast('.', "").lowercase()
-        val isHtml = contentType.startsWith("text/html") || extension == "html" || extension == "htm"
-
-        val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
-            CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
-        } else {
-            CacheControl.noCache()
-        }
-
-        // Same preview chrome a shared single file gets: without the injected
-        // base the page's relative assets would resolve against this endpoint,
-        // which only reaches inside the shared folder.
-        if (isHtml) {
-            val html = Files.readString(resolved)
-            val injected = injectBaseTag(html, assetBaseHref(link.token, repoPath.relativize(resolved).toString()))
-            return ResponseEntity.ok()
-                .contentType(MediaType.TEXT_HTML)
-                .cacheControl(cachePolicy)
-                .body(injected.toByteArray(Charsets.UTF_8))
-        }
-
-        val bytes = Files.readAllBytes(resolved)
-        return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(contentType))
-            .cacheControl(cachePolicy)
-            .body(bytes)
+        return serveFile(resolved, repoPath.relativize(resolved).toString(), link.token, download == true)
     }
 
     @PutMapping("/{token}/state/{*path}")
@@ -695,6 +653,52 @@ class PublicShareController(
         HtmlPreviewInjection.inject(html, baseHref)
 
     /** Where a shared document's relative references resolve to. */
+    /**
+     * Serves a shared file. Viewing an HTML page gets a base tag so its relative
+     * assets resolve through this share, and the same preview chrome a shared
+     * single file gets. A download is the file exactly as it is stored, offered
+     * as an attachment under its own name.
+     */
+    private fun serveFile(resolved: Path, repoRelativePath: String, token: String, download: Boolean): ResponseEntity<ByteArray> {
+        val contentType = probeContentType(resolved)
+        val extension = resolved.fileName.toString().substringAfterLast('.', "").lowercase()
+        val isHtml = contentType.startsWith("text/html") || extension == "html" || extension == "htm"
+
+        if (download) {
+            return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .cacheControl(CacheControl.noCache())
+                .header(
+                    HttpHeaders.CONTENT_DISPOSITION,
+                    ContentDisposition.attachment()
+                        .filename(resolved.fileName.toString(), StandardCharsets.UTF_8)
+                        .build()
+                        .toString()
+                )
+                .body(Files.readAllBytes(resolved))
+        }
+
+        val cachePolicy = if (contentType.startsWith("image/") || contentType.startsWith("font/")) {
+            CacheControl.maxAge(1, TimeUnit.HOURS).cachePublic()
+        } else {
+            CacheControl.noCache()
+        }
+
+        if (isHtml) {
+            val html = Files.readString(resolved)
+            val injected = injectBaseTag(html, assetBaseHref(token, repoRelativePath))
+            return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .cacheControl(cachePolicy)
+                .body(injected.toByteArray(Charsets.UTF_8))
+        }
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(contentType))
+            .cacheControl(cachePolicy)
+            .body(Files.readAllBytes(resolved))
+    }
+
     private fun assetBaseHref(token: String, repoRelativePath: String): String =
         HtmlPreviewInjection.baseHref("/api/shared/$token/files", repoRelativePath)
 
