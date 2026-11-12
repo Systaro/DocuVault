@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.8.10",
+    "date": "2026-11-13",
+    "title": "A way out of the fullscreen preview"
+  },
+  {
     "version": "v0.8.9",
     "date": "2026-11-09",
     "title": "Download and PDF export on share links"
