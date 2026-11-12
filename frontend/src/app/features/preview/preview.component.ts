@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, forkJoin, takeUntil } from 'rxjs';
@@ -33,9 +33,6 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
         <button class="header-icon-btn" (click)="sidebarOpen.set(!sidebarOpen())" title="Toggle file browser">
           <span translate="no" class="material-icons">{{ sidebarOpen() ? 'menu_open' : 'menu' }}</span>
         </button>
-        <button class="header-icon-btn" (click)="goBack()" title="Back to editor">
-          <span translate="no" class="material-icons">arrow_back</span>
-        </button>
         <app-brand-logo class="header-brand" />
         @if (breadcrumbSegments().length) {
           <nav class="header-breadcrumb" aria-label="File location">
@@ -58,6 +55,10 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
           }
         }
       </header>
+      <!-- Outside the auto-hidden header, so the way out is always on screen -->
+      <button class="preview-exit" (click)="exitPreview()" title="Exit preview (Esc)" aria-label="Exit preview">
+        <span translate="no" class="material-icons">close</span>
+      </button>
 
       <div class="preview-body">
         <!-- Collapsible sidebar -->
@@ -299,7 +300,8 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 8px 16px;
+      /* The right padding keeps the header's own buttons clear of .preview-exit. */
+      padding: 8px 64px 8px 16px;
       background: white;
       border-bottom: 1px solid #e5e7eb;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -327,6 +329,30 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
     .header-hover-zone:hover ~ .preview-header,
     .preview-header:hover {
       transform: translateY(0);
+    }
+
+    .preview-exit {
+      position: absolute;
+      top: 8px;
+      right: 16px;
+      z-index: 31;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+      color: #6b7280;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .preview-exit:hover {
+      background: #f3f4f6;
+      color: #374151;
     }
 
     .header-icon-btn {
@@ -661,6 +687,10 @@ export class PreviewComponent implements OnInit, OnDestroy {
   spaceId = '';
   private filePath = '';
   private destroy$ = new Subject<void>();
+  /** Whether the previous history entry is a page of this app, so leaving can simply step back to it. */
+  private enteredFromApp = false;
+
+  @ViewChild(AnnotationOverlayComponent) private annotationOverlay?: AnnotationOverlayComponent;
 
   space = signal<Space | null>(null);
   loading = signal(false);
@@ -741,6 +771,11 @@ export class PreviewComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // The router numbers its navigations; 1 is the page load itself (a direct link, a new tab).
+    this.enteredFromApp = ((this.location.getState() as { navigationId?: number } | null)?.navigationId ?? 1) > 1;
+    // Capture phase: decided before a dialog, comment thread or zoom overlay closes itself on the same key.
+    document.addEventListener('keydown', this.onKeydown, true);
+
     this.spaceId = this.route.snapshot.paramMap.get('spaceId') || '';
     if (!this.spaceId) {
       this.error.set('Invalid preview link.');
@@ -791,13 +826,50 @@ export class PreviewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    document.removeEventListener('keydown', this.onKeydown, true);
     this.destroy$.next();
     this.destroy$.complete();
     this.imgZoom.destroy();
   }
 
-  goBack(): void {
-    this.location.back();
+  /**
+   * Leaves the preview for the normal view of what is open now: a file in the
+   * editor, a folder (or nothing) in the space overview. Stepping back is only
+   * right while the reader is still on what they came in with; otherwise it
+   * would land on the file they started from, or outside the app.
+   */
+  exitPreview(): void {
+    if (this.enteredFromApp && this.currentPath() === this.filePath) {
+      this.location.back();
+      return;
+    }
+    const path = this.error() ? '' : this.currentPath();
+    const space = this.space();
+    if (!space) {
+      this.router.navigate(['/dashboard'], { replaceUrl: true });
+      return;
+    }
+    const isFile = !!path && !this.currentFolder();
+    this.router.navigate(isFile ? spaceRoute(space.fullPath, 'doc') : spaceRoute(space.fullPath), {
+      queryParams: path ? { path } : {},
+      replaceUrl: true
+    });
+  }
+
+  private onKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || this.escapeIsTakenElsewhere(event)) return;
+    this.exitPreview();
+  };
+
+  /** Escape closes what is open on top of the preview first; only a second press leaves it. */
+  private escapeIsTakenElsewhere(event: KeyboardEvent): boolean {
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) return true;
+    if (this.showShareDialog() || this.showAiEditDialog()) return true;
+    // Diagram and image zoom overlays are appended to <body> by MarkdownRenderService.
+    if (document.querySelector('.dv-mermaid-overlay')) return true;
+    const overlay = this.annotationOverlay;
+    return !!overlay && (overlay.annotationMode() || !!overlay.newAnnotation() || !!overlay.activeAnnotation());
   }
 
   // ── File tree ──
