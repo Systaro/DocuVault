@@ -40,8 +40,20 @@ class SyncSchedulerCloneTest {
         id = UUID.randomUUID(),
         name = "Monorepo Docs",
         slug = "monorepo-docs",
+        gitlabUrl = "https://git.example/acme/monorepo.git",
         createdBy = mock(User::class.java)
     )
+
+    @Test
+    fun `a space without a remote is never pulled, so it is not flagged as failing`() {
+        val local = Space(id = UUID.randomUUID(), name = "Notes", slug = "notes", createdBy = mock(User::class.java))
+        `when`(spaceRepository.findAllRepositoriesWithSyncEnabled()).thenReturn(listOf(local))
+
+        scheduler.syncRepositories()
+
+        verify(gitService, never()).pullChanges(local)
+        verify(spaceRepository, never()).save(local)
+    }
 
     @Test
     fun `a space that is still being cloned is left alone`() {

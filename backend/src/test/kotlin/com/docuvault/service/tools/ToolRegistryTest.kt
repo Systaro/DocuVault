@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 
@@ -127,5 +129,90 @@ class ToolRegistryTest {
     fun `text that is missing or ambiguous is not proposed`() {
         assertThrows<ToolException> { registry.buildProposal(repoA, "f.md", "apple", "PAPAYA", "MANGO", "x") }
         assertThrows<ToolException> { registry.buildProposal(repoA, "f.md", "kiwi kiwi", "kiwi", "MANGO", "x") }
+    }
+
+    // --- rename_document ----------------------------------------------------------
+
+    private fun space(id: String, name: String, gitlabUrl: String? = null, type: String = "REPOSITORY") =
+        objectMapper.createObjectNode()
+            .put("id", id).put("name", name).put("fullPath", name.lowercase()).put("type", type).put("gitlabUrl", gitlabUrl)
+
+    @Test
+    fun `rename_document renames through the same endpoint as the UI and links the new path`() {
+        `when`(api.listSpaces()).thenReturn(listOf(space(repoA, "Handbook")))
+        `when`(api.renameItem(repoA, "docs/setup.md", "guides/installation.md"))
+            .thenReturn(objectMapper.createObjectNode().put("path", "guides/installation.md").put("isDirectory", false))
+        val args = objectMapper.createObjectNode()
+            .put("spaceId", repoA).put("path", "/docs/setup.md").put("newPath", " guides/installation.md ")
+
+        val answer = registry.mcpTool("rename_document")!!.handler(session(ToolScope.Unrestricted), args)
+
+        verify(api).renameItem(repoA, "docs/setup.md", "guides/installation.md")
+        assertTrue(answer.contains("https://docs.example/spaces/handbook/doc?path=guides/installation.md"), answer)
+    }
+
+    @Test
+    fun `a renamed folder gets no document link`() {
+        `when`(api.listSpaces()).thenReturn(listOf(space(repoA, "Handbook")))
+        `when`(api.renameItem(repoA, "docs", "guides"))
+            .thenReturn(objectMapper.createObjectNode().put("path", "guides").put("isDirectory", true))
+        val args = objectMapper.createObjectNode().put("spaceId", repoA).put("path", "docs").put("newPath", "guides")
+
+        val answer = registry.mcpTool("rename_document")!!.handler(session(ToolScope.Unrestricted), args)
+
+        assertFalse(answer.contains("URL:"), answer)
+    }
+
+    @Test
+    fun `rename_document is offered to MCP clients only`() {
+        assertTrue(registry.mcpTool("rename_document") != null)
+        assertNull(registry.conversationTool("rename_document"))
+    }
+
+    // --- sync_space -------------------------------------------------------------
+
+    @Test
+    fun `sync_space pulls the space through the same endpoint as the UI`() {
+        `when`(api.listSpaces()).thenReturn(listOf(space(repoA, "Handbook", gitlabUrl = "https://git.example/acme/handbook.git")))
+        `when`(api.pullSpace(repoA)).thenReturn(objectMapper.createObjectNode().put("success", true))
+        val args = objectMapper.createObjectNode().put("spaceId", repoA)
+
+        val answer = registry.mcpTool("sync_space")!!.handler(session(ToolScope.Unrestricted), args)
+
+        verify(api).pullSpace(repoA)
+        assertTrue(answer.contains("synced"), answer)
+    }
+
+    @Test
+    fun `a failed sync is an error that names the conflict merge request`() {
+        `when`(api.pullSpace(repoA)).thenReturn(
+            objectMapper.createObjectNode()
+                .put("success", false)
+                .put("userMessage", "The space has a merge conflict.")
+                .put("conflictMrUrl", "https://git.example/mr/7")
+        )
+        val args = objectMapper.createObjectNode().put("spaceId", repoA)
+
+        val error = assertThrows<ToolException> { registry.mcpTool("sync_space")!!.handler(session(ToolScope.Unrestricted), args) }
+
+        assertTrue(error.message!!.contains("merge conflict"), error.message)
+        assertTrue(error.message!!.contains("https://git.example/mr/7"), error.message)
+    }
+
+    @Test
+    fun `a space without a remote or a group is not pulled, so no sync error gets recorded on it`() {
+        `when`(api.listSpaces()).thenReturn(listOf(space(repoA, "Notes"), space(repoB, "Acme", type = "GROUP")))
+
+        val local = assertThrows<ToolException> {
+            registry.mcpTool("sync_space")!!.handler(session(ToolScope.Unrestricted), objectMapper.createObjectNode().put("spaceId", repoA))
+        }
+        val group = assertThrows<ToolException> {
+            registry.mcpTool("sync_space")!!.handler(session(ToolScope.Unrestricted), objectMapper.createObjectNode().put("spaceId", repoB))
+        }
+
+        assertTrue(local.message!!.contains("no Git remote"), local.message)
+        assertTrue(group.message!!.contains("is a group"), group.message)
+        verify(api, never()).pullSpace(repoA)
+        verify(api, never()).pullSpace(repoB)
     }
 }

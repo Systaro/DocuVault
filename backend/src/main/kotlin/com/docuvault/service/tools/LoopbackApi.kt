@@ -30,6 +30,8 @@ class LoopbackApi(
         call(HttpMethod.PUT, "/spaces/$spaceId/documents/${encodePath(path)}", body)
     fun patchDocument(spaceId: String, path: String, body: Map<String, Any?>): JsonNode =
         call(HttpMethod.PATCH, "/spaces/$spaceId/documents/${encodePath(path)}", body)
+    fun renameItem(spaceId: String, oldPath: String, newPath: String): JsonNode =
+        call(HttpMethod.POST, "/spaces/$spaceId/documents/rename", mapOf("oldPath" to oldPath, "newPath" to newPath))
     fun createShareLink(spaceId: String, body: Map<String, Any?>): JsonNode =
         call(HttpMethod.POST, "/spaces/$spaceId/shares", body)
     fun searchKeyword(query: String, limit: Int): JsonNode =
@@ -38,6 +40,7 @@ class LoopbackApi(
     fun listState(spaceId: String): JsonNode = call(HttpMethod.GET, "/spaces/$spaceId/state")
     fun getState(spaceId: String, key: String): JsonNode =
         call(HttpMethod.GET, "/spaces/$spaceId/state/${UriUtils.encodePathSegment(key, StandardCharsets.UTF_8)}")
+    fun pullSpace(spaceId: String): JsonNode = call(HttpMethod.POST, "/git/spaces/$spaceId/pull")
     fun issueTransfer(spaceId: String, path: String, kind: String): JsonNode =
         call(HttpMethod.POST, "/transfers", mapOf("spaceId" to spaceId, "path" to path, "kind" to kind))
     fun putState(spaceId: String, key: String, value: String): JsonNode =

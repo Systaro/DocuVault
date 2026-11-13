@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { EMPTY, Observable, catchError, tap } from 'rxjs';
 import { DocumentsService } from '../../core/api/documents.service';
 import { ToastService } from './toast.service';
 import { FileTreeSyncService } from './file-tree-sync.service';
@@ -26,6 +26,10 @@ export class FileActionsService {
    * Renames within the same parent folder. A file keeps its extension even when
    * the user types a bare name, so renaming `notes.md` to `agenda` does not
    * silently turn it into an extensionless file.
+   *
+   * A failure is reported here, as a toast with the server's reason, and then
+   * completes the stream, so callers can subscribe without an error handler and
+   * the failure does not land in the console a second time as unhandled.
    */
   rename(spaceId: string, target: FileTarget, rawName: string): Observable<void> | null {
     let newName = rawName.trim();
@@ -50,7 +54,8 @@ export class FileActionsService {
           'Rename failed',
           err?.error?.message ?? `Could not rename "${target.name}".`
         )
-      })
+      }),
+      catchError(() => EMPTY)
     );
   }
 

@@ -419,6 +419,24 @@ RULES:
         },
 
         ToolDef(
+            "rename_document",
+            "Rename a document or a whole folder, or move it to another folder of the same space. The change is committed to Git right away (and pushed when the space has a remote). Comments move along, and links to the old path forward to the new one. Moving into another space is done in the web UI.",
+            schema(
+                "spaceId" to str("The space (ID, full path or name)"),
+                "path" to str("The current path of the file or folder (e.g. \"docs/setup.md\" or \"docs/guides\")"),
+                "newPath" to str("The complete new path, including the file extension for a file (e.g. \"guides/installation.md\"). Missing folders are created."),
+                required = listOf("spaceId", "path", "newPath")
+            )
+        ) { s, a ->
+            val spaceId = s.resolveSpaceId(a.optionalString("spaceId"))
+            val path = a.requiredString("path").trim().trim('/')
+            val newPath = a.requiredString("newPath").trim().trim('/')
+            val result = s.api.renameItem(spaceId, path, newPath)
+            val link = if (result.get("isDirectory")?.asBoolean() == true) "" else s.urlLine(spaceId, newPath)
+            "Renamed successfully.\nFrom: $path\nTo: $newPath$link\nCommitted to Git."
+        },
+
+        ToolDef(
             "share_document",
             "Create a public share link for a file or folder in a space. Anyone with the URL can view the content (optionally behind a password, optionally expiring).",
             schema(
@@ -495,6 +513,32 @@ Windows PowerShell:
 Invoke-WebRequest -Uri "${ticket.text("url")}" -OutFile "$local"
 
 A 404 means the ticket expired or was already used; call download_file again."""
+        },
+
+        ToolDef(
+            "sync_space",
+            "Pull the latest commits of a space's Git repository into DocuVault now and re-index its documents, instead of waiting for the scheduled sync. Use it after pushing to the repository from outside DocuVault (git push, CI, another tool), so the new files and changes show up right away.",
+            schema("spaceId" to str("The space (ID, full path or name)"), required = listOf("spaceId"))
+        ) { s, a ->
+            val spaceId = s.resolveSpaceId(a.optionalString("spaceId"))
+            // A group or a space without a remote has nothing to pull. Trying anyway
+            // would fail and record a sync error on a space that is perfectly fine.
+            val space = s.spaces.firstOrNull { it.text("id") == spaceId }
+            if (space != null && space.text("gitlabUrl").isNullOrBlank()) {
+                throw ToolException(
+                    if (space.text("type") == "GROUP") "${space.text("name")} is a group, not a repository. Sync one of the spaces inside it."
+                    else "${space.text("name")} has no Git remote, so there is nothing to sync: its documents live only in DocuVault."
+                )
+            }
+            val result = s.api.pullSpace(spaceId)
+            if (result.get("success")?.asBoolean() == true) {
+                "Space synced from Git: DocuVault now shows the repository's latest commit, and search is re-indexed."
+            } else {
+                val reason = result.text("userMessage") ?: result.text("message") ?: "unknown error"
+                val conflict = result.text("conflictMrUrl")?.let { "\nResolve the open merge request first, then sync again: $it" } ?: ""
+                val setup = if (result.get("requiresSetup")?.asBoolean() == true) "\nThe space's Git connection needs setting up in DocuVault first." else ""
+                throw ToolException("Sync failed: $reason$conflict$setup")
+            }
         },
 
         ToolDef(

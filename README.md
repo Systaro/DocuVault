@@ -125,9 +125,10 @@ take the same URL:
 }
 ```
 
-The server exposes 19 tools covering search/list/read/create/edit/share for
-documents, spaces and space state, tasks (`list_tasks`, `create_task`,
-`update_task`), plus `upload_file` / `download_file` for
+The server exposes 21 tools covering search/list/read/create/edit/rename/share
+for documents, spaces and space state, tasks (`list_tasks`, `create_task`,
+`update_task`), `sync_space` to pull a space's Git repository in right away
+after pushing from outside, plus `upload_file` / `download_file` for
 binaries and large files: they hand out a one-time URL and the agent moves the
 bytes with `curl` (or `Invoke-WebRequest` on Windows), so nothing binary
 passes through the model. Every call runs as the signed-in user with that

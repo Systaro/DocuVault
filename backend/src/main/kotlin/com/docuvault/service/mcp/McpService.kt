@@ -34,6 +34,7 @@ class McpService(
         - Space arguments accept the space ID, its full path (e.g. "team/handbook") or its name; list_spaces shows all three.
         - Link to a document as $baseUrl/spaces/<space full path>/doc?path=<document path>. The document path is a query parameter, never a URL segment. Results already contain the ready-made link; quote that instead of building one.
         - create_document and update_document write to the space's working copy. Only auto_commit=true (with a commit_message) commits and pushes to Git; without it the change is visible in DocuVault but not in the repository.
+        - Pushed to a space's repository from outside DocuVault? Call sync_space so it shows up now; otherwise the scheduled sync picks it up within the space's sync interval.
         - Call read_document before edit_document or insert_in_document and pass its contentHash; the edit is rejected if the document changed in between.
         - Document content moves inline for text. For binary files (images, PDF, Office) and for large files use upload_file / download_file: they return a one-time URL and a curl command you run in the shell, so the bytes never pass through the conversation.
         - Every call runs as the signed-in user with that user's permissions. Deleting documents is not offered here; use the web UI.

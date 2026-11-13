@@ -47,6 +47,9 @@ class SyncScheduler(
         val spaces = spaceRepository.findAllRepositoriesWithSyncEnabled()
 
         for (space in spaces) {
+            // No remote, nothing to pull. A space created over the API without one
+            // still defaults to sync on, and every tick would flag it as failing.
+            if (space.gitlabUrl.isNullOrBlank()) continue
             // The request that created the space is still cloning it.
             if (gitService.isCloning(space)) continue
 

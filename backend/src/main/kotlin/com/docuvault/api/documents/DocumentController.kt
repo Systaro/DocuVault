@@ -695,13 +695,14 @@ class DocumentController(
     fun renameItem(
         @PathVariable spaceId: UUID,
         @AuthenticationPrincipal userDetails: UserDetails,
-        @RequestBody request: RenameRequest
-    ): ResponseEntity<Unit> {
-        val (space, user) = authorizeRename(spaceId, userDetails)
+        @Valid @RequestBody request: RenameRequest
+    ): ResponseEntity<RenameResponse> {
+        val (space, user) = authorizeRename(spaceId, userDetails, request)
+        val isDirectory = gitService.isDirectory(space, request.oldPath)
         if (!documentTransferService.rename(space, request.oldPath, request.newPath, user)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
-        return ResponseEntity.ok().build()
+        return ResponseEntity.ok(RenameResponse(path = request.newPath, isDirectory = isDirectory))
     }
 
     /**
@@ -713,10 +714,10 @@ class DocumentController(
     fun renameItemStreamed(
         @PathVariable spaceId: UUID,
         @AuthenticationPrincipal userDetails: UserDetails,
-        @RequestBody request: RenameRequest,
+        @Valid @RequestBody request: RenameRequest,
         response: HttpServletResponse
     ): SseEmitter {
-        val (space, user) = authorizeRename(spaceId, userDetails)
+        val (space, user) = authorizeRename(spaceId, userDetails, request)
         return eventStreams.open(response, MOVE_STREAM_TIMEOUT_MS) { stream ->
             val renamed = documentTransferService.rename(space, request.oldPath, request.newPath, user) {
                 stream.send("progress", it)
@@ -729,8 +730,13 @@ class DocumentController(
         }
     }
 
-    /** The space and acting user of a rename; throws the HTTP error when the user may not rename there. */
-    private fun authorizeRename(spaceId: UUID, userDetails: UserDetails): Pair<Space, User> {
+    /**
+     * The space and acting user of a rename; throws the HTTP error when the user
+     * may not rename there, or when [request] cannot work. Those are checked here
+     * because a failed move on disk only says "false", which reached the caller as
+     * a bare 500 with no hint whether the source was gone or the target taken.
+     */
+    private fun authorizeRename(spaceId: UUID, userDetails: UserDetails, request: RenameRequest): Pair<Space, User> {
         val user = userRepository.findByEmail(userDetails.username)
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         val space = spaceRepository.findById(spaceId).orElse(null)
@@ -739,6 +745,20 @@ class DocumentController(
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "You don't have edit rights in this space.")
         }
         requireSpaceWritable(space)
+
+        val (oldPath, newPath) = request
+        if (oldPath == newPath) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "'$oldPath' already has that name.")
+        }
+        if (!gitService.itemExists(space, oldPath)) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "'$oldPath' does not exist in ${space.name}.")
+        }
+        if (newPath.startsWith("$oldPath/")) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Can't put a folder inside itself.")
+        }
+        if (gitService.itemExists(space, newPath)) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "'$newPath' already exists in ${space.name}.")
+        }
         return space to user
     }
 
@@ -1061,6 +1081,12 @@ data class RenameRequest(
     val oldPath: String,
     @field:NotBlank(message = "New path is required")
     val newPath: String
+)
+
+/** Where a renamed item lives now; a folder has no document page to link to. */
+data class RenameResponse(
+    val path: String,
+    val isDirectory: Boolean
 )
 
 fun Document.toDto() = DocumentDto(
