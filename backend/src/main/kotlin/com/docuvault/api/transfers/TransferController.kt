@@ -3,6 +3,7 @@ package com.docuvault.api.transfers
 import com.docuvault.domain.space.Space
 import com.docuvault.infrastructure.repository.SpaceRepository
 import com.docuvault.infrastructure.repository.UserRepository
+import com.docuvault.service.DocumentLinks
 import com.docuvault.service.FileUploadService
 import com.docuvault.service.PermissionService
 import com.docuvault.service.TransferKind
@@ -111,7 +112,7 @@ class TransferController(
                 path = stored.path,
                 name = stored.name,
                 size = stored.size,
-                url = "$baseUrl/spaces/${space.getFullPath()}/doc?path=${org.springframework.web.util.UriUtils.encodeQueryParam(stored.path, Charsets.UTF_8)}"
+                url = DocumentLinks.documentUrl(baseUrl, space.getFullPath(), stored.path)
             )
         )
     }

@@ -120,7 +120,7 @@ class TransferControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.path").value("assets/logo.png"))
             .andExpect(jsonPath("$.size").value(3))
-            .andExpect(jsonPath("$.url").value("https://docs.example.com/spaces/docs/doc?path=assets/logo.png"))
+            .andExpect(jsonPath("$.url").value("https://docs.example.com/spaces/docs/doc?path=assets%2Flogo.png"))
         org.junit.jupiter.api.Assertions.assertEquals(1, commits.size, "one commit for the upload")
 
         mockMvc.perform(put("/transfers/$token").contentType(MediaType.APPLICATION_OCTET_STREAM).content(byteArrayOf(1)))

@@ -32,7 +32,7 @@ class McpService(
     private val instructions = """
         DocuVault is a Git-backed documentation platform. Spaces are Git repositories, documents are files inside them (Markdown, HTML, CSS, JS, JSON, YAML, ...).
         - Space arguments accept the space ID, its full path (e.g. "team/handbook") or its name; list_spaces shows all three.
-        - Link to a document as $baseUrl/spaces/<space full path>/doc?path=<document path>. The document path is a query parameter, never a URL segment. Results already contain the ready-made link; quote that instead of building one.
+        - Results already contain the ready-made link to each document (the "URL:" line, or "url" in an upload result). Quote it exactly as given and never build or retype one. Its form is $baseUrl/spaces/<space full path>/doc?path=<document path>: the document path is a query parameter, never a URL segment, and its slashes are encoded as %2F, e.g. $baseUrl/spaces/team/handbook/doc?path=guides%2Fsetup.md.
         - create_document and update_document write to the space's working copy. Only auto_commit=true (with a commit_message) commits and pushes to Git; without it the change is visible in DocuVault but not in the repository.
         - Pushed to a space's repository from outside DocuVault? Call sync_space so it shows up now; otherwise the scheduled sync picks it up within the space's sync interval.
         - Call read_document before edit_document or insert_in_document and pass its contentHash; the edit is rejected if the document changed in between.

@@ -1,10 +1,9 @@
 package com.docuvault.service.tools
 
+import com.docuvault.service.DocumentLinks
 import com.fasterxml.jackson.databind.JsonNode
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpHeaders
-import org.springframework.web.util.UriUtils
-import java.nio.charset.StandardCharsets
 import java.util.*
 
 /**
@@ -114,7 +113,7 @@ class ToolSession(
     fun spaceFullPath(spaceId: String): String? = spaces.firstOrNull { it.text("id") == spaceId }?.text("fullPath")
 
     fun documentUrl(spaceFullPath: String, docPath: String): String =
-        "${publicUrl.trimEnd('/')}/spaces/$spaceFullPath/doc?path=${UriUtils.encodeQueryParam(docPath, StandardCharsets.UTF_8)}"
+        DocumentLinks.documentUrl(publicUrl, spaceFullPath, docPath)
 
     fun urlLine(spaceId: String, docPath: String): String =
         spaceFullPath(spaceId)?.let { "\nURL: ${documentUrl(it, docPath)}" } ?: ""
