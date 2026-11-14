@@ -148,7 +148,7 @@ class ToolRegistryTest {
         val answer = registry.mcpTool("rename_document")!!.handler(session(ToolScope.Unrestricted), args)
 
         verify(api).renameItem(repoA, "docs/setup.md", "guides/installation.md")
-        assertTrue(answer.contains("https://docs.example/spaces/handbook/doc?path=guides/installation.md"), answer)
+        assertTrue(answer.contains("https://docs.example/spaces/handbook/doc?path=guides%2Finstallation.md"), answer)
     }
 
     @Test

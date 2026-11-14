@@ -69,15 +69,14 @@ function resolveSpaceId(spaces: Space[], input: string): string | null {
 }
 
 /**
- * Builds the canonical DocuVault app URL for a document — the same deep link the
- * web UI uses (/spaces/<fullPath>/doc?path=<docPath>). This is NOT a public share
- * link: opening it requires the user to be logged in and to have access to the
- * space. Slashes in the path are preserved; only individual segments are encoded
- * so spaces/#/? in filenames don't break the link.
+ * Builds the canonical DocuVault app URL for a document, written the way the web
+ * UI's address bar writes it: /spaces/<fullPath>/doc?path=<docPath> with the whole
+ * path encoded, slashes as %2F (doc?path=guides%2Fsetup.md). This is NOT a public
+ * share link: opening it requires the user to be logged in and to have access to
+ * the space.
  */
 function buildDocumentUrl(baseUrl: string, spaceFullPath: string, docPath: string): string {
-  const encodedPath = docPath.split('/').map(encodeURIComponent).join('/');
-  return `${baseUrl}/spaces/${spaceFullPath}/doc?path=${encodedPath}`;
+  return `${baseUrl}/spaces/${spaceFullPath}/doc?path=${encodeURIComponent(docPath)}`;
 }
 
 export function registerTools(server: McpServer, client: DocuVaultClient, spaces: Space[] = []): void {
