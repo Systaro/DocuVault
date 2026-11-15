@@ -1,4 +1,4 @@
-import { Component, signal, HostListener, OnInit, inject } from '@angular/core';
+import { Component, signal, computed, HostListener, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
@@ -15,6 +15,13 @@ import { APP_VERSION } from '../version';
 import { BrandingService } from '../../core/branding/branding.service';
 import { BrandLogoComponent } from './brand-logo.component';
 
+interface NavItem {
+  route: string;
+  icon: string;
+  label: string;
+  exact: boolean;
+}
+
 @Component({
   selector: 'app-layout',
   standalone: true,
@@ -23,6 +30,9 @@ import { BrandLogoComponent } from './brand-logo.component';
     <div class="app-container">
       <!-- Header -->
       <header class="app-header">
+        <!-- Pages put a control of their own here, e.g. the file tree toggle
+             of a space, which has no other place on a phone. -->
+        <ng-content select="[headerStart]"></ng-content>
         <div class="app-logo">
           <a routerLink="/dashboard" class="logo-link">
             <app-brand-logo variant="wordmark" [onDark]="themeService.darkMode()" />
@@ -31,33 +41,15 @@ import { BrandLogoComponent } from './brand-logo.component';
         </div>
 
         <nav class="header-nav">
-          <a
-            routerLink="/dashboard"
-            routerLinkActive="active"
-            [routerLinkActiveOptions]="{ exact: true }"
-            class="nav-link"
-          >
-            <span translate="no" class="material-icons">dashboard</span>
-            Dashboard
-          </a>
-          @if (caps.aiChat()) {
-            <a routerLink="/ask" routerLinkActive="active" class="nav-link">
-              <span translate="no" class="material-icons">auto_awesome</span>
-              Ask
-            </a>
-          }
-          <a routerLink="/tasks" routerLinkActive="active" class="nav-link">
-            <span translate="no" class="material-icons">task_alt</span>
-            Tasks
-          </a>
-          @if (authService.isAdmin()) {
+          @for (item of navItems(); track item.route) {
             <a
-              routerLink="/admin"
+              [routerLink]="item.route"
               routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: item.exact }"
               class="nav-link"
             >
-              <span translate="no" class="material-icons">admin_panel_settings</span>
-              Admin
+              <span translate="no" class="material-icons">{{ item.icon }}</span>
+              {{ item.label }}
             </a>
           }
         </nav>
@@ -72,11 +64,11 @@ import { BrandLogoComponent } from './brand-logo.component';
             <span translate="no" class="material-icons">search</span>
           </button>
           <app-header-notifications />
-          <button class="icon-btn" (click)="themeService.toggle()" [title]="themeService.darkMode() ? 'Light mode' : 'Dark mode'">
+          <button class="icon-btn desktop-only" (click)="themeService.toggle()" [title]="themeService.darkMode() ? 'Light mode' : 'Dark mode'">
             <span translate="no" class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
           </button>
           @if (authService.isAdmin()) {
-            <a routerLink="/admin/settings" class="icon-btn" title="Settings">
+            <a routerLink="/admin/settings" class="icon-btn desktop-only" title="Settings">
               <span translate="no" class="material-icons">settings</span>
             </a>
           }
@@ -89,8 +81,60 @@ import { BrandLogoComponent } from './brand-logo.component';
               Sign out
             </button>
           </div>
+          <!-- On a phone the navigation, the theme switch, the release notes and
+               signing out all live behind the avatar: the bar has room for
+               five icons, and the links above are hidden there. -->
+          <button
+            type="button"
+            class="avatar mobile-menu-btn"
+            [class.open]="mobileMenuOpen()"
+            [attr.aria-expanded]="mobileMenuOpen()"
+            aria-label="Menu"
+            (click)="mobileMenuOpen.set(!mobileMenuOpen())"
+          >
+            {{ getInitials(authService.user()?.name) }}
+          </button>
         </div>
       </header>
+
+      @if (mobileMenuOpen()) {
+        <div class="mobile-menu-backdrop" (click)="mobileMenuOpen.set(false)"></div>
+        <nav class="mobile-menu" aria-label="Menu" (click)="onMobileMenuClick($event)">
+          <a routerLink="/account" class="mobile-menu-user">
+            <span class="avatar">{{ getInitials(authService.user()?.name) }}</span>
+            <span class="mobile-menu-user-text">
+              <strong>{{ authService.user()?.name }}</strong>
+              <span>{{ authService.user()?.email }}</span>
+            </span>
+          </a>
+          <div class="mobile-menu-divider"></div>
+          @for (item of navItems(); track item.route) {
+            <a
+              [routerLink]="item.route"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: item.exact }"
+              class="mobile-menu-item"
+            >
+              <span translate="no" class="material-icons">{{ item.icon }}</span>
+              {{ item.label }}
+            </a>
+          }
+          <div class="mobile-menu-divider"></div>
+          <button type="button" class="mobile-menu-item" (click)="themeService.toggle()">
+            <span translate="no" class="material-icons">{{ themeService.darkMode() ? 'light_mode' : 'dark_mode' }}</span>
+            {{ themeService.darkMode() ? 'Light mode' : 'Dark mode' }}
+          </button>
+          <button type="button" class="mobile-menu-item" (click)="openChangelog()">
+            <span translate="no" class="material-icons">new_releases</span>
+            What's new
+            <span class="mobile-menu-version">{{ appVersion }}</span>
+          </button>
+          <button type="button" class="mobile-menu-item" (click)="authService.logout()">
+            <span translate="no" class="material-icons">logout</span>
+            Sign out
+          </button>
+        </nav>
+      }
 
       <!-- Impersonation Banner -->
       @if (authService.isImpersonating()) {
@@ -321,25 +365,159 @@ import { BrandLogoComponent } from './brand-logo.component';
       flex: 1;
     }
 
+    .mobile-menu-btn {
+      display: none;
+      flex-shrink: 0;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+
+      &.open {
+        box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary);
+      }
+    }
+
+    .mobile-menu-backdrop {
+      position: fixed;
+      inset: 64px 0 0 0;
+      z-index: 300;
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    .mobile-menu {
+      position: fixed;
+      top: 70px;
+      right: 8px;
+      z-index: 301;
+      width: min(300px, calc(100vw - 16px));
+      max-height: calc(100dvh - 78px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .mobile-menu-user {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      text-decoration: none;
+
+      &:active { background: var(--background); }
+    }
+
+    .mobile-menu-user-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+
+      strong,
+      span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      strong { font-size: 15px; }
+      span { font-size: 13px; color: var(--text-secondary); }
+    }
+
+    .mobile-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-height: 44px;
+      padding: 0 12px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: none;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      text-align: left;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+
+      .material-icons {
+        font-size: 20px;
+        color: var(--text-secondary);
+      }
+
+      &:hover,
+      &:active {
+        background: var(--background);
+      }
+
+      &.active {
+        color: var(--primary-dark);
+        background: color-mix(in srgb, var(--primary) 15%, transparent);
+
+        .material-icons { color: inherit; }
+      }
+    }
+
+    .mobile-menu-version {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .mobile-menu-divider {
+      height: 1px;
+      margin: 6px 4px;
+      background: var(--border);
+    }
+
+    // Only a phone has a way to open it, but a window widened while it is open
+    // must not keep a second navigation on screen next to the real one.
+    @media (min-width: 769px) {
+      .mobile-menu,
+      .mobile-menu-backdrop {
+        display: none;
+      }
+    }
+
     // The bar is one fixed 64px row and nothing in it shrinks, so on a phone it
     // simply ran past the viewport — 375px of actions in 244px of room — and
     // made the *whole page* pan sideways. That is why a document appeared to
     // scroll horizontally as a whole: the header, not the document, was too
-    // wide. Everything below is about getting the row under the viewport width;
-    // nothing is dropped that has no other way in, because .header-nav is
-    // already gone here and admin settings would otherwise be unreachable.
+    // wide. Everything below is about getting the row under the viewport width.
+    // What leaves the bar (the links, the theme switch, settings, the version
+    // chip, signing out) moves into the avatar menu, so nothing loses its way in.
     @media (max-width: 768px) {
       .app-header {
         padding: 0 10px;
         gap: var(--spacing-xs);
       }
 
-      .header-nav {
+      .header-nav,
+      .header-user,
+      .desktop-only,
+      .app-logo .app-version {
         display: none;
       }
 
-      .header-user .btn {
-        display: none;
+      .mobile-menu-btn {
+        display: flex;
+      }
+
+      // With the links gone, a [headerStart] control in front would otherwise
+      // leave the logo floating in the middle of the bar.
+      .app-logo {
+        margin-right: auto;
       }
 
       .desktop-search {
@@ -376,14 +554,10 @@ import { BrandLogoComponent } from './brand-logo.component';
         display: none;
       }
 
-      .header-user {
-        margin-left: var(--spacing-xs);
-        padding-left: var(--spacing-sm);
-      }
-
-      .avatar {
+      .mobile-menu-btn {
         width: 32px;
         height: 32px;
+        margin-left: var(--spacing-xs);
       }
     }
 
@@ -407,11 +581,6 @@ import { BrandLogoComponent } from './brand-logo.component';
         width: 32px;
         height: 32px;
       }
-
-      .header-user {
-        margin-left: 2px;
-        padding-left: 6px;
-      }
     }
   `]
 })
@@ -422,13 +591,29 @@ export class LayoutComponent implements OnInit {
   showCapture = signal(false);
   captureText = signal('');
   showPalette = signal(false);
+  mobileMenuOpen = signal(false);
   caps = inject(CapabilitiesService);
   branding = inject(BrandingService);
   showChangelog = signal(false);
   changelogReleases = signal<ChangelogRelease[]>([]);
   appVersion = APP_VERSION;
 
+  /** The main sections, shared by the header links and the phone menu. */
+  navItems = computed<NavItem[]>(() => [
+    { route: '/dashboard', icon: 'dashboard', label: 'Dashboard', exact: true },
+    ...(this.caps.aiChat() ? [{ route: '/ask', icon: 'auto_awesome', label: 'Ask', exact: false }] : []),
+    { route: '/tasks', icon: 'task_alt', label: 'Tasks', exact: false },
+    ...(this.authService.isAdmin() ? [{ route: '/admin', icon: 'admin_panel_settings', label: 'Admin', exact: false }] : []),
+  ]);
+
   constructor(public authService: AuthService, public themeService: ThemeService) {}
+
+  /** Following a link closes the menu; the theme switch keeps it open so the change is visible. */
+  onMobileMenuClick(event: MouseEvent): void {
+    if ((event.target as HTMLElement).closest('a')) {
+      this.mobileMenuOpen.set(false);
+    }
+  }
 
   ngOnInit(): void {
     const user = this.authService.user();
@@ -442,6 +627,7 @@ export class LayoutComponent implements OnInit {
 
   /** Opening the log on purpose shows every shipped release, not just new ones. */
   openChangelog(): void {
+    this.mobileMenuOpen.set(false);
     this.changelogService.allReleases().subscribe(releases => {
       this.changelogReleases.set(releases);
       this.showChangelog.set(true);
@@ -467,6 +653,10 @@ export class LayoutComponent implements OnInit {
   /** Cmd+K toggles the command palette, which can also start a quick note. */
   @HostListener('document:keydown', ['$event'])
   onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.mobileMenuOpen()) {
+      this.mobileMenuOpen.set(false);
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
       this.showCapture.set(false);

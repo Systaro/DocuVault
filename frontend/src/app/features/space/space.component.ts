@@ -33,6 +33,17 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
   imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, LayoutComponent, ShareLinkDialogComponent, ExportStateDialogComponent, MoveItemDialogComponent, MoveProgressDialogComponent, SpaceRoutePipe],
   template: `
     <app-layout>
+      <button
+        headerStart
+        type="button"
+        class="icon-btn menu-toggle-btn"
+        [attr.aria-label]="mobileSidebarOpen() ? 'Close files' : 'Show files'"
+        [attr.aria-expanded]="mobileSidebarOpen()"
+        [title]="mobileSidebarOpen() ? 'Close files' : 'Show files'"
+        (click)="toggleMobileSidebar($event)"
+      >
+        <span translate="no" class="material-icons">{{ mobileSidebarOpen() ? 'close' : 'menu' }}</span>
+      </button>
       @if (spaceSignal()) {
         <div class="space-container">
           <div class="browser-main" [style.--sidebar-width]="sidebarWidth() + 'px'">
@@ -600,23 +611,14 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
       flex-direction: column;
     }
 
+    // Sits in the app header (projected through [headerStart]). Only a phone
+    // needs it: there the sidebar is a drawer, and this is the way to open it.
     .menu-toggle-btn {
       display: none;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      padding: 0;
-      margin-right: var(--spacing-sm);
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      color: var(--text-primary);
-      cursor: pointer;
       flex-shrink: 0;
+      color: var(--text-primary);
 
-      .material-icons { font-size: 22px; }
-      &:hover { background: var(--background); }
+      .material-icons { font-size: 24px; }
     }
 
     .sidebar-backdrop {
@@ -842,6 +844,14 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
 
     .sidebar-header:hover .shared-indicator {
       display: none;
+    }
+
+    // A touch screen has no hover to reveal these, so there they simply show.
+    @media (hover: none) {
+      .sidebar-action-btn,
+      .sidebar-share-btn {
+        opacity: 1;
+      }
     }
 
     .sidebar-search {
@@ -1174,6 +1184,10 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
       flex-shrink: 0;
       opacity: 0;
       transition: opacity var(--transition);
+    }
+
+    @media (hover: none) {
+      .tree-row-menu { opacity: 1; }
     }
 
     .tree-menu-btn {
@@ -1552,7 +1566,7 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
 
     @media (max-width: 768px) {
       .menu-toggle-btn {
-        display: inline-flex;
+        display: flex;
       }
 
       .breadcrumb-bar {
@@ -1591,12 +1605,23 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
         max-width: none;
         z-index: 200;
         transform: translateX(-100%);
-        transition: transform 0.25s ease;
-        box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+        // Hidden once the slide-out has finished, so the closed drawer is out of
+        // the tab order and its shadow no longer bleeds in at the left edge.
+        visibility: hidden;
+        transition: transform 0.25s ease, visibility 0s linear 0.25s;
       }
 
       .sidebar.mobile-open {
         transform: translateX(0);
+        visibility: visible;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+        transition: transform 0.25s ease;
+      }
+
+      // Rows sized for a mouse were 26px tall: too tight to hit with a thumb.
+      .tree-item {
+        min-height: 40px;
+        font-size: 14px;
       }
 
       .resize-handle {
@@ -1787,10 +1812,18 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
 
   ngOnInit(): void {
     // Track current document path from child route query params
+    let lastPath = this.router.url.split('?')[0];
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) {
         this.updateBreadcrumb();
-        this.mobileSidebarOpen.set(false);
+        // Opening a folder from the drawer only changes ?path= on the overview.
+        // The drawer stays open then, so a phone can walk down the tree to a
+        // file without reopening it at every level; anything else closes it.
+        const path = event.urlAfterRedirects.split('?')[0];
+        if (path !== lastPath || path.endsWith('/doc')) {
+          this.mobileSidebarOpen.set(false);
+        }
+        lastPath = path;
       }
     });
     // Initial check

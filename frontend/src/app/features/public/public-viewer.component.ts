@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, NgZone, HostListener } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -28,9 +28,21 @@ const SCROLL_JITTER_PX = 4;
   standalone: true,
   imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent, BrandLogoComponent],
   template: `
-    <div class="public-viewer" [class.folder-layout]="shareType() === 'FOLDER' && !requiresPassword() && !loading() && !error() && !maintenanceMode()">
+    <div class="public-viewer" [class.folder-layout]="folderLayout()">
       <!-- Header -->
       <header class="viewer-header" [class.tucked]="headerOffset() < 0" [style.margin-top.px]="headerOffset() || null">
+        @if (folderLayout()) {
+          <button
+            type="button"
+            class="folder-drawer-btn"
+            [attr.aria-expanded]="folderDrawerOpen()"
+            aria-label="Show files"
+            title="Show files"
+            (click)="folderDrawerOpen.set(true)"
+          >
+            <span translate="no" class="material-icons">menu</span>
+          </button>
+        }
         <app-brand-logo class="header-brand" />
         @if (breadcrumbSegments().length) {
           <nav class="header-breadcrumb" aria-label="File location">
@@ -124,10 +136,16 @@ const SCROLL_JITTER_PX = 4;
         </main>
       } @else if (shareType() === 'FOLDER') {
         <!-- Folder browser layout -->
-        <aside class="folder-sidebar" [style.width.px]="sidebarWidth()">
+        @if (folderDrawerOpen()) {
+          <div class="folder-drawer-backdrop" (click)="folderDrawerOpen.set(false)"></div>
+        }
+        <aside class="folder-sidebar" [class.drawer-open]="folderDrawerOpen()" [style.--sidebar-width.px]="sidebarWidth()">
           <div class="sidebar-header">
             <span translate="no" class="material-icons">folder_special</span>
             <span class="sidebar-title">{{ metadata()?.fileName || metadata()?.spaceName }}</span>
+            <button type="button" class="folder-drawer-close" aria-label="Close files" title="Close files" (click)="folderDrawerOpen.set(false)">
+              <span translate="no" class="material-icons">close</span>
+            </button>
           </div>
           <div class="folder-tree">
             <ng-container *ngTemplateOutlet="treeTemplate; context: { nodes: fileTree(), level: 0 }"></ng-container>
@@ -631,6 +649,7 @@ const SCROLL_JITTER_PX = 4;
 
     /* Folder Sidebar */
     .folder-sidebar {
+      width: var(--sidebar-width, 280px);
       background: white;
       border-right: 1px solid #e5e7eb;
       overflow-y: auto;
@@ -725,6 +744,92 @@ const SCROLL_JITTER_PX = 4;
 
     .resize-handle:hover {
       background: var(--primary);
+    }
+
+    .public-viewer .folder-drawer-btn,
+    .public-viewer .folder-drawer-close {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: none;
+      border-radius: 8px;
+      background: none;
+      color: #374151;
+      cursor: pointer;
+
+      &:hover { background: #f3f4f6; }
+      .material-icons { font-size: 22px; color: inherit; }
+    }
+
+    .public-viewer .folder-drawer-close {
+      margin-left: auto;
+    }
+
+    /* A phone cannot spare 280px for the tree next to the file: the content was
+       left with about 110px. The tree becomes a drawer that the menu button in
+       the header slides in, and choosing a file slides it out again. */
+    @media (max-width: 768px) {
+      .public-viewer.folder-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .public-viewer.folder-layout > .folder-content {
+        grid-column: 1;
+        min-width: 0;
+      }
+
+      .public-viewer.folder-layout > .resize-handle {
+        display: none;
+      }
+
+      .public-viewer.folder-layout > .folder-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 210;
+        width: min(85vw, 320px);
+        min-width: 0;
+        max-width: none;
+        transform: translateX(-100%);
+        visibility: hidden;
+        transition: transform 0.25s ease, visibility 0s linear 0.25s;
+      }
+
+      .public-viewer.folder-layout > .folder-sidebar.drawer-open {
+        transform: none;
+        visibility: visible;
+        box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+        transition: transform 0.25s ease;
+      }
+
+      .public-viewer .folder-drawer-btn,
+      .public-viewer .folder-drawer-close {
+        display: flex;
+      }
+
+      .public-viewer .folder-drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 209;
+        background: rgba(0, 0, 0, 0.4);
+      }
+
+      /* Full width already, so a card is only odd corners: it becomes the page. */
+      .public-viewer .folder-browser {
+        margin: 0;
+        padding: 20px 16px;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      .public-viewer .folder-content .markdown-container {
+        margin: 0;
+      }
     }
 
     /* Folder content area */
@@ -989,7 +1094,14 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   currentFolderPath = signal('');
   subFileLoading = signal(false);
   sidebarWidth = signal(280);
+  /** Phone only: the file tree is a drawer there. */
+  folderDrawerOpen = signal(false);
   private resizing = false;
+
+  /** A folder share past the password gate: tree and content side by side. */
+  folderLayout = computed(() =>
+    this.shareType() === 'FOLDER' && !this.requiresPassword() && !this.loading() && !this.error() && !this.maintenanceMode()
+  );
 
   /** Negative while the header is slid up out of view, 0 while it shows. */
   headerOffset = signal(0);
@@ -1315,10 +1427,16 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
 
   navigateToFile(node: FileNode): void {
     if (node.isDirectory) return;
+    this.folderDrawerOpen.set(false);
     this.currentSubPath.set(node.path);
     this.loadSubPathContent(node.path);
     const url = `/share/${this.token}/${node.path}`;
     this.location.replaceState(url);
+  }
+
+  @HostListener('document:keydown.escape')
+  closeFolderDrawer(): void {
+    this.folderDrawerOpen.set(false);
   }
 
   private loadSubPathContent(subPath: string): void {

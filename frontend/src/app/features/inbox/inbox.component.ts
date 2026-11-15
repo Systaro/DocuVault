@@ -61,7 +61,7 @@ import { AuthService } from '../../core/auth/auth.service';
 
       <!-- Unsorted split view -->
       @if (activeTab() === 'unsorted') {
-        <div class="inbox-split">
+        <div class="inbox-split" [class.has-selection]="!!selectedNote()">
           <!-- Left: note list -->
           <div class="note-list-panel">
             @if (loading()) {
@@ -101,6 +101,11 @@ import { AuthService } from '../../core/auth/auth.service';
               </div>
             } @else {
               <div class="suggestion-content">
+                <!-- Phone only: list and note take turns on one screen there. -->
+                <button type="button" class="inbox-back-btn" (click)="selectedNote.set(null)">
+                  <span translate="no" class="material-icons">arrow_back</span>
+                  All notes
+                </button>
                 <!-- Note content on a paper-like sheet -->
                 <div class="note-sheet">
                   <div class="note-full-content" [innerHTML]="selectedNote()!.content"></div>
@@ -462,6 +467,25 @@ import { AuthService } from '../../core/auth/auth.service';
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+
+    .inbox-back-btn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      align-self: flex-start;
+      padding: 6px 10px 6px 6px;
+      border: none;
+      border-radius: var(--radius-md);
+      background: none;
+      color: var(--primary-dark);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+
+      .material-icons { font-size: 20px; }
+      &:hover { background: var(--surface); }
     }
 
     .note-card {
@@ -848,6 +872,47 @@ import { AuthService } from '../../core/auth/auth.service';
       display: flex;
       justify-content: flex-end;
       gap: 8px;
+    }
+    /* Two panes do not fit side by side on a phone: the list took 340px of a
+       390px screen and squeezed the note to a column of single words. There the
+       list fills the screen, and picking a note swaps it for the note. */
+    @media (max-width: 768px) {
+      .inbox-header {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 16px 16px 0;
+
+        .header-right { flex-wrap: wrap; gap: 8px; }
+        .btn { white-space: nowrap; }
+      }
+
+      .inbox-tabs {
+        padding: 12px 16px 0;
+      }
+
+      .note-list-panel {
+        flex: 1;
+        width: auto;
+        border-right: none;
+      }
+
+      .suggestion-panel {
+        display: none;
+        padding: 12px 16px;
+      }
+
+      .inbox-split.has-selection {
+        .note-list-panel { display: none; }
+        .suggestion-panel { display: block; }
+      }
+
+      .inbox-back-btn {
+        display: inline-flex;
+      }
+
+      .filed-list {
+        padding: 12px 16px;
+      }
     }
   `]
 })

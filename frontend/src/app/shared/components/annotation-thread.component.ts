@@ -258,6 +258,11 @@ function truncate(value: string, limit = 140): string {
 
     .reply:hover .thread-btn.small { opacity: 1; }
 
+    // A touch screen has no hover to reveal these, so there they simply show.
+    @media (hover: none) {
+      .thread-btn.small { opacity: 1; }
+    }
+
     /* Drift note. Amber, like the pin's ring: informational, not an error —
        the comment is fine, its ground has moved. */
     .drift-note {

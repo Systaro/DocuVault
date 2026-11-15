@@ -91,6 +91,8 @@ import { AuthService } from '../../core/auth/auth.service';
 
       h1 { margin: 0; font-size: 26px; color: var(--text-primary); }
       .subtitle { margin: 4px 0 0; color: var(--text-muted); }
+      // The subtitle gives way on a narrow screen, not the button's label.
+      .btn { flex-shrink: 0; white-space: nowrap; }
     }
 
     .card {

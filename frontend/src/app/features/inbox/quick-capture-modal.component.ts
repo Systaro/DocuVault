@@ -147,7 +147,9 @@ import { spaceRoute } from '../../shared/utils/route-utils';
                 <span translate="no" class="material-icons">refresh</span>The note changed. Suggest again
               </button>
             } @else {
-              <span translate="no" class="material-icons">keyboard_command_key</span>Cmd+Enter
+              <span class="capture-shortcut">
+                <span translate="no" class="material-icons">keyboard_command_key</span>Cmd+Enter
+              </span>
             }
           </div>
           <div class="capture-actions">
@@ -409,6 +411,19 @@ import { spaceRoute } from '../../shared/utils/route-utils';
       color: var(--text-muted);
 
       .material-icons { font-size: 14px; }
+    }
+
+    .capture-shortcut {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    // A phone has no keyboard shortcut to offer, and the hint was what pushed
+    // the main button's label onto two lines.
+    @media (max-width: 768px) {
+      .capture-shortcut { display: none; }
+      .capture-actions .btn { white-space: nowrap; }
     }
 
     .link-btn {

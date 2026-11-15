@@ -207,6 +207,11 @@ import { DocumentVersion } from '../../core/api/document-history.service';
       }
     }
 
+    // A touch screen has no hover to reveal these, so there they simply show.
+    @media (hover: none) {
+      .history-item-diff { opacity: 1; }
+    }
+
     .history-item-top {
       display: flex;
       align-items: center;

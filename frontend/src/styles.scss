@@ -1874,6 +1874,23 @@ body {
     // 48px of padding either side leaves a phone barely 290px of content.
     --paper-padding: 20px;
     padding: 24px 20px;
+    // The card already touched both screen edges here; without margin,
+    // corners and shadow it simply reads as the page.
+    margin-top: 0;
+    margin-bottom: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+// In the editor the paper (EditorComponent's `.paper`) already pads 16px on a
+// phone. The document inside, read or being edited, adds none of its own there:
+// stacked, the two left 300px of a 390px screen and indented the text past the
+// title.
+@media (max-width: 768px) {
+  .paper :is(.ProseMirror, .markdown-readonly) {
+    --paper-padding: 16px;
+    padding: 16px 0;
   }
 }
 

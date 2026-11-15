@@ -173,7 +173,7 @@ interface SpaceTokenDto {
                 Move this {{ space()?.type === 'GROUP' ? 'group' : 'repository' }} to a different parent group.
               </p>
 
-              <div class="flex gap-2 items-end">
+              <div class="flex gap-2 items-end settings-inline-row">
                 <div class="flex-1">
                   <label class="block text-sm font-medium text-gray-700 mb-1">Parent Group</label>
                   <app-searchable-select
@@ -253,7 +253,7 @@ interface SpaceTokenDto {
 
             <!-- Add User -->
             <div class="mt-4 pt-4 border-t border-gray-200">
-              <div class="flex gap-2">
+              <div class="flex gap-2 settings-inline-row">
                 <app-searchable-select
                   class="flex-1"
                   [options]="userOptions()"
@@ -320,7 +320,7 @@ interface SpaceTokenDto {
 
             <!-- Add Team -->
             <div class="mt-4 pt-4 border-t border-gray-200">
-              <div class="flex gap-2">
+              <div class="flex gap-2 settings-inline-row">
                 <app-searchable-select
                   class="flex-1"
                   [options]="teamOptions()"
@@ -642,6 +642,22 @@ await state.save();</pre>
     </div>
   `,
   styles: [`
+    // A picker next to its button: the picker gives way, never the button.
+    // On a phone the picker takes its own line and the rest goes below it.
+    .settings-inline-row > * {
+      min-width: 0;
+    }
+
+    @media (max-width: 640px) {
+      .settings-inline-row {
+        flex-wrap: wrap;
+      }
+
+      .settings-inline-row > .flex-1 {
+        flex-basis: 100%;
+      }
+    }
+
     .rule-type-badge {
       font-size: 10px;
       font-weight: 700;

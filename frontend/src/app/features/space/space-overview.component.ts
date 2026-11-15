@@ -66,10 +66,10 @@ interface ListingEntry extends FileEntry {
       </div>
     }
 
-    <div class="p-8">
+    <div class="p-8 overview-page">
       <div class="max-w-4xl mx-auto">
         <!-- Header with in-context breadcrumb above the title -->
-        <div class="flex justify-between items-start mb-8">
+        <div class="flex justify-between items-start mb-8 overview-hero">
           <div class="min-w-0 flex-1">
             <nav class="hero-breadcrumb" aria-label="Folder path">
               <a routerLink="/dashboard" class="hero-crumb">
@@ -107,7 +107,7 @@ interface ListingEntry extends FileEntry {
             <h1 class="text-2xl font-bold overview-text-primary truncate">{{ heroTitle() }}</h1>
             <p class="overview-text-secondary mt-1 truncate">{{ heroSubtitle() }}</p>
           </div>
-          <div class="flex gap-2 flex-shrink-0 items-center">
+          <div class="flex gap-2 flex-shrink-0 items-center overview-hero-actions">
             <!-- Hidden inputs wired to the two upload menu items. webkitdirectory
                  makes the second one pick a whole folder, subfolders included. -->
             <input #fileInput type="file" multiple class="sr-only"
@@ -258,17 +258,17 @@ interface ListingEntry extends FileEntry {
 
         <!-- Stats: only on space root, irrelevant inside subfolders -->
         @if (!currentFolder()) {
-          <div class="grid grid-cols-3 gap-4 mb-8">
+          <div class="grid grid-cols-3 gap-4 mb-8 overview-stats">
             <div class="card p-4">
-              <div class="text-2xl font-bold overview-text-primary">{{ documents().length }}</div>
+              <div class="text-2xl font-bold overview-text-primary overview-stat-value">{{ documents().length }}</div>
               <div class="text-sm overview-text-secondary">Documents</div>
             </div>
             <div class="card p-4">
-              <div class="text-2xl font-bold overview-text-primary">{{ space()?.branch || 'N/A' }}</div>
+              <div class="text-2xl font-bold overview-text-primary overview-stat-value" [title]="space()?.branch || ''">{{ space()?.branch || 'N/A' }}</div>
               <div class="text-sm overview-text-secondary">Branch</div>
             </div>
             <div class="card p-4">
-              <div class="text-2xl font-bold overview-text-primary">
+              <div class="text-2xl font-bold overview-text-primary overview-stat-value">
                 {{ space()?.lastSyncedAt ? formatDate(space()!.lastSyncedAt!) : 'Never' }}
               </div>
               <div class="text-sm overview-text-secondary">Last Synced</div>
@@ -906,6 +906,11 @@ interface ListingEntry extends FileEntry {
       &:hover .row-menu-btn { opacity: 1; }
     }
 
+    // A touch screen has no hover to reveal these, so there they simply show.
+    @media (hover: none) {
+      .row-menu-btn { opacity: 1; }
+    }
+
     .tile {
       display: flex;
       flex-direction: column;
@@ -1076,6 +1081,52 @@ interface ListingEntry extends FileEntry {
       padding: 4px;
       display: flex;
       flex-direction: column;
+    }
+
+    // On a phone the title column and the buttons beside it shared one row, and
+    // the buttons never shrink: the title was squeezed to a letter or two and
+    // the breadcrumb broke after every segment. Here the title gets the full
+    // width and the buttons line up underneath it.
+    @media (max-width: 640px) {
+      .overview-page {
+        padding: 16px;
+      }
+
+      .overview-hero {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .overview-hero-actions {
+        flex-wrap: wrap;
+      }
+
+      // The buttons now start at the left edge, so a menu anchored to the
+      // right of its button would open off screen.
+      .new-menu {
+        right: auto;
+        left: 0;
+      }
+
+      .overview-stats {
+        gap: 8px;
+        margin-bottom: 20px;
+
+        .card {
+          min-width: 0;
+          padding: 10px 12px;
+        }
+      }
+
+      .overview-stat-value {
+        font-size: 1rem;
+        line-height: 1.5rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     }
 
     .new-menu-item {

@@ -222,9 +222,41 @@ import { AuthService } from '../../core/auth/auth.service';
         flex-direction: column;
       }
 
+      // Stacked as a card, the menu filled the whole first screen before any
+      // content showed. On a phone it is one row of chips that scrolls sideways.
       .admin-sidebar {
+        display: flex;
+        gap: 6px;
         width: 100%;
         position: static;
+        padding: 6px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar { display: none; }
+      }
+
+      .sidebar-section {
+        display: contents;
+      }
+
+      .sidebar-label {
+        display: none;
+      }
+
+      .sidebar-link {
+        flex-shrink: 0;
+        margin-bottom: 0;
+        padding: 6px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+
+        .material-icons { font-size: 18px; }
+      }
+
+      .breadcrumb-bar {
+        padding: var(--spacing-sm) var(--spacing-md);
       }
     }
   `]

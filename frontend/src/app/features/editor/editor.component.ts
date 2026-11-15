@@ -145,7 +145,7 @@ interface SheetView {
       <div class="editor-toolbar">
         @if (showEditor()) {
           <!-- Editing toolbar (shown only in edit mode) -->
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 editor-format-group">
             <button class="editor-icon-btn" [class.active]="isActive('bold')" (click)="toggleBold()" title="Bold"><b>B</b></button>
             <button class="editor-icon-btn" [class.active]="isActive('italic')" (click)="toggleItalic()" title="Italic"><i>I</i></button>
             <button class="editor-icon-btn" [class.active]="isActive('strike')" (click)="toggleStrike()" title="Strikethrough"><s>S</s></button>
@@ -269,9 +269,9 @@ interface SheetView {
           </div>
           <div class="flex items-center gap-2">
             @if (hasChanges()) {
-              <span class="text-xs text-muted">{{ saving() ? 'Saving...' : 'Unsaved changes' }}</span>
+              <span class="text-xs text-muted editor-save-status">{{ saving() ? 'Saving...' : 'Unsaved changes' }}</span>
             } @else if (lastSaved()) {
-              <span class="text-xs text-muted">Saved</span>
+              <span class="text-xs text-muted editor-save-status">Saved</span>
             }
             <button class="btn-save" (click)="doneEditing()" [disabled]="saving()" [title]="needsSave() ? 'Save and view' : 'Done editing'">
               @if (needsSave()) {
@@ -1147,6 +1147,51 @@ interface SheetView {
       color: var(--text-muted);
     }
 
+    // A phone has room for about half the formatting buttons. Without this the
+    // toolbar ran 650px wide and pushed Save/Done and the actions menu off the
+    // screen, so an edit could be started but never finished. The formatting
+    // buttons scroll sideways now; Save/Done and the menu stay where a thumb
+    // finds them.
+    @media (max-width: 768px) {
+      .editor-toolbar {
+        position: relative;
+        gap: 8px;
+        padding: 6px 8px;
+      }
+
+      .editor-format-group {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar { display: none; }
+
+        > * { flex-shrink: 0; }
+
+        // The highlight and table menus would be clipped by the scrolling row.
+        // Taking their wrapper out of positioning hands them to the toolbar,
+        // which does not clip, and they open across its full width below it.
+        > .relative { position: static; }
+
+        .action-menu {
+          left: 8px;
+          right: 8px;
+          min-width: 0;
+        }
+      }
+
+      // The button itself already says Save or Done.
+      .editor-save-status {
+        display: none;
+      }
+
+      .editor-breadcrumb-row {
+        padding: 6px 12px;
+      }
+    }
+
     .editor-icon-btn {
       padding: 6px 8px;
       border-radius: 6px;
@@ -1327,6 +1372,24 @@ interface SheetView {
       border-radius: 4px;
       box-shadow: var(--shadow-sm);
       position: relative;
+    }
+
+    // On a phone the page is the paper: no margins, no card, and the column
+    // width is the screen's, so there is nothing to drag (the handle also stuck
+    // out past the edge and let the page pan sideways). The document inside
+    // drops its own side padding there too, see styles.scss.
+    @media (max-width: 768px) {
+      .paper {
+        margin: 0;
+        padding-left: 16px;
+        padding-right: 16px;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      .paper-resize-handle {
+        display: none;
+      }
     }
 
     .paper-resize-handle {

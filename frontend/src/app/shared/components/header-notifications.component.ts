@@ -129,6 +129,19 @@ interface SpaceGroup {
       border-bottom: 1px solid var(--border);
     }
 
+    // 400px anchored to the bell's right edge ran off the left of a phone
+    // screen. There it spans the screen below the header instead.
+    @media (max-width: 768px) {
+      .feed-dropdown {
+        position: fixed;
+        top: 70px;
+        left: 8px;
+        right: 8px;
+        width: auto;
+        max-height: calc(100dvh - 86px);
+      }
+    }
+
     .feed-title {
       font-size: 14px;
       font-weight: 600;
