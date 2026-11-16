@@ -21,7 +21,8 @@
 #   on the frontend's VIRTUAL_HOST / LETSENCRYPT_HOST labels. If you have
 #   your own reverse proxy (Caddy, Traefik, etc.), comment out the
 #   nginx-proxy and acme-companion services and expose the frontend port
-#   directly via a `ports:` mapping on the frontend service.
+#   directly via a `ports:` mapping on the frontend service. Your proxy must
+#   then accept request bodies of 200 MB, as nginx-proxy/uploads.conf does.
 #
 # Fresh-install schema bootstrap:
 #   db/bootstrap.sql is mounted into postgres' init dir and runs ONCE on
@@ -43,6 +44,7 @@ services:
       - nginx_vhost:/etc/nginx/vhost.d
       - nginx_html:/usr/share/nginx/html
       - nginx_acme:/etc/acme.sh
+      - ./nginx-proxy/uploads.conf:/etc/nginx/conf.d/uploads.conf:ro
 
   acme-companion:
     image: nginxproxy/acme-companion

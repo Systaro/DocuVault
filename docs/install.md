@@ -25,8 +25,9 @@ git clone --depth 1 https://github.com/Systaro/DocuVault.git /opt/docuvault
 cd /opt/docuvault
 ```
 
-Only `docker-compose.product.yml`, `.env.example.product`, `deploy.sh` and
-`db/bootstrap.sql` are used; nothing is built on the server. Run every command
+Only `docker-compose.product.yml`, `.env.example.product`, `deploy.sh`,
+`db/bootstrap.sql` and `nginx-proxy/uploads.conf` are used; nothing is built on
+the server. Run every command
 below from this directory.
 
 ## 2. Configure

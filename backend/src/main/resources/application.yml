@@ -54,8 +54,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 100MB
+      max-file-size: 150MB
+      max-request-size: 200MB
 
 app:
   # Public URL of this install — used in email links/logos. Falls back to

@@ -45,7 +45,7 @@ class TransferController(
     @Value("\${app.public-url}") publicUrl: String
 ) {
     companion object {
-        const val MAX_UPLOAD_BYTES = 50L * 1024 * 1024
+        const val MAX_UPLOAD_BYTES = 150L * 1024 * 1024
     }
 
     private val baseUrl = publicUrl.trimEnd('/')

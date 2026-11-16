@@ -8,12 +8,12 @@ import { FileTreeSyncService } from './file-tree-sync.service';
 
 /**
  * Mirrors `spring.servlet.multipart` in `backend/src/main/resources/application.yml`
- * (max-file-size 50MB, max-request-size 100MB) and nginx's `client_max_body_size 100M`.
+ * (max-file-size 150MB, max-request-size 200MB) and nginx's `client_max_body_size 200M`.
  * Chunks stay well under the request cap so multipart part overhead can't push a
  * batch over it, and a chunk is also capped by file count so a folder of many tiny
  * files still reports progress instead of going quiet.
  */
-const MAX_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_FILE_BYTES = 150 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 40 * 1024 * 1024;
 const MAX_CHUNK_FILES = 50;
 
