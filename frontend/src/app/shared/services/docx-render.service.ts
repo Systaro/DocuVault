@@ -59,8 +59,28 @@ export interface DocxComment extends DocxCommentNote {
   range: Range | null;
 }
 
+/** The class docx-preview puts on each page; style classes are `<class>_<style id>`. */
+const DOCX_CLASS = 'docx';
+
+/**
+ * docx-preview writes a document's fonts without a generic family, so a font
+ * the viewer lacks (Aptos, Calibri, Cambria outside Office) fell through to the
+ * browser default, a serif. Each font list gets the generic family of the fonts
+ * the document names: from Word's font table where it records one, else from
+ * these name patterns, else sans-serif.
+ */
+const FONT_TABLE_FAMILY: Record<string, string> = { roman: 'serif', swiss: 'sans-serif', modern: 'monospace' };
+const MONO_FONT = /\b(mono|code|courier|consolas|console|menlo|monaco|inconsolata)\b/i;
+const SANS_FONT = /\bsans\b|gothic/i;
+const SERIF_FONT = /\b(serif|times|cambria|georgia|garamond|palatino|antiqua|bookman|baskerville|bodoni|didot|caslon|schoolbook|constantia|minion|charter|perpetua|goudy|rockwell|sitka|mincho|batang|simsun|songti|mingliu)\b|明朝/i;
+const GENERIC_FONT = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui)$/i;
+/** A font-family declaration, or an @font-face block, whose single family must stay alone. */
+const FONT_FAMILY_DECL = /@font-face\s*\{[^}]*\}|(font-family:\s*)([^;}]+)/g;
+const THEME_FONT_VAR = /(--docx-\w+-font):\s*([^;}]+)/g;
+
 const COMMENT_PARTS = ['comments', 'commentsExtended', 'commentsIds', 'commentsExtensible'] as const;
-type CommentParts = Partial<Record<typeof COMMENT_PARTS[number], Document>>;
+const RELATED_PARTS = [...COMMENT_PARTS, 'styles', 'fontTable'] as const;
+type RelatedParts = Partial<Record<typeof RELATED_PARTS[number], Document>>;
 
 interface ParsedComment extends DocxCommentNote {
   /** Word links replies and resolved state through the comment's last paragraph. */
@@ -112,13 +132,14 @@ export class DocxRenderService {
     const docx = await this.loadLibs();
     const zip = await (window as any).JSZip.loadAsync(data);
     const normalized = await this.normalizeUnits(zip);
-    const comments = await this.readComments(zip);
+    const parts = await this.relatedParts(zip);
+    const comments = this.readComments(parts);
     if (comments.length) await this.markCommentRanges(zip);
     const prepared = normalized || comments.length ? await zip.generateAsync({ type: 'arraybuffer' }) : data;
     host.replaceChildren();
     // Styles go into the host too, so they leave with it when the viewer does.
     await docx.renderAsync(prepared, host, host, {
-      className: 'docx',
+      className: DOCX_CLASS,
       inWrapper: true,
       breakPages: true,
       ignoreLastRenderedPageBreak: true,
@@ -137,6 +158,8 @@ export class DocxRenderService {
     });
     this.sanitizeLinks(host);
     this.replaceSymbolBullets(host);
+    this.applyDefaultParagraphStyle(host, parts.styles);
+    this.addGenericFonts(host, parts.fontTable);
     return this.placeComments(comments, host);
   }
 
@@ -165,8 +188,7 @@ export class DocxRenderService {
    * The comment threads of the main document. Replies and the resolved flag
    * live in commentsExtended.xml, keyed by each comment's last paragraph.
    */
-  private async readComments(zip: any): Promise<DocxComment[]> {
-    const parts = await this.commentParts(zip);
+  private readComments(parts: RelatedParts): DocxComment[] {
     if (!parts.comments) return [];
 
     const durableIds = new Map<string, string>();
@@ -241,15 +263,15 @@ export class DocxRenderService {
     return [...threads.values()];
   }
 
-  /** The XML of the comment parts the main document links to, where present. */
-  private async commentParts(zip: any): Promise<CommentParts> {
+  /** The XML of the comment, style and font table parts the main document links to, where present. */
+  private async relatedParts(zip: any): Promise<RelatedParts> {
     const rels = zip.file('word/_rels/document.xml.rels');
     if (!rels) return {};
     const parser = new DOMParser();
-    const parts: CommentParts = {};
+    const parts: RelatedParts = {};
     const relDoc = parser.parseFromString(await rels.async('string'), 'application/xml');
     for (const rel of elements(relDoc, 'Relationship')) {
-      const kind = COMMENT_PARTS.find(name => (attr(rel, 'Type') ?? '').endsWith(`/${name}`));
+      const kind = RELATED_PARTS.find(name => (attr(rel, 'Type') ?? '').endsWith(`/${name}`));
       const target = attr(rel, 'Target') ?? '';
       if (!kind) continue;
       const file = zip.file(target.startsWith('/') ? target.slice(1) : `word/${target}`);
@@ -299,6 +321,74 @@ export class DocxRenderService {
       if (fixed !== css) {
         style.textContent = fixed.replace(/font-family:\s*(Symbol|Wingdings);/g, '');
       }
+    });
+  }
+
+  /**
+   * docx-preview leaves a paragraph without a style unclassed, so its text takes
+   * the document defaults (`.docx span`) instead of the default paragraph style
+   * Word gives it, which often sets another font and size. Those paragraphs get
+   * the default style's class.
+   */
+  private applyDefaultParagraphStyle(host: HTMLElement, styles?: Document): void {
+    const style = styles && elements(styles, 'style').find(s =>
+      attr(s, 'type') === 'paragraph' && ['1', 'true', 'on'].includes(attr(s, 'default') ?? ''));
+    const id = style && attr(style, 'styleId');
+    if (!id) return;
+    // docx-preview's own class name for a style id.
+    const styleClass = `${DOCX_CLASS}_${id.replace(/[ .]+/g, '-').replace(/&+/g, 'and').toLowerCase()}`;
+    host.querySelectorAll(`section.${DOCX_CLASS} p`).forEach(p => {
+      if (!Array.from(p.classList).some(c => c.startsWith(`${DOCX_CLASS}_`))) p.classList.add(styleClass);
+    });
+  }
+
+  /** Close every font list in the rendered document with a generic family (see FONT_TABLE_FAMILY). */
+  private addGenericFonts(host: HTMLElement, fontTable?: Document): void {
+    const known = new Map<string, string>();
+    for (const font of fontTable ? elements(fontTable, 'font') : []) {
+      const name = attr(font, 'name');
+      const pitch = elements(font, 'pitch')[0];
+      const family = elements(font, 'family')[0];
+      const generic = pitch && attr(pitch, 'val') === 'fixed'
+        ? 'monospace'
+        : FONT_TABLE_FAMILY[(family && attr(family, 'val')) ?? ''];
+      if (name && generic) known.set(name.toLowerCase(), generic);
+    }
+
+    const styles = Array.from(host.querySelectorAll('style'));
+    // The theme's fonts, which docx-preview hands out as var(--docx-majorHAnsi-font) and the like.
+    const themeFonts = new Map<string, string>();
+    for (const style of styles) {
+      for (const [, name, value] of (style.textContent ?? '').matchAll(THEME_FONT_VAR)) {
+        themeFonts.set(name, value.trim());
+      }
+    }
+
+    const genericOf = (font: string): string | undefined => {
+      const name = font.replace(/^['"]|['"]$/g, '');
+      return known.get(name.toLowerCase())
+        ?? (MONO_FONT.test(name) ? 'monospace'
+          : SANS_FONT.test(name) ? 'sans-serif'
+          : SERIF_FONT.test(name) ? 'serif'
+          : undefined);
+    };
+    const withGeneric = (list: string): string => {
+      const fonts = list.split(',')
+        .map(f => f.trim())
+        .map(f => themeFonts.get(/^var\((--docx-\w+-font)\)$/.exec(f)?.[1] ?? '') ?? f);
+      if (fonts.some(f => GENERIC_FONT.test(f))) return list;
+      const generic = fonts.map(genericOf).find(g => g) ?? 'sans-serif';
+      return `${list.trim()}, ${generic}`;
+    };
+
+    for (const style of styles) {
+      const css = style.textContent ?? '';
+      const fixed = css.replace(FONT_FAMILY_DECL, (decl, prop?: string, list?: string) =>
+        prop && list ? prop + withGeneric(list) : decl);
+      if (fixed !== css) style.textContent = fixed;
+    }
+    host.querySelectorAll<HTMLElement>('[style*="font-family"]').forEach(el => {
+      el.style.fontFamily = withGeneric(el.style.fontFamily);
     });
   }
 
