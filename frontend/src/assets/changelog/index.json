@@ -1,5 +1,10 @@
 [
   {
+    "version": "v0.8.14",
+    "date": "2026-11-16",
+    "title": "Uploads up to 150 MB"
+  },
+  {
     "version": "v0.8.13",
     "date": "2026-11-15",
     "title": "Works on your phone"
