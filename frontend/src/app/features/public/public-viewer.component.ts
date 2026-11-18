@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, NgZone, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed, ViewEncapsulation, effect, ElementRef, NgZone, HostListener, viewChild, afterNextRender } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -22,6 +22,25 @@ import { ToastService } from '../../shared/services/toast.service';
 const HEADER_REVEAL_ZONE_PX = 40;
 /** Smaller movements (a touch settling, rubber-banding) leave the bar as it is. */
 const SCROLL_JITTER_PX = 4;
+/** Prefix of the per-share key that remembers a viewer put the bar away. */
+const HEADER_HIDDEN_KEY_PREFIX = 'docuvault.share.headerHidden.';
+
+function readHeaderHidden(token: string): boolean {
+  try {
+    return localStorage.getItem(HEADER_HIDDEN_KEY_PREFIX + token) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberHeaderHidden(token: string, hidden: boolean): void {
+  try {
+    if (hidden) localStorage.setItem(HEADER_HIDDEN_KEY_PREFIX + token, '1');
+    else localStorage.removeItem(HEADER_HIDDEN_KEY_PREFIX + token);
+  } catch {
+    // Private mode or blocked storage: the choice lasts until the page is left.
+  }
+}
 
 @Component({
   selector: 'app-public-viewer',
@@ -30,11 +49,17 @@ const SCROLL_JITTER_PX = 4;
   template: `
     <div class="public-viewer" [class.folder-layout]="folderLayout()">
       <!-- Header -->
-      <header class="viewer-header" [class.tucked]="headerOffset() < 0" [style.margin-top.px]="headerOffset() || null">
+      <header
+        #viewerHeader
+        class="viewer-header"
+        [class.tucked]="headerHidden()"
+        [style.margin-top.px]="headerMarginTop()"
+        [attr.inert]="headerHiddenByViewer() ? '' : null"
+      >
         @if (folderLayout()) {
           <button
             type="button"
-            class="folder-drawer-btn"
+            class="icon-btn folder-drawer-btn"
             [attr.aria-expanded]="folderDrawerOpen()"
             aria-label="Show files"
             title="Show files"
@@ -54,8 +79,8 @@ const SCROLL_JITTER_PX = 4;
             }
           </nav>
         }
-        @if (fileActionsVisible()) {
-          <div class="header-actions">
+        <div class="header-actions">
+          @if (fileActionsVisible()) {
             @if (canExportPdf()) {
               <button type="button" class="header-action" (click)="exportAsPdf()" title="Export as PDF" aria-label="Export as PDF">
                 <span translate="no" class="material-icons">picture_as_pdf</span>
@@ -66,9 +91,31 @@ const SCROLL_JITTER_PX = 4;
               <span translate="no" class="material-icons">download</span>
               <span class="header-action-label">Download</span>
             </a>
-          </div>
-        }
+          }
+          <button
+            #headerHideBtn
+            type="button"
+            class="icon-btn header-hide-btn"
+            title="Hide toolbar"
+            aria-label="Hide toolbar"
+            (click)="hideHeader()"
+          >
+            <span translate="no" class="material-icons">expand_less</span>
+          </button>
+        </div>
       </header>
+      @if (headerHiddenByViewer()) {
+        <button
+          #headerRevealBtn
+          type="button"
+          class="header-reveal"
+          title="Show toolbar"
+          aria-label="Show toolbar"
+          (click)="showHeader()"
+        >
+          <span translate="no" class="material-icons">expand_more</span>
+        </button>
+      }
 
       <!-- Password Gate -->
       @if (requiresPassword()) {
@@ -143,7 +190,7 @@ const SCROLL_JITTER_PX = 4;
           <div class="sidebar-header">
             <span translate="no" class="material-icons">folder_special</span>
             <span class="sidebar-title">{{ metadata()?.fileName || metadata()?.spaceName }}</span>
-            <button type="button" class="folder-drawer-close" aria-label="Close files" title="Close files" (click)="folderDrawerOpen.set(false)">
+            <button type="button" class="icon-btn folder-drawer-close" aria-label="Close files" title="Close files" (click)="folderDrawerOpen.set(false)">
               <span translate="no" class="material-icons">close</span>
             </button>
           </div>
@@ -746,9 +793,8 @@ const SCROLL_JITTER_PX = 4;
       background: var(--primary);
     }
 
-    .public-viewer .folder-drawer-btn,
-    .public-viewer .folder-drawer-close {
-      display: none;
+    .public-viewer .icon-btn {
+      display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
@@ -765,8 +811,71 @@ const SCROLL_JITTER_PX = 4;
       .material-icons { font-size: 22px; color: inherit; }
     }
 
+    .public-viewer .folder-drawer-btn,
+    .public-viewer .folder-drawer-close {
+      display: none;
+    }
+
     .public-viewer .folder-drawer-close {
       margin-left: auto;
+    }
+
+    /* No taller than the action buttons: the HTML and PDF frames below reckon
+       with a 60px bar, and one pixel more gives the page a scrollbar. */
+    .public-viewer .header-hide-btn {
+      width: 32px;
+      height: 32px;
+      color: #6b7280;
+    }
+
+    /* The way back once the viewer has put the bar away: a small tab hanging
+       from the top edge, faint until pointed at so it does not sit on top of a
+       presentation, and above the document but below comment popups. It drops
+       in only after the bar has slid out. */
+    .public-viewer .header-reveal {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      z-index: 150;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      width: 52px;
+      height: 22px;
+      padding: 0;
+      border: 1px solid #e5e7eb;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #374151;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      cursor: pointer;
+      opacity: 0.6;
+      transform: translateX(-50%);
+      transition: opacity 0.15s ease, height 0.15s ease;
+      animation: header-reveal-in 0.2s ease 0.25s both;
+
+      .material-icons { font-size: 20px; line-height: 20px; }
+
+      &:hover, &:focus-visible {
+        opacity: 1;
+        height: 28px;
+        color: var(--primary);
+      }
+    }
+
+    /* A finger needs more than the 22px a mouse pointer gets along with. */
+    @media (pointer: coarse) {
+      .public-viewer .header-reveal { width: 64px; height: 32px; }
+    }
+
+    @keyframes header-reveal-in {
+      from { transform: translate(-50%, -100%); }
+      to { transform: translate(-50%, 0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .public-viewer .header-reveal { animation: none; transition: none; }
     }
 
     /* A phone cannot spare 280px for the tree next to the file: the content was
@@ -1103,8 +1212,19 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.shareType() === 'FOLDER' && !this.requiresPassword() && !this.loading() && !this.error() && !this.maintenanceMode()
   );
 
-  /** Negative while the header is slid up out of view, 0 while it shows. */
-  headerOffset = signal(0);
+  /** Slid away while an HTML document is scrolled down; scrolling back up returns it. */
+  private headerScrolledAway = signal(false);
+  /** Put away by the viewer; stays away, scrolling or not, until they bring it back. */
+  headerHiddenByViewer = signal(false);
+  headerHidden = computed(() => this.headerHiddenByViewer() || this.headerScrolledAway());
+  /** Kept current by an observer, so a bar that wraps differently after a resize still goes all the way. */
+  private headerHeight = signal(0);
+  /** Pulls the content up over the bar's place while it is hidden. */
+  headerMarginTop = computed(() => this.headerHidden() && this.headerHeight() ? -this.headerHeight() : null);
+  private headerResizeObserver?: ResizeObserver;
+  private readonly headerEl = viewChild.required<ElementRef<HTMLElement>>('viewerHeader');
+  private readonly headerHideBtn = viewChild<ElementRef<HTMLButtonElement>>('headerHideBtn');
+  private readonly headerRevealBtn = viewChild<ElementRef<HTMLButtonElement>>('headerRevealBtn');
 
   /** FileNode list at currentFolderPath() inside fileTree(). Empty if not found. */
   currentFolderItems = computed<FileNode[]>(() => {
@@ -1231,6 +1351,14 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
         this.markdownService.runImageLightbox(this.elementRef.nativeElement);
       }, 0);
     });
+
+    afterNextRender(() => {
+      const header = this.headerEl().nativeElement;
+      this.headerResizeObserver = new ResizeObserver(() =>
+        this.zone.run(() => this.headerHeight.set(header.offsetHeight))
+      );
+      this.headerResizeObserver.observe(header);
+    });
   }
 
   ngOnInit(): void {
@@ -1242,6 +1370,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
       return;
     }
     this.token = match[1];
+    this.headerHiddenByViewer.set(readHeaderHidden(this.token));
     if (match[2]) {
       this.currentSubPath.set(decodeURIComponent(match[2]));
     }
@@ -1282,7 +1411,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
    * with the bar showing.
    */
   followFrameScroll(event: Event): void {
-    this.setHeaderTucked(false);
+    this.setHeaderScrolledAway(false);
     let doc: Document | null = null;
     try {
       doc = (event.target as HTMLIFrameElement).contentDocument;
@@ -1303,16 +1432,38 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
       lastTop.set(scroller, top);
       // A sideways scroll (a carousel, a wide table) says nothing about reading on.
       if (delta === 0) return;
-      if (top <= HEADER_REVEAL_ZONE_PX) this.setHeaderTucked(false);
-      else if (Math.abs(delta) >= SCROLL_JITTER_PX) this.setHeaderTucked(delta > 0);
+      if (top <= HEADER_REVEAL_ZONE_PX) this.setHeaderScrolledAway(false);
+      else if (Math.abs(delta) >= SCROLL_JITTER_PX) this.setHeaderScrolledAway(delta > 0);
     }, { capture: true, passive: true });
   }
 
-  private setHeaderTucked(tucked: boolean): void {
-    if (tucked === this.headerOffset() < 0) return;
-    const header = this.elementRef.nativeElement.querySelector<HTMLElement>('.viewer-header');
+  private setHeaderScrolledAway(away: boolean): void {
+    if (away === this.headerScrolledAway()) return;
     // The iframe's events run outside Angular's zone.
-    this.zone.run(() => this.headerOffset.set(tucked && header ? -header.offsetHeight : 0));
+    this.zone.run(() => this.headerScrolledAway.set(away));
+  }
+
+  /**
+   * A presentation or a page with its own navigation does not scroll, so the
+   * bar never slides away by itself; the viewer can put it away instead. The
+   * choice is remembered per share, and focus follows to the control that is
+   * left on screen, so a keyboard user is not stranded on a hidden button.
+   */
+  hideHeader(): void {
+    this.setHeaderHiddenByViewer(true);
+    setTimeout(() => this.headerRevealBtn()?.nativeElement.focus());
+  }
+
+  showHeader(): void {
+    // Otherwise a document scrolled down meanwhile would keep the bar away.
+    this.headerScrolledAway.set(false);
+    this.setHeaderHiddenByViewer(false);
+    setTimeout(() => this.headerHideBtn()?.nativeElement.focus());
+  }
+
+  private setHeaderHiddenByViewer(hidden: boolean): void {
+    this.headerHiddenByViewer.set(hidden);
+    rememberHeaderHidden(this.token, hidden);
   }
 
   ngOnDestroy(): void {
@@ -1330,6 +1481,7 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
     this.metaService.removeTag('name="twitter:image"');
     document.removeEventListener('mousemove', this.onResize);
     document.removeEventListener('mouseup', this.stopResize);
+    this.headerResizeObserver?.disconnect();
     this.imgZoom.destroy();
   }
 
