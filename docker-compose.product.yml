@@ -141,6 +141,8 @@ services:
       # Optional central log shipping (logback -> logstash TCP). Disabled by
       # default; set LOGSTASH_DESTINATION=host:port to opt in.
       LOGSTASH_DESTINATION: ${LOGSTASH_DESTINATION:-}
+      # Word editing in the browser; see the onlyoffice service below.
+      OFFICE_JWT_SECRET: ${OFFICE_JWT_SECRET:-}
     volumes:
       - repos_data:/data/repos
     depends_on:
@@ -194,12 +196,38 @@ services:
     depends_on:
       - backend
 
+  # Word editing in the browser (ONLYOFFICE Docs Community) — opt-in.
+  # Activate by setting OFFICE_JWT_SECRET in .env; deploy.sh then includes this
+  # service. It needs about 2 GB of RAM on top. The frontend serves it under
+  # /office/ on the same host. See docs/office-editing.md.
+  onlyoffice:
+    image: onlyoffice/documentserver:${OFFICE_VERSION:-10.0.0}
+    container_name: docuvault-onlyoffice
+    restart: unless-stopped
+    profiles:
+      - office
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${OFFICE_JWT_SECRET:-}
+      # It fetches files from and reports saves to the backend on this compose
+      # network, a private address it refuses by default.
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_lib:/var/lib/onlyoffice
+      - onlyoffice_db:/var/lib/postgresql
+    expose:
+      - "80"
+
 volumes:
   postgres_data:
   repos_data:
   minio_data:
   redis_data:
   meeting_bot_recordings:
+  onlyoffice_data:
+  onlyoffice_lib:
+  onlyoffice_db:
   nginx_certs:
   nginx_vhost:
   nginx_html:

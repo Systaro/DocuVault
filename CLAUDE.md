@@ -142,6 +142,26 @@ Presence and editing together run over one WebSocket per tab, `/api/live`
 - New editor extensions go into `features/editor/editor-extensions.ts`, used by
   both the solo and the collaborative editor.
 
+## Office editing (Word)
+
+Optional ONLYOFFICE document server (`onlyoffice` service, profile `office`,
+on when `OFFICE_JWT_SECRET` is set). Backend `office/` + `api/office/`,
+frontend `features/editor/office-editor.component.ts`. User and operator docs:
+`docs/office-editing.md`.
+
+- The document server calls back without a session: `/office/file` and
+  `/office/callback` are public and trust only signed links (`OfficeJwt`,
+  HS256 with the shared secret) plus the server's own signature on the
+  callback. Re-check write access for the editor named in a callback before
+  saving.
+- Document keys come from the file's content; the in-memory session map keeps
+  a session's key across its own saves so latecomers join it. Done asks the
+  server to save (command service) and keeps the editor connected until the
+  save arrived; the server skips a save asked for after its last editor left.
+- The server re-saves at session end even without changes; saves whose zip
+  parts equal the file in the space are not committed (`sameZipContent`).
+- Community edition: no mobile editor, so Edit is hidden on phone widths.
+
 ## Repo layout
 
 - `backend/` — Spring Boot service; `frontend/` — Angular app (markdown viewer

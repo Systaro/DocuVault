@@ -62,6 +62,10 @@ class SecurityConfig(
                     // Live collaboration socket: it authenticates itself, from the session
                     // of the handshake or a bearer token sent as its first message.
                     .requestMatchers("/live").permitAll()
+                    // The office document server fetches and saves files with signed links
+                    // and its shared secret, never with a session.
+                    .requestMatchers(org.springframework.http.HttpMethod.GET, "/office/file").permitAll()
+                    .requestMatchers(org.springframework.http.HttpMethod.POST, "/office/callback").permitAll()
                     .requestMatchers("/oauth/**").permitAll()
                     .requestMatchers("/mcp").permitAll()
                     // Redeeming a transfer ticket: the ticket itself is the credential (issuing one is authenticated).

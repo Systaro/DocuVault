@@ -74,6 +74,16 @@ app:
     # authorizes the service-level "what should I join?" list call. Leave blank
     # to disable Teams dispatch (the endpoint then rejects every request).
     dispatch-token: ${MEETING_BOT_DISPATCH_TOKEN:}
+  office:
+    # Edit Word documents in the browser with an ONLYOFFICE document server
+    # (docs/office-editing.md). On once OFFICE_JWT_SECRET is set; it must equal
+    # the document server's JWT_SECRET.
+    jwt-secret: ${OFFICE_JWT_SECRET:}
+    # Where browsers load the editor from; the bundled frontend proxies /office/.
+    url: ${OFFICE_URL:/office}
+    # How the document server reaches this backend, and how this backend reaches it.
+    backend-url: ${OFFICE_BACKEND_URL:http://backend:7030/api}
+    internal-url: ${OFFICE_INTERNAL_URL:http://onlyoffice}
 
 server:
   address: 0.0.0.0

@@ -14,11 +14,14 @@ export interface Capabilities {
   ai: AiCapabilities;
   /** A server-side HTML-to-PDF renderer is configured for this install. */
   pdfRenderer: boolean;
+  /** Word documents can be edited in the browser; url is where the editor's script lives. */
+  office: { enabled: boolean; url: string | null };
 }
 
 const FALLBACK: Capabilities = {
   ai: { enabled: false, chat: false, inbox: false, voice: false },
-  pdfRenderer: false
+  pdfRenderer: false,
+  office: { enabled: false, url: null }
 };
 
 @Injectable({ providedIn: 'root' })
@@ -31,6 +34,8 @@ export class CapabilitiesService {
   aiChat = computed(() => this.state().ai.chat);
   aiInbox = computed(() => this.state().ai.inbox);
   pdfRenderer = computed(() => this.state().pdfRenderer);
+  officeEditor = computed(() => this.state().office.enabled);
+  officeUrl = computed(() => this.state().office.url);
 
   /**
    * Fetch capabilities once on app start. Safe to call multiple times; later
@@ -41,7 +46,7 @@ export class CapabilitiesService {
     try {
       const caps = await firstValueFrom(this.http.get<Capabilities>('/api/capabilities'));
       if (caps?.ai) {
-        this.state.set({ ...caps, pdfRenderer: caps.pdfRenderer ?? false });
+        this.state.set({ ...caps, pdfRenderer: caps.pdfRenderer ?? false, office: caps.office ?? FALLBACK.office });
       }
     } catch {
       // keep defaults; UI hides AI by default

@@ -207,6 +207,14 @@ A JSON document with `authorization_endpoint`, `token_endpoint` and
 `registration_endpoint` means discovery works; an HTML page means the request
 never reached the backend.
 
+**Word documents have no Edit button.**
+Editing Word documents needs the optional document server: set
+`OFFICE_JWT_SECRET` in `.env` and run `./deploy.sh` (details in
+[office-editing.md](office-editing.md)). The button is also hidden on phones and
+for people who may not write to the space. If the editor opens but reports that
+it cannot download the document, the document server cannot reach the backend:
+check `OFFICE_BACKEND_URL` and that both run in the same compose project.
+
 **Editors do not see each other / "Offline · reconnecting" never clears.**
 Live collaboration runs over a WebSocket at `/api/live`. The bundled
 nginx-proxy and frontend container pass it through. With your own reverse

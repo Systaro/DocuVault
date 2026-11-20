@@ -116,6 +116,14 @@ if [ -n "$(env_get DISCORD_BOT_TOKEN)" ] || [ -n "$(env_get MEETING_BOT_DISPATCH
   echo "==> meeting-bot enabled (Discord and/or Teams adapter present in .env)"
 fi
 
+# Word editing is opt-in the same way: OFFICE_JWT_SECRET switches on the
+# document server. Its image has its own pin (OFFICE_VERSION), so it is not part
+# of the version swap and rollback below; `up -d` fetches it when missing.
+if [ -n "$(env_get OFFICE_JWT_SECRET)" ]; then
+  COMPOSE_PROFILE_ARGS="$COMPOSE_PROFILE_ARGS --profile office"
+  echo "==> office editor enabled (OFFICE_JWT_SECRET present in .env)"
+fi
+
 REGISTRY_HOST="${DOCUVAULT_REGISTRY_HOST:-ghcr.io}"
 REGISTRY_USER="${DOCUVAULT_REGISTRY_USER:-$(env_get DOCUVAULT_REGISTRY_USER)}"
 REGISTRY_TOKEN="${DOCUVAULT_REGISTRY_TOKEN:-$(env_get DOCUVAULT_REGISTRY_TOKEN)}"

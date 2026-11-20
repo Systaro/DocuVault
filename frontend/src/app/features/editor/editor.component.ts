@@ -49,6 +49,7 @@ import { LiveAvatarsComponent, PresenceGroup, groupPeers } from '../../shared/co
 import { avatarGradient, getInitials } from '../../shared/utils/user-utils';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
+import { OFFICE_PHONE_QUERY, OfficeEditorComponent } from './office-editor.component';
 import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
 import { Observable, Subject, Subscription, debounceTime, filter, lastValueFrom, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
@@ -92,7 +93,7 @@ interface SheetView {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent, DocxCommentsComponent, LiveAvatarsComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent, OfficeEditorComponent, DocxCommentsComponent, LiveAvatarsComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -443,6 +444,12 @@ interface SheetView {
               <span class="btn-badge">alpha</span>
             </button>
           }
+          @if (canEditWordFile()) {
+            <button class="btn-edit" (click)="startOfficeEdit()" title="Edit this Word document in the office editor, together with anyone else who has it open">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              Edit
+            </button>
+          }
           @if (sheetEditMode()) {
             <button class="btn-edit" (click)="cancelSheetEdit()" [disabled]="savingSheet()">Cancel</button>
             <button
@@ -532,6 +539,8 @@ interface SheetView {
             (saved)="onHtmlSaved()"
             (closed)="htmlEditMode.set(false)"
           />
+        } @else if (officeEditMode() && space()) {
+          <app-office-editor [spaceId]="space()!.id" [path]="documentPath" (closed)="endOfficeEdit($event)" />
         } @else {
         <!-- Scrollable preview content -->
         <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()" [class.pane-fill]="showsSheetPane()" (wheel)="onReadingWheel($event)" [style.--reading-zoom]="prefs.readingZoom()">
@@ -1047,8 +1056,9 @@ interface SheetView {
         />
       }
 
-      <!-- Floating AI chat entry — same bubble as the dashboard, scoped to this document -->
-      @if (caps.aiChat() && space() && documentPath && !showAiEditDialog()) {
+      <!-- Floating AI chat entry — same bubble as the dashboard, scoped to this document.
+           The office editor has controls in that corner of its own. -->
+      @if (caps.aiChat() && space() && documentPath && !showAiEditDialog() && !officeEditMode()) {
         <button class="ai-fab" title="Chat with AI about this document" (click)="openAiChat()">
           <span translate="no" class="material-icons">auto_awesome</span>
         </button>
@@ -2611,6 +2621,21 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   confirmSheetLeave = signal(false);
   private sheetLeaveAnswer?: Subject<boolean>;
   /** The Edit affordance for a spreadsheet, mirroring canEditHtmlFile. */
+  // Word documents open in the office document server's editor when the install has one.
+  officeEditMode = signal(false);
+  private phoneQuery = window.matchMedia(OFFICE_PHONE_QUERY);
+  private phoneLayout = signal(this.phoneQuery.matches);
+  private onPhoneQuery = (event: MediaQueryListEvent) => this.phoneLayout.set(event.matches);
+  canEditWordFile = computed(() =>
+    this.caps.officeEditor() &&
+    !this.phoneLayout() &&
+    this.isPreviewFile() &&
+    this.previewType() === 'docx' &&
+    !this.docxError() &&
+    !this.officeEditMode() &&
+    !this.viewingVersion() &&
+    this.canWriteFiles()
+  );
   canEditSpreadsheet = computed(() =>
     this.isPreviewFile() &&
     this.previewType() === 'spreadsheet' &&
@@ -3475,6 +3500,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   ngOnInit(): void {
+    this.phoneQuery.addEventListener('change', this.onPhoneQuery);
     // Load space from parent route params (path1/path2/path3)
     this.route.parent?.paramMap.subscribe(params => {
       const parts: string[] = [];
@@ -3618,6 +3644,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   ngOnDestroy(): void {
+    this.phoneQuery.removeEventListener('change', this.onPhoneQuery);
     // Editing together, the room commits what is left once nobody edits any more.
     if (!this.collab) this.flushPendingCommit();
     this.leaveLive();
@@ -4015,6 +4042,23 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   startSheetEdit(): void {
     if (!this.canEditSpreadsheet()) return;
     this.sheetEditMode.set(true);
+  }
+
+  startOfficeEdit(): void {
+    if (!this.canEditWordFile()) return;
+    this.showActionMenu.set(false);
+    this.officeEditMode.set(true);
+    this.liveDoc()?.setMode('edit');
+  }
+
+  /** Back to the rendered document, re-read when the editor saved it. */
+  endOfficeEdit(saved: boolean): void {
+    this.officeEditMode.set(false);
+    this.liveDoc()?.setMode('view');
+    if (!saved) return;
+    // The docx host is created again with the preview pane; render into it once it exists.
+    setTimeout(() => this.loadDocx(this.previewUrl()));
+    this.loadHistoryMeta();
   }
 
   cancelSheetEdit(): void {

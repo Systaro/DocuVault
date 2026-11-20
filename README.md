@@ -23,6 +23,7 @@ For developers and AI tools, the same files are available locally — clone the 
 - **Local-first AI editing.** Clone the repo and edit with any LLM tool that works on files. No vendor lock-in.
 - **Built-in MCP server.** Point Claude Code, Claude Desktop or Cursor at `/api/mcp`, sign in once in the browser, and your agent can search, read, create, edit and share documents with your permissions.
 - **WYSIWYG editor.** TipTap-based rich editor that emits clean Markdown.
+- **Word documents in the browser (optional).** Edit `.docx` files alone or together in an ONLYOFFICE document server that runs next to the app; every save is a commit. See [docs/office-editing.md](docs/office-editing.md).
 - **Live collaboration.** Edit a document together with live cursors, see who is reading or editing which document and who is online in a space, and get changes made by AI agents merged into the open editor. Read mode has its own text zoom and keeps your place across a reload. See [docs/live-collaboration.md](docs/live-collaboration.md).
 - **Role-based permissions.** Super Admin, Org Admin, Editor, Viewer, plus fine-grained per-space permissions.
 - **Teams.** Group users into teams (a user can be in several) and grant space access once per team instead of once per person. Members inherit every grant of every team they're in; the strongest grant — personal or inherited — wins.

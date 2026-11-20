@@ -341,6 +341,12 @@ class GitService(
         }
     }
 
+    /** The file's bytes as they are on disk, or null when there is no such file. */
+    fun readBinaryFile(space: Space, path: String): ByteArray? {
+        val filePath = validatePath(getContentRoot(space), path)
+        return if (Files.isRegularFile(filePath)) Files.readAllBytes(filePath) else null
+    }
+
     /** Baseline-snapshot local spaces before the first mutation so history diffs stay clean. */
     private fun ensureVersionedBeforeMutation(space: Space) {
         if (space.gitlabUrl.isNullOrBlank()) ensureLocalRepo(space)

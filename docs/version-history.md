@@ -13,7 +13,9 @@ document's **⋮ action menu → Version history**.
   feature landed snapshots the pre-existing content as a *baseline* version,
   so nothing starts from zero. No setup required.
 
-Uploads, renames, deletions and folder operations are versioned as well.
+Uploads, renames, deletions and folder operations are versioned as well, and so
+is every save from the office editor for Word documents
+([office-editing.md](office-editing.md)).
 
 ## Topbar: creator & last editor
 

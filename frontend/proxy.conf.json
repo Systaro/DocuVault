@@ -9,6 +9,21 @@
     "target": "http://127.0.0.1:7030",
     "secure": false,
     "changeOrigin": true,
-    "pathRewrite": { "^/.well-known": "/api/.well-known" }
+    "pathRewrite": {
+      "^/.well-known": "/api/.well-known"
+    }
+  },
+  "/office": {
+    "target": "http://127.0.0.1:8070",
+    "secure": false,
+    "changeOrigin": true,
+    "ws": true,
+    "pathRewrite": {
+      "^/office": ""
+    },
+    "headers": {
+      "X-Forwarded-Host": "localhost:7031/office",
+      "X-Forwarded-Proto": "http"
+    }
   }
 }
