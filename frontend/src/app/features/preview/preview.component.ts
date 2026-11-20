@@ -19,11 +19,12 @@ import { AiEditResult } from '../../core/api/ai.service';
 import { AiEditDialogComponent } from '../../shared/components/ai-edit-dialog.component';
 import { AiEditStepBackComponent, AiEditUndoState } from '../../shared/components/ai-edit-step-back.component';
 import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
+import { DocxViewComponent } from '../../shared/components/docx-view.component';
 
 @Component({
   selector: 'app-preview',
   standalone: true,
-  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent, AiEditDialogComponent, AiEditStepBackComponent, BrandLogoComponent],
+  imports: [CommonModule, AnnotationOverlayComponent, ShareLinkDialogComponent, AiEditDialogComponent, AiEditStepBackComponent, BrandLogoComponent, DocxViewComponent],
   template: `
     <div class="preview-shell">
       <!-- Hover zone: reveals the auto-hidden topbar when the cursor nears the top -->
@@ -209,6 +210,8 @@ import { BrandLogoComponent } from '../../shared/components/brand-logo.component
                 [allowComment]="false"
               />
             </div>
+          } @else if (renderMode() === 'docx') {
+            <app-docx-view class="docx-container" [url]="rawUrl()" />
           } @else if (renderMode() === 'video') {
             <div class="media-preview-container">
               <video class="media-video" [src]="rawUrl()" controls preload="metadata" playsinline></video>

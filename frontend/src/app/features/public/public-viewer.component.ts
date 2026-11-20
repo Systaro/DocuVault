@@ -12,6 +12,7 @@ import { ImageZoomHandler } from '../../shared/utils/image-zoom';
 import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { RenderMode, getRenderMode, getFileIcon, getExtension, sharedFileUrl } from '../../shared/utils/file-utils';
 import { FileThumbComponent } from '../../shared/components/file-thumb.component';
+import { DocxViewComponent } from '../../shared/components/docx-view.component';
 import { BrandLogoComponent } from '../../shared/components/brand-logo.component';
 import { BrandingService } from '../../core/branding/branding.service';
 import { PageTitleService } from '../../core/branding/page-title.service';
@@ -45,7 +46,7 @@ function rememberHeaderHidden(token: string, hidden: boolean): void {
 @Component({
   selector: 'app-public-viewer',
   standalone: true,
-  imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent, BrandLogoComponent],
+  imports: [CommonModule, FormsModule, AnnotationOverlayComponent, FileThumbComponent, BrandLogoComponent, DocxViewComponent],
   template: `
     <div class="public-viewer" [class.folder-layout]="folderLayout()">
       <!-- Header -->
@@ -317,7 +318,9 @@ function rememberHeaderHidden(token: string, hidden: boolean): void {
                 [shareToken]="token"
               />
             </div>
-          } @else if (renderMode() === 'download') {
+          } @else if (renderMode() === 'docx') {
+            <app-docx-view class="docx-container" [url]="rawUrl()" />
+          } @else if (renderMode() === 'download' || isMediaMode()) {
             <div class="download-state">
               <span translate="no" class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ currentFileName() }}</h2>
@@ -396,7 +399,9 @@ function rememberHeaderHidden(token: string, hidden: boolean): void {
                 [shareToken]="token"
               />
             </div>
-          } @else if (renderMode() === 'download') {
+          } @else if (renderMode() === 'docx') {
+            <app-docx-view class="docx-container" [url]="rawUrl()" />
+          } @else if (renderMode() === 'download' || isMediaMode()) {
             <div class="download-state">
               <span translate="no" class="material-icons download-icon">insert_drive_file</span>
               <h2>{{ metadata()?.fileName }}</h2>
@@ -1183,6 +1188,11 @@ export class PublicViewerComponent implements OnInit, OnDestroy {
   renderedHtml = signal<SafeHtml>('');
   rawUrl = signal('');
   safeRawUrl = signal<SafeResourceUrl>('');
+  /**
+   * Video and audio are offered as a download: the share endpoint answers
+   * without range requests, which Safari needs to play media at all.
+   */
+  isMediaMode = computed(() => this.renderMode() === 'video' || this.renderMode() === 'audio');
 
   readonly imgZoom = new ImageZoomHandler();
   readonly getFileIcon = getFileIcon;

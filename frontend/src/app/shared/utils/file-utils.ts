@@ -1,4 +1,4 @@
-export type RenderMode = 'markdown' | 'html' | 'image' | 'pdf' | 'video' | 'audio' | 'download';
+export type RenderMode = 'markdown' | 'html' | 'image' | 'pdf' | 'docx' | 'video' | 'audio' | 'download';
 
 const IMAGE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif'
@@ -46,6 +46,7 @@ export function getRenderMode(extension: string): RenderMode {
   if (ext === 'html' || ext === 'htm') return 'html';
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (ext === 'pdf') return 'pdf';
+  if (ext === 'docx') return 'docx';
   if (VIDEO_EXTENSIONS.has(ext)) return 'video';
   if (AUDIO_EXTENSIONS.has(ext)) return 'audio';
   return 'download';

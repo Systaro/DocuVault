@@ -4,6 +4,18 @@ import { loadVendorScript } from '../utils/vendor-script';
 /** Link schemes a rendered Word document may keep; anything else loses its href. */
 const SAFE_LINK = /^(https?:|mailto:|#)/i;
 
+/** Room left above a heading reached through an in-document link. */
+const BOOKMARK_MARGIN_PX = 24;
+
+/** The nearest ancestor of [el] that scrolls its content vertically. */
+function scrollingAncestor(el: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+  }
+  return null;
+}
+
 /**
  * Word writes list bullets as private-use code points of the Symbol and
  * Wingdings fonts (U+F0xx). Only Windows ships those fonts, so everywhere else
@@ -396,17 +408,49 @@ export class DocxRenderService {
    * Hyperlink targets come straight from the file, so a `javascript:` URL in a
    * shared document would run in the viewer's session. Keep web, mail and
    * in-document links; open external ones in a new tab.
+   *
+   * An in-document link (a table of contents entry) scrolls to its bookmark.
+   * Left to the browser, `#_Toc…` resolves against the app's base URL and
+   * navigates out of the document instead.
    */
   private sanitizeLinks(host: HTMLElement): void {
     host.querySelectorAll('a[href]').forEach(a => {
       const href = (a.getAttribute('href') ?? '').trim();
       if (!SAFE_LINK.test(href)) {
         a.removeAttribute('href');
-      } else if (!href.startsWith('#')) {
+      } else if (href.startsWith('#')) {
+        a.addEventListener('click', event => {
+          event.preventDefault();
+          this.scrollToBookmark(host, href.slice(1));
+        });
+      } else {
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener noreferrer');
       }
     });
+  }
+
+  /**
+   * Bring the bookmark [name] of the rendered document to the top of the view.
+   * Only the pane the document scrolls in moves: scrollIntoView would also nudge
+   * every scrollable ancestor, shifting the whole app layout by a few pixels.
+   */
+  private scrollToBookmark(host: HTMLElement, name: string): void {
+    if (!name) return;
+    let id = name;
+    try {
+      id = decodeURIComponent(name);
+    } catch {
+      // Not percent-encoded after all; look it up as written.
+    }
+    const target = host.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+    if (!target) return;
+    // Where the page itself scrolls (a share link), the root is the pane.
+    const root = document.scrollingElement as HTMLElement;
+    const pane = scrollingAncestor(host) ?? root;
+    const paneTop = pane === root ? 0 : pane.getBoundingClientRect().top;
+    const top = target.getBoundingClientRect().top - paneTop + pane.scrollTop;
+    pane.scrollTo({ top: Math.max(0, top - BOOKMARK_MARGIN_PX), behavior: 'smooth' });
   }
 
   private loadLibs(): Promise<any> {
