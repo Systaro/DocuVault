@@ -56,6 +56,25 @@ class GitVersioningTest {
     }
 
     @Test
+    fun `a binary file reads back byte for byte at every version`() {
+        val (gitService, diffService) = services()
+        val space = localSpace()
+        // Not valid UTF-8 (0xC3 0x28): decoded as text and re-encoded it would change.
+        val first = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0xC3.toByte(), 0x28, 0x00, 0xFF.toByte())
+        val second = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x01, 0x02)
+
+        assertTrue(gitService.writeBinaryFile(space, "docs/brief.docx", first))
+        gitService.commitAndPush(space, "Add brief", "Tester", "tester@example.com")
+        assertTrue(gitService.writeBinaryFile(space, "docs/brief.docx", second))
+        gitService.commitAndPush(space, "Update brief", "Tester", "tester@example.com")
+
+        val history = diffService.fileHistory(space, "docs/brief.docx")
+        assertEquals(2, history.size)
+        assertTrue(first.contentEquals(diffService.fileBytesAtCommit(space, history[1].sha, "docs/brief.docx")))
+        assertTrue(second.contentEquals(diffService.fileBytesAtCommit(space, history[0].sha, "docs/brief.docx")))
+    }
+
+    @Test
     fun `existing content is captured as a baseline before the first mutation`() {
         val (gitService, diffService) = services()
         val space = localSpace()

@@ -980,12 +980,12 @@ interface SheetView {
               @if (version.authorName) { by {{ version.authorName }} }
             </span>
             <div class="timecapsule-actions">
-              @if (!isCurrentVersion(version)) {
+              @if (!isCurrentVersion(version) && canDiffVersions()) {
                 <button type="button" class="timecapsule-back" (click)="historyViewMode() === 'diff' ? viewVersion(version) : viewDiff(version)">
                   {{ historyViewMode() === 'diff' ? 'Show document' : 'Show changes' }}
                 </button>
               }
-              @if (canEdit() && !isCurrentVersion(version)) {
+              @if (canRestoreVersion() && !isCurrentVersion(version)) {
                 <button type="button" class="timecapsule-restore" [disabled]="restoring()" (click)="restoreVersion(version)">
                   @if (restoring()) {
                     <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1102,6 +1102,7 @@ interface SheetView {
           [activeSha]="viewingVersion()?.sha ?? null"
           [loadingSha]="versionLoadingSha()"
           [diffActive]="historyViewMode() === 'diff'"
+          [showDiff]="canDiffVersions()"
           (view)="viewVersion($event)"
           (diff)="viewDiff($event)"
           (closed)="closeHistory()"
@@ -3255,7 +3256,21 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    * binary the time capsule has no way to display.
    */
   canViewVersions(): boolean {
-    return !this.isPreviewFile() || this.previewType() === 'html';
+    return !this.isPreviewFile() || this.previewType() === 'html' || this.previewType() === 'docx';
+  }
+
+  /** A line diff only reads for text; a Word document's versions are compared by looking. */
+  canDiffVersions(): boolean {
+    return !(this.isPreviewFile() && this.previewType() === 'docx');
+  }
+
+  /**
+   * Restoring writes the file, so it takes write access. For a previewed file
+   * that is all it takes; canEdit() is about the Markdown editor and is false for
+   * every such file in a Git-synced space.
+   */
+  canRestoreVersion(): boolean {
+    return this.isPreviewFile() ? this.canWriteFiles() : this.canEdit();
   }
 
   /** Same leading-H1 strip rule as loadDocument, for rendering historical content. */

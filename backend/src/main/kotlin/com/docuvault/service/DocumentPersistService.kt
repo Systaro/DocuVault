@@ -32,11 +32,10 @@ class DocumentPersistService(
         // Fall back to the filename without extension
         headingTitle(content) ?: path.substringAfterLast("/").substringBeforeLast(".")
 
-    fun hashContent(content: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(content.toByteArray())
-        return hash.joinToString("") { "%02x".format(it) }
-    }
+    fun hashContent(content: String): String = hashBytes(content.toByteArray())
+
+    fun hashBytes(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /** Returns null when the file could not be written. */
     fun persistDocument(

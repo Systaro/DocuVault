@@ -442,7 +442,12 @@ class GitDiffService(
      * current path is not in that commit the file's rename track is consulted
      * before giving up.
      */
-    fun fileAtCommit(space: Space, sha: String, path: String): String? {
+    /** The file as text at [sha]; for a binary file use [fileBytesAtCommit], this would mangle it. */
+    fun fileAtCommit(space: Space, sha: String, path: String): String? =
+        fileBytesAtCommit(space, sha, path)?.toString(Charsets.UTF_8)
+
+    /** The file's exact bytes at [sha], following renames; null when it did not exist then. */
+    fun fileBytesAtCommit(space: Space, sha: String, path: String): ByteArray? {
         val repoDir = gitService.getRepoPath(space.id!!).toFile()
         if (!repoDir.exists()) return null
 
@@ -460,9 +465,7 @@ class GitDiffService(
                     }
                     val treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(repo, resolved, commit.tree)
                         ?: return null
-                    treeWalk.use {
-                        String(repo.open(it.getObjectId(0)).bytes, Charsets.UTF_8)
-                    }
+                    treeWalk.use { repo.open(it.getObjectId(0)).bytes }
                 }
             }
         } catch (e: Exception) {

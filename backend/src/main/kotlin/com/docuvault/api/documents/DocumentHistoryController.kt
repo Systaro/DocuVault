@@ -17,10 +17,14 @@ import jakarta.validation.constraints.NotBlank
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.MediaTypeFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.bind.annotation.*
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.*
 
 /**
@@ -143,23 +147,27 @@ class DocumentHistoryController(
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        val content = gitDiffService.fileAtCommit(space, sha, path)
+        val bytes = gitDiffService.fileBytesAtCommit(space, sha, path)
             ?: return ResponseEntity.notFound().build()
 
         val isHtml = path.substringAfterLast('.', "").lowercase() in setOf("html", "htm")
-        val body = if (isHtml) {
-            HtmlPreviewInjection.inject(
-                content,
+        if (isHtml) {
+            val page = HtmlPreviewInjection.inject(
+                bytes.toString(Charsets.UTF_8),
                 HtmlPreviewInjection.baseHref("/api/spaces/$spaceId/files", path)
             )
-        } else {
-            content
+            return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .cacheControl(CacheControl.noCache())
+                .body(page.toByteArray(Charsets.UTF_8))
         }
 
+        // Anything else goes out byte for byte: a Word document or an image read
+        // as text and re-encoded would arrive corrupted.
         return ResponseEntity.ok()
-            .contentType(if (isHtml) MediaType.TEXT_HTML else MediaType.TEXT_PLAIN)
+            .contentType(MediaTypeFactory.getMediaType(path).orElse(MediaType.APPLICATION_OCTET_STREAM))
             .cacheControl(CacheControl.noCache())
-            .body(body.toByteArray(Charsets.UTF_8))
+            .body(bytes)
     }
 
     @GetMapping("/diff")
@@ -203,8 +211,14 @@ class DocumentHistoryController(
 
         requireSpaceWritable(space)
 
-        val content = gitDiffService.fileAtCommit(space, request.sha, request.path)
+        val bytes = gitDiffService.fileBytesAtCommit(space, request.sha, request.path)
             ?: return ResponseEntity.notFound().build()
+        val commitMessage = "Restore ${request.path} to version ${request.sha.take(8)}"
+
+        // A binary file (a Word document, an image) is written back byte for byte;
+        // the text path below would re-encode it and store a broken file.
+        val content = utf8OrNull(bytes)
+            ?: return restoreBinary(space, user, request.path, bytes, commitMessage)
 
         // Content that carries its own title (a Markdown heading) sets it; anything
         // else keeps the title it has. Without this an HTML page would silently be
@@ -221,7 +235,7 @@ class DocumentHistoryController(
             content = content,
             title = restoredTitle,
             autoCommit = true,
-            commitMessage = "Restore ${request.path} to version ${request.sha.take(8)}"
+            commitMessage = commitMessage
         ) ?: return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
 
         return ResponseEntity.ok(
@@ -232,6 +246,42 @@ class DocumentHistoryController(
                 content = content,
                 contentHash = saved.contentHash,
                 lastSyncedAt = saved.lastSyncedAt
+            )
+        )
+    }
+
+    /** The bytes as text when they are valid UTF-8, null for a binary file. */
+    private fun utf8OrNull(bytes: ByteArray): String? = try {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (_: CharacterCodingException) {
+        null
+    }
+
+    /** Writes an old version of a binary file back as a new commit. */
+    private fun restoreBinary(
+        space: com.docuvault.domain.space.Space,
+        user: com.docuvault.domain.user.User,
+        path: String,
+        bytes: ByteArray,
+        commitMessage: String
+    ): ResponseEntity<DocumentContentDto> {
+        if (!gitService.writeBinaryFile(space, path, bytes)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+        documentPersistService.commitIfRequested(space, true, commitMessage, user)
+        val document = documentRepository.findBySpaceIdAndPath(space.id!!, path)
+        return ResponseEntity.ok(
+            DocumentContentDto(
+                id = document?.id,
+                path = path,
+                title = document?.title ?: path.substringAfterLast('/'),
+                content = "",
+                contentHash = documentPersistService.hashBytes(bytes),
+                lastSyncedAt = document?.lastSyncedAt
             )
         )
     }
