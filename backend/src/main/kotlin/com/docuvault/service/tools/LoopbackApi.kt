@@ -22,6 +22,7 @@ class LoopbackApi(
 ) {
     fun listSpaces(): List<JsonNode> = call(HttpMethod.GET, "/spaces").toList()
     fun fileTree(spaceId: String): JsonNode = call(HttpMethod.GET, "/spaces/$spaceId/documents/tree")
+    fun presence(spaceId: String): JsonNode = call(HttpMethod.GET, "/spaces/$spaceId/presence")
     fun readDocument(spaceId: String, path: String): JsonNode =
         call(HttpMethod.GET, "/spaces/$spaceId/documents/${encodePath(path)}")
     fun createDocument(spaceId: String, body: Map<String, Any?>): JsonNode =

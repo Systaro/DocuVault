@@ -3,19 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
-import TableHeader from '@tiptap/extension-table-header';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import Highlight from '@tiptap/extension-highlight';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
+import { isChangeOrigin } from '@tiptap/extension-collaboration';
+import { yUndoPluginKey } from 'y-prosemirror';
+import { editorExtensions } from './editor-extensions';
 import { DomSanitizer, SafeResourceUrl, SafeHtml } from '@angular/platform-browser';
 import { MarkdownRenderService } from '../../shared/services/markdown-render.service';
 import { DataFileRenderService } from '../../shared/services/data-file-render.service';
@@ -23,7 +13,7 @@ import { handleMarkdownClick } from '../../shared/utils/markdown-link-handler';
 import { DocumentSettingsService } from '../../core/api/document-settings.service';
 import { SpacesService, Space } from '../../core/api/spaces.service';
 import { DocumentsService, DocumentContent, UploadedFile } from '../../core/api/documents.service';
-import { HttpResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { DocumentHistoryService, DocumentVersion, DocumentHistoryMeta } from '../../core/api/document-history.service';
 import { CapabilitiesService } from '../../core/capabilities/capabilities.service';
 import { PdfExportService, escapeHtml } from '../../core/api/pdf-export.service';
@@ -45,46 +35,28 @@ import { ExportStateDialogComponent } from '../../shared/components/export-state
 import { DisplayPrefsService } from '../../shared/services/display-prefs.service';
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
-import { mergeMarkdownEdits } from '../../shared/utils/markdown-merge';
+import { mergeMarkdownEdits, mergeMarkdownBlocks } from '../../shared/utils/markdown-merge';
 import { describeSaveError, NOTHING_TO_SAVE } from '../../shared/utils/save-error';
 import { AutosizeTextareaDirective } from '../../shared/directives/autosize-textarea.directive';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { BrandingService } from '../../core/branding/branding.service';
 import { ScrollAnchor, captureScrollAnchor, restoreScrollAnchor } from '../../shared/utils/scroll-anchor';
+import { rememberReadingPosition, takeReadingPosition } from '../../shared/utils/reading-position';
+import { LiveSocketService } from '../../core/live/live-socket.service';
+import { LiveDocument } from '../../core/live/live-document';
+import { CollabBase, CollabReady, CollabSession, LiveSaveError } from '../../core/live/collab-session';
+import { LiveAvatarsComponent, PresenceGroup, groupPeers } from '../../shared/components/live-avatars.component';
+import { avatarGradient, getInitials } from '../../shared/utils/user-utils';
 import { VersionHistoryPanelComponent } from '../../shared/components/version-history-panel.component';
 import { HtmlEditorComponent } from './html-editor.component';
 import { HasUnsavedChanges } from '../../core/guards/unsaved-changes.guard';
-import { Observable, Subject, debounceTime, filter, lastValueFrom, takeUntil } from 'rxjs';
+import { Observable, Subject, Subscription, debounceTime, filter, lastValueFrom, takeUntil } from 'rxjs';
 import TurndownService from 'turndown';
 import { tables as turndownTables } from 'turndown-plugin-gfm';
 import { marked } from 'marked';
 
-/**
- * Highlight with a persisted colour. TipTap's stock multicolor renderHTML also
- * emits `color: inherit` inline, which pins the text colour to the theme's body
- * colour — near-white in dark mode, illegible on the light pastel swatches.
- * We drop that inline colour and let CSS (`mark` under `.ProseMirror,
- * .markdown-readonly`) set a fixed dark text colour that reads in both themes.
- * `data-color` is kept so the exact swatch value round-trips through Markdown.
- */
-const ColorHighlight = Highlight.extend({
-  addAttributes() {
-    return {
-      color: {
-        default: null,
-        parseHTML: (element) =>
-          element.getAttribute('data-color') || (element as HTMLElement).style.backgroundColor || null,
-        renderHTML: (attributes) => {
-          if (!attributes['color']) return {};
-          return {
-            'data-color': attributes['color'],
-            style: `background-color: ${attributes['color']}`,
-          };
-        },
-      },
-    };
-  },
-});
+/** How long a newly appointed leader waits before saving, so the old one's last save lands first. */
+const LEADER_TAKEOVER_MS = 3000;
 
 /** One renderable line of a parsed unified diff. */
 interface DiffLine {
@@ -120,7 +92,7 @@ interface SheetView {
 @Component({
   selector: 'app-editor',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent, DocxCommentsComponent],
+  imports: [CommonModule, FormsModule, RouterLink, SpaceRoutePipe, ShareLinkDialogComponent, AnnotationOverlayComponent, AiEditDialogComponent, AiEditStepBackComponent, ExportStateDialogComponent, AutosizeTextareaDirective, VersionHistoryPanelComponent, HtmlEditorComponent, DocxCommentsComponent, LiveAvatarsComponent],
   template: `
     <div class="h-full flex flex-col">
       @if (!isPreviewFile()) {
@@ -141,6 +113,7 @@ interface SheetView {
           }
         }
         <ng-container *ngTemplateOutlet="docMetaStrip"></ng-container>
+        <app-live-avatars class="editor-live-avatars" [people]="livePeople()" (jump)="jumpToPerson($event)" />
       </div>
       <div class="editor-toolbar">
         @if (showEditor()) {
@@ -268,7 +241,11 @@ interface SheetView {
             </div>
           </div>
           <div class="flex items-center gap-2">
-            @if (hasChanges()) {
+            @if (collabJoining()) {
+              <span class="text-xs text-muted editor-save-status">Joining…</span>
+            } @else if (collabActive() && !liveSocket.connected()) {
+              <span class="text-xs editor-save-status editor-save-status--offline" title="Your changes stay in the editor and are shared once the connection is back">Offline · reconnecting</span>
+            } @else if (hasChanges()) {
               <span class="text-xs text-muted editor-save-status">{{ saving() ? 'Saving...' : 'Unsaved changes' }}</span>
             } @else if (lastSaved()) {
               <span class="text-xs text-muted editor-save-status">Saved</span>
@@ -442,6 +419,7 @@ interface SheetView {
             <span class="editor-crumb-active">{{ prefs.prettify(documentPath.split('/').pop() ?? '', false) }}</span>
           </div>
           <ng-container *ngTemplateOutlet="docMetaStrip"></ng-container>
+          <app-live-avatars class="editor-live-avatars" [people]="livePeople()" (jump)="jumpToPerson($event)" />
           <div class="preview-topbar-actions">
           @if (canEditHtmlFile()) {
             <button
@@ -556,7 +534,7 @@ interface SheetView {
           />
         } @else {
         <!-- Scrollable preview content -->
-        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()" [class.pane-fill]="showsSheetPane()">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" [class.with-history-panel]="showHistoryPanel()" [class.pane-fill]="showsSheetPane()" (wheel)="onReadingWheel($event)" [style.--reading-zoom]="prefs.readingZoom()">
           <ng-container *ngTemplateOutlet="aiUndoBanner"></ng-container>
           <ng-container *ngTemplateOutlet="timeCapsuleBanner"></ng-container>
           @if (viewingVersion() && historyViewMode() === 'diff') {
@@ -620,11 +598,14 @@ interface SheetView {
               }
               <!-- docx-preview fills this host itself; it stays in the DOM while
                    loading so the render has somewhere to go. -->
-              <div #docxHost class="docx-host" translate="no" [class.hidden]="loading() || docxError()"></div>
+              <div #docxHost class="docx-host reading-zoomed" translate="no" [class.hidden]="loading() || docxError()"></div>
               @if (!loading() && !docxError()) {
                 <app-docx-comments [host]="docxHost" [comments]="docxComments()" />
               }
             </div>
+            @if (showReadingZoom()) {
+              <ng-container *ngTemplateOutlet="readingZoomBar"></ng-container>
+            }
           } @else if (previewType() === 'download') {
             <div class="media-preview-container">
               <div class="unsupported-card">
@@ -759,7 +740,7 @@ interface SheetView {
         }
       } @else {
         <!-- Editor Area -->
-        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" (scroll)="onContentScroll()">
+        <div #scrollContainer class="flex-1 overflow-y-auto editor-bg" (scroll)="onContentScroll()" (wheel)="onReadingWheel($event)" [style.--reading-zoom]="prefs.readingZoom()">
           @if (outlineVisible()) {
             <!-- Zero-height sticky rail so the centered paper's layout is untouched -->
             <div class="doc-outline-rail">
@@ -772,12 +753,26 @@ interface SheetView {
                     [class.active]="activeOutlineIndex() === $index"
                     [title]="item.text"
                     (click)="scrollToHeading(item, $index)"
-                  >{{ item.text }}</button>
+                  >
+                    <span class="doc-outline-text">{{ item.text }}</span>
+                    @if (outlinePeople().get(item.text); as people) {
+                      <span class="doc-outline-people">
+                        @for (person of people; track person.userId) {
+                          <span
+                            class="doc-outline-person"
+                            [class.editing]="person.editing"
+                            [style.background]="avatarGradient(person.userId)"
+                            [title]="person.name + (person.editing ? ' is editing here' : ' is reading here')"
+                          >{{ initials(person.name) }}</span>
+                        }
+                      </span>
+                    }
+                  </button>
                 }
               </nav>
             </div>
           }
-          <div class="mx-auto px-8 py-6 paper" [class.paper-full]="isDataView()" [style.maxWidth.px]="isDataView() ? null : contentWidthPx()">
+          <div class="mx-auto px-8 py-6 paper" [class.paper-full]="isDataView()" [class.reading-zoomed]="!showEditor()" [style.maxWidth.px]="isDataView() ? null : contentWidthPx()">
             @if (loading()) {
               <div class="flex items-center justify-center py-12">
                 <svg class="animate-spin h-8 w-8 text-primary-600" fill="none" viewBox="0 0 24 24">
@@ -885,6 +880,15 @@ interface SheetView {
                 <!-- translate="no": browser page translation rewrites the text
                      nodes in place, and TipTap would read that back as an edit
                      and commit the translated prose to Git on the next save. -->
+                @if (collabJoining()) {
+                  <div class="live-joining" role="status">
+                    <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    Joining the people editing this document…
+                  </div>
+                }
                 <div
                   #editorElement
                   translate="no"
@@ -909,6 +913,9 @@ interface SheetView {
             }
           </div>
         </div>
+        @if (showReadingZoom()) {
+          <ng-container *ngTemplateOutlet="readingZoomBar"></ng-container>
+        }
       }
 
 
@@ -940,6 +947,24 @@ interface SheetView {
             }
           </div>
         }
+      </ng-template>
+
+      <ng-template #readingZoomBar>
+        <div class="zoom-toolbar reading-zoom-toolbar" role="group" aria-label="Text size">
+          <button class="zoom-btn" (click)="prefs.zoomReadingOut()" [disabled]="prefs.readingZoom() <= 0.5" title="Smaller text (Ctrl/⌘ + scroll)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
+            </svg>
+          </button>
+          <button class="zoom-level" (click)="prefs.resetReadingZoom()" title="Reset to 100%">
+            {{ (prefs.readingZoom() * 100).toFixed(0) }}%
+          </button>
+          <button class="zoom-btn" (click)="prefs.zoomReadingIn()" [disabled]="prefs.readingZoom() >= 2" title="Larger text (Ctrl/⌘ + scroll)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+          </button>
+        </div>
       </ng-template>
 
       <ng-template #timeCapsuleBanner>
@@ -1189,6 +1214,19 @@ interface SheetView {
 
       .editor-breadcrumb-row {
         padding: 6px 12px;
+      }
+
+      // The people in the document sit at the end of the path line; the
+      // authorship line wraps below instead of pushing them onto a line of their own.
+      .editor-breadcrumb-row .editor-live-avatars,
+      .editor-breadcrumb-row .editor-doc-meta ~ .editor-live-avatars {
+        order: 1;
+        margin-left: auto;
+      }
+
+      .editor-breadcrumb-row .editor-doc-meta {
+        order: 2;
+        flex-basis: 100%;
       }
     }
 
@@ -1565,6 +1603,9 @@ interface SheetView {
     }
 
     .doc-outline-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
       text-align: left;
       font-size: 12px;
       line-height: 1.4;
@@ -1573,8 +1614,6 @@ interface SheetView {
       border-radius: 6px;
       cursor: pointer;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
 
       &:hover {
         color: var(--text-primary);
@@ -1590,6 +1629,69 @@ interface SheetView {
 
     .doc-outline-h2 {
       padding-left: 22px;
+    }
+
+    .doc-outline-text {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    // Who is reading or writing under this heading right now.
+    .doc-outline-people {
+      display: inline-flex;
+      flex-shrink: 0;
+      padding-left: 4px;
+    }
+
+    .doc-outline-person {
+      width: 18px;
+      height: 18px;
+      margin-left: -4px;
+      border-radius: 9999px;
+      border: 1.5px solid var(--surface);
+      color: #fff;
+      font-size: 8px;
+      font-weight: 700;
+      font-style: normal;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      &.editing { border-color: var(--primary); }
+    }
+
+    // --- Live presence and editing together ---------------------------------
+
+    .editor-live-avatars {
+      margin-left: auto;
+    }
+
+    .editor-doc-meta ~ .editor-live-avatars {
+      margin-left: 12px;
+    }
+
+    .editor-save-status--offline {
+      color: var(--warning);
+      font-weight: 600;
+    }
+
+    .live-joining {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    // Reading zoom: the text of the document grows, the paper keeps its width,
+    // so lines rewrap instead of running off the side.
+    .reading-zoomed .editor-title,
+    .reading-zoomed .markdown-readonly,
+    .docx-host.reading-zoomed {
+      zoom: var(--reading-zoom, 1);
     }
 
     .html-preview-container,
@@ -1761,6 +1863,14 @@ interface SheetView {
       border-radius: 10px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
       z-index: 200;
+    }
+
+    // A phone has no sidebar beside the content to keep clear of.
+    @media (max-width: 768px) {
+      .zoom-toolbar {
+        left: 12px;
+        bottom: 16px;
+      }
     }
 
     .zoom-btn {
@@ -2286,6 +2396,30 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private readonly treeSync = inject(FileTreeSyncService);
   protected readonly branding = inject(BrandingService);
   private readonly docxRenderService = inject(DocxRenderService);
+  protected readonly liveSocket = inject(LiveSocketService);
+  /** This tab's place in the open file on the live hub, so others see it there. */
+  liveDoc = signal<LiveDocument | null>(null);
+  /** The other people in this file, one entry each; your own other tabs are not "other people". */
+  livePeople = computed(() => {
+    const me = this.authService.user()?.id;
+    return groupPeers((this.liveDoc()?.others() ?? []).filter(p => p.userId !== me));
+  });
+  /** Editing together: the shared copy this tab edits; null when editing alone. */
+  private collab: CollabSession | null = null;
+  private collabSubscriptions = new Subscription();
+  private liveFileSubscriptions = new Subscription();
+  /** Editing through the room (rather than alone, saving on its own). */
+  collabActive = signal(false);
+  /** Waiting for the room's copy; the editor is bound to it once it is here. */
+  collabJoining = signal(false);
+  /** What the room last wrote to the file: its serializer output and title. */
+  private roomSaved: { raw: string; title: string } | null = null;
+  /** Where the reader was before entering the editor, applied once it renders. */
+  private pendingEditPlace: ScrollAnchor | null = null;
+  /** Ctrl/⌘ + wheel distance not yet turned into a zoom step (trackpad pinch). */
+  private zoomWheelDistance = 0;
+  protected readonly avatarGradient = avatarGradient;
+  protected readonly initials = getInitials;
   @ViewChild('scrollContainer') scrollContainer?: ElementRef<HTMLElement>;
   @ViewChild(HtmlEditorComponent) private htmlEditor?: HtmlEditorComponent;
 
@@ -2416,6 +2550,26 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     !this.loading() &&
     !this.showEditor() &&
     !(this.viewingVersion() && this.historyViewMode() === 'diff')
+  );
+  /**
+   * People reading or writing under each outline heading. Matched by heading
+   * text, which survives a reader's and an editor's different renderings.
+   */
+  outlinePeople = computed(() => {
+    const bySection = new Map<string, PresenceGroup[]>();
+    for (const person of this.livePeople()) {
+      if (!person.section) continue;
+      bySection.set(person.section, [...(bySection.get(person.section) ?? []), person]);
+    }
+    return bySection;
+  });
+  /** Read mode of a document whose text can be enlarged: Markdown, data files, Word. */
+  showReadingZoom = computed(() =>
+    !this.loading() &&
+    !this.notFound() &&
+    !this.showEditor() &&
+    !(this.viewingVersion() && this.historyViewMode() === 'diff') &&
+    (!this.isPreviewFile() || (this.previewType() === 'docx' && !this.docxError()))
   );
   isPreviewFile = signal(false);
   previewType = signal<'image' | 'html' | 'pdf' | 'drawio' | 'spreadsheet' | 'docx' | 'video' | 'audio' | 'download'>('image');
@@ -2627,6 +2781,20 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     if (event.deltaY < 0) this.zoomIn(); else this.zoomOut();
   }
 
+  /**
+   * Ctrl/⌘ + wheel, and a trackpad pinch (which arrives as one), zooms the text
+   * of the document being read. A pinch sends many small steps, so the distance
+   * is collected until it amounts to one zoom step.
+   */
+  onReadingWheel(event: WheelEvent): void {
+    if (!(event.ctrlKey || event.metaKey) || !this.showReadingZoom()) return;
+    event.preventDefault();
+    this.zoomWheelDistance += event.deltaY;
+    if (Math.abs(this.zoomWheelDistance) < 40) return;
+    if (this.zoomWheelDistance < 0) this.prefs.zoomReadingIn(); else this.prefs.zoomReadingOut();
+    this.zoomWheelDistance = 0;
+  }
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -2672,6 +2840,22 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     effect(() => {
       this.contentWidthPx();
       setTimeout(() => this.updateOutlineFit());
+    });
+
+    // A reader tells the others which heading they are under; an editor does so
+    // from its cursor (reportEditingSection).
+    effect(() => {
+      const live = this.liveDoc();
+      if (!live || this.showEditor()) return;
+      const item = this.docOutline()[this.activeOutlineIndex()];
+      live.setSection(item?.text ?? null);
+    });
+
+    // Zooming moves every heading; the outline's active entry follows. (Comment
+    // pins reflow on their own: their overlay watches the text's size.)
+    effect(() => {
+      this.prefs.readingZoom();
+      setTimeout(() => this.onContentScroll());
     });
 
     // A .drawio file opened directly: render it via the viewer. Re-runs when
@@ -3419,7 +3603,9 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   ngOnDestroy(): void {
-    this.flushPendingCommit();
+    // Editing together, the room commits what is left once nobody edits any more.
+    if (!this.collab) this.flushPendingCommit();
+    this.leaveLive();
     this.destroy$.next();
     this.destroy$.complete();
     this.editor?.destroy();
@@ -3489,11 +3675,13 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         // Documents open in read mode; the user clicks Edit to switch.
         this.markdownContent.set(content);
         this.editMode.set(false);
+        this.joinLive();
         setTimeout(() => {
           this.applyView();
           // The title was set in code, which fires no input event — measure it
           // here or a wrapping title opens clipped to one line.
           this.titleAutosize?.resize();
+          this.restoreRememberedPosition();
           // Apply a translation requested via ?lang= now that the original is rendered.
           const lang = this.pendingLang;
           this.pendingLang = null;
@@ -3561,6 +3749,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    */
   private initPreviewFile(): void {
     this.loadHistoryMeta();
+    this.joinLive();
     const space = this.space();
     if (space && this.documentPath) {
       this.forwardToMovedDocument(space.id, this.documentPath, () => {});
@@ -3593,6 +3782,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   private showNotFound(): void {
+    this.leaveLive();
     this.document.set(null);
     this.isNewDocument.set(false);
     this.editMode.set(false);
@@ -3640,19 +3830,29 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     const place = this.captureReadingPosition();
     this.editMode.set(true);
     setTimeout(() => {
-      this.initTiptap(this.markdownContent());
-      this.restoreReadingPosition(place, () => this.editorElement?.nativeElement);
+      if (this.canCollaborate()) {
+        this.startCollab(place);
+      } else {
+        this.initTiptap(this.markdownContent());
+        this.restoreReadingPosition(place, () => this.editorElement?.nativeElement);
+      }
     });
   }
 
   /** Where the reader is in whichever view is currently rendered. */
   private captureReadingPosition(): ScrollAnchor | null {
     const container = this.scrollContainer?.nativeElement;
-    const content = this.showEditor()
-      ? this.editorElement?.nativeElement
-      : this.readonlyElement?.nativeElement;
+    const content = this.readingContent();
     if (!container || !content) return null;
     return captureScrollAnchor(container, content);
+  }
+
+  /** The element holding the text on screen: the editor, the read view, or a Word document. */
+  private readingContent(): HTMLElement | undefined {
+    if (this.isPreviewFile()) {
+      return this.previewType() === 'docx' ? this.docxHost?.nativeElement : undefined;
+    }
+    return this.showEditor() ? this.editorElement?.nativeElement : this.readonlyElement?.nativeElement;
   }
 
   /**
@@ -3735,6 +3935,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
         if (stale()) return;
         this.docxComments.set(comments ?? []);
         this.loading.set(false);
+        setTimeout(() => this.restoreRememberedPosition());
       })
       .catch(() => {
         if (stale()) return;
@@ -3981,25 +4182,6 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   private initTiptap(content: string): void {
-    const space = this.space();
-
-    const lowlight = createLowlight(common);
-
-    // Convert markdown to HTML for editor
-    let htmlContent = marked.parse(content) as string;
-
-    // Rewrite relative image src to serve from API, resolved relative to the document's directory
-    if (space) {
-      const docDir = this.currentDocDir();
-      htmlContent = htmlContent.replace(
-        /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
-        (_match, pre, src, post) => {
-          const resolved = this.resolveRelativePath(docDir + src);
-          return `${pre}/api/spaces/${space.id}/files/${resolved}${post}`;
-        }
-      );
-    }
-
     // Destroy existing editor if any
     this.editor?.destroy();
 
@@ -4009,39 +4191,9 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
     this.editor = new Editor({
       element: el,
       editable: !this.isReadOnly(),
-      extensions: [
-        StarterKit.configure({
-          codeBlock: false
-        }),
-        Placeholder.configure({
-          placeholder: 'Start writing your documentation...'
-        }),
-        Link.configure({
-          openOnClick: false
-        }),
-        Image,
-        Table.configure({
-          resizable: true
-        }),
-        TableRow,
-        TableHeader,
-        TableCell,
-        TaskList,
-        TaskItem.configure({
-          nested: true
-        }),
-        ColorHighlight.configure({
-          multicolor: true
-        }),
-        CodeBlockLowlight.configure({
-          lowlight
-        })
-      ],
-      editorProps: {
-        handlePaste: (_view, event) => this.handleImageFiles(event.clipboardData?.files),
-        handleDrop: (_view, event) => this.handleImageFiles((event as DragEvent).dataTransfer?.files)
-      },
-      content: htmlContent,
+      extensions: editorExtensions(),
+      editorProps: this.editorProps(),
+      content: this.markdownToEditorHtml(content),
       onUpdate: () => {
         if (!this.isReadOnly()) this.markDirty();
       }
@@ -4068,6 +4220,7 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    */
   onTitleChanged(): void {
     if (!this.showEditor()) return;
+    this.collab?.doc.getMap<string>('meta').set('title', this.cleanTitle());
     this.markDirty();
   }
 
@@ -4079,6 +4232,10 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
    */
   doneEditing(): void {
     if (this.saving()) return;
+    if (this.collab) {
+      this.saveToRoom(true, false);
+      return;
+    }
     if (this.hasChanges() || this.pendingCommit()) {
       this.saveDocument(true);
     } else {
@@ -4091,15 +4248,52 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   /** Current editor content as document-relative markdown (inverse of the load rewrite). */
   private editorMarkdown(): string {
     if (!this.editor) return this.markdownContent();
-    let html = this.editor.getHTML();
+    return this.htmlToMarkdown(this.editor.getHTML());
+  }
+
+  /** Markdown → the HTML the editor loads, with images served from the API. */
+  private markdownToEditorHtml(markdown: string): string {
+    const html = marked.parse(markdown) as string;
+    const space = this.space();
+    if (!space) return html;
+    // Rewrite relative image src to serve from API, resolved relative to the document's directory
+    const docDir = this.currentDocDir();
+    return html.replace(
+      /(<img\s[^>]*src=")(?!https?:\/\/|\/api\/)([^"]+)(")/g,
+      (_match, pre, src, post) => {
+        const resolved = this.resolveRelativePath(docDir + src);
+        return `${pre}/api/spaces/${space.id}/files/${resolved}${post}`;
+      }
+    );
+  }
+
+  /** The editor's HTML → document-relative Markdown (inverse of markdownToEditorHtml). */
+  private htmlToMarkdown(html: string): string {
     // Convert API serving URLs back to document-relative markdown paths so images
     // resolve consistently across save/reload cycles.
     const docDir = this.currentDocDir();
-    html = html.replace(
+    const relative = html.replace(
       /(<img\s[^>]*src=")\/api\/spaces\/[^/]+\/files\/([^"]+)(")/g,
       (_match, pre, abs, post) => `${pre}${this.toDocRelativePath(abs, docDir)}${post}`
     );
-    return this.turndownService.turndown(html);
+    return this.turndownService.turndown(relative);
+  }
+
+  /** What the editor would serialize [markdown] to, worked out off-screen. */
+  private serializeDetached(markdown: string): string {
+    const detached = new Editor({ extensions: editorExtensions(), content: this.markdownToEditorHtml(markdown) });
+    try {
+      return this.htmlToMarkdown(detached.getHTML());
+    } finally {
+      detached.destroy();
+    }
+  }
+
+  private editorProps() {
+    return {
+      handlePaste: (_view: unknown, event: ClipboardEvent) => this.handleImageFiles(event.clipboardData?.files),
+      handleDrop: (_view: unknown, event: Event) => this.handleImageFiles((event as DragEvent).dataTransfer?.files)
+    };
   }
 
   /**
@@ -4153,6 +4347,10 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   }
 
   saveDocument(returnToRead = false, autosave = false): void {
+    if (this.collab) {
+      this.saveToRoom(returnToRead, autosave);
+      return;
+    }
     const space = this.space();
     if (!space || !this.editor) return;
     if (this.saving()) {
@@ -4407,6 +4605,413 @@ export class EditorComponent implements OnInit, OnDestroy, HasUnsavedChanges {
           this.toastService.error('Image upload failed', err?.error?.message ?? 'Could not upload the image.');
         }
       });
+  }
+
+  // --- Live: presence, editing together, reload position -------------------
+
+  /** Announce this tab in the open file (of any kind), so the others see who is where. */
+  private joinLive(): void {
+    const space = this.space();
+    const path = this.documentPath;
+    const current = this.liveDoc();
+    if (current && current.spaceId === space?.id && current.path === path) return;
+    this.leaveLive();
+    if (!space || !path) return;
+    const live = new LiveDocument(this.liveSocket, space.id, path, 'view');
+    this.liveDoc.set(live);
+    this.liveFileSubscriptions = new Subscription();
+    this.liveFileSubscriptions.add(live.on('saved').subscribe(m =>
+      this.onLiveFileChanged(m['base']?.content, m['base']?.hash, m['base']?.title)));
+    this.liveFileSubscriptions.add(live.on('external').subscribe(m =>
+      this.onLiveFileChanged(m['content'], m['hash'], null)));
+  }
+
+  private leaveLive(): void {
+    this.endCollab(true);
+    this.liveFileSubscriptions.unsubscribe();
+    this.liveDoc()?.close();
+    this.liveDoc.set(null);
+  }
+
+  /**
+   * Somebody saved the file, or it was written from outside. A reader sees the
+   * new text in place, at the passage they were reading; an editor gets it
+   * through the shared copy instead.
+   */
+  private onLiveFileChanged(content: string | undefined, hash: string | undefined, title: string | null): void {
+    if (content == null || this.collab) return;
+    if (this.isPreviewFile()) {
+      const type = this.previewType();
+      if (!this.viewingVersion() && !this.htmlEditMode() && (type === 'html' || type === 'docx')) this.refreshPreview(true);
+      return;
+    }
+    // Editing alone: this tab's own save is the next word, as it always was.
+    if (this.showEditor() || this.document()?.contentHash === hash) return;
+    const doc = this.document();
+    if (doc) this.document.set({ ...doc, content, contentHash: hash ?? doc.contentHash, title: title ?? doc.title });
+    const { body, heading, title: headingTitle } = this.splitTitle(content);
+    const newTitle = title ?? headingTitle;
+    if (newTitle) this.documentTitle = newTitle;
+    this.strippedH1 = heading;
+    this.markdownContent.set(body);
+    this.loadHistoryMeta();
+    if (this.viewingVersion() || this.translationLang() || this.viewingAiPrevious()) return;
+    const place = this.captureReadingPosition();
+    this.renderReadView(body);
+    this.restoreReadingPosition(place, () => this.readonlyElement?.nativeElement);
+  }
+
+  /**
+   * The leading "# Title" line and the rest, for a document whose title is its
+   * first heading (the one loadDocument shows in the title field). That holds
+   * when the heading matches the title, or when the document already had one —
+   * then a changed heading is a changed title, not a new line of text.
+   */
+  private splitTitle(content: string): { body: string; heading: string | null; title: string | null } {
+    const match = content.match(/^#\s+(.+)\n*/);
+    if (match && (this.strippedH1 !== null || match[1].trim() === this.cleanTitle())) {
+      return { body: content.substring(match[0].length), heading: match[0], title: match[1].trim() };
+    }
+    return { body: content, heading: null, title: null };
+  }
+
+  /** Editing together needs the live connection and a Markdown file that exists. */
+  private canCollaborate(): boolean {
+    return !!this.liveDoc() &&
+      this.liveSocket.connected() &&
+      this.isMarkdownDoc() &&
+      !this.isNewDocument() &&
+      !!this.documentPath;
+  }
+
+  private startCollab(place: ScrollAnchor | null): void {
+    const live = this.liveDoc();
+    if (!live) return;
+    this.pendingEditPlace = place;
+    this.roomSaved = null;
+    this.collabActive.set(true);
+    this.collabJoining.set(true);
+    const session = new CollabSession(
+      live,
+      () => this.document()?.contentHash ?? null,
+      () => this.seedBase()
+    );
+    this.collab = session;
+    this.collabSubscriptions = new Subscription();
+    this.collabSubscriptions.add(session.ready$.subscribe(ready => this.onCollabReady(ready)));
+    this.collabSubscriptions.add(session.saved$.subscribe(m => this.onRoomSaved(m)));
+    this.collabSubscriptions.add(session.base$.subscribe(base => this.applyRoomBase(base)));
+    this.collabSubscriptions.add(session.external$.subscribe(change => this.onRoomExternal(change.content, change.hash)));
+    this.collabSubscriptions.add(session.leaderChange$.subscribe(leader => {
+      // A new leader saves what the room has — after a moment, so a save the old
+      // leader still had on its way lands first.
+      if (leader) setTimeout(() => this.collab === session && this.autoSave$.next(), LEADER_TAKEOVER_MS);
+    }));
+  }
+
+  /** The room's copy is here (or this tab is to fill it): bind the editor to it. */
+  private onCollabReady(ready: CollabReady): void {
+    const session = this.collab;
+    if (!session) return;
+    this.pendingCommit.set(session.pendingCommit());
+    if (ready.droppedCopy && this.hasChanges()) {
+      this.toastService.error(
+        'Offline changes could not be merged',
+        'The document was changed elsewhere while you were offline. The editor now shows the current version; your unsaved edits from that time are gone.'
+      );
+    }
+    if (!ready.rebind && this.editor) return;
+    this.initCollabEditor(() => {
+      if (this.collab !== session) return;
+      if (ready.seed) this.seedCollab();
+      this.collabJoining.set(false);
+      this.refreshRoomDirty();
+      const place = this.pendingEditPlace;
+      this.pendingEditPlace = null;
+      this.restoreReadingPosition(place, () => this.editorElement?.nativeElement);
+    });
+  }
+
+  private initCollabEditor(onRendered: () => void): void {
+    const session = this.collab;
+    const el = this.editorElement?.nativeElement;
+    if (!session || !el) return;
+    this.editor?.destroy();
+    const user = this.authService.user();
+    const meta = session.doc.getMap<string>('meta');
+    this.editor = new Editor({
+      element: el,
+      editable: true,
+      extensions: editorExtensions({
+        doc: session.doc,
+        awareness: session.awareness,
+        user: { id: user?.id ?? '', name: user?.name ?? '' },
+        // Rendering finishes inside the editor's construction; defer past it.
+        onFirstRender: () => setTimeout(onRendered)
+      }),
+      editorProps: this.editorProps(),
+      onUpdate: () => this.markDirty(),
+      onSelectionUpdate: () => this.reportEditingSection()
+    });
+    // The title lives outside the editor, in the shared copy's 'meta' map.
+    const sharedTitle = meta.get('title');
+    if (typeof sharedTitle === 'string' && sharedTitle) this.setTitleFromRoom(sharedTitle);
+    meta.observe((_event, transaction) => {
+      if (transaction.local) return;
+      const title = meta.get('title');
+      if (typeof title === 'string') this.setTitleFromRoom(title);
+    });
+  }
+
+  private setTitleFromRoom(title: string): void {
+    if (title === this.cleanTitle()) return;
+    this.documentTitle = title;
+    setTimeout(() => this.titleAutosize?.resize());
+  }
+
+  /** This tab is the first editor: fill the shared copy from the file. */
+  private seedCollab(): void {
+    const session = this.collab;
+    if (!session || !this.editor) return;
+    this.editor.commands.setContent(this.markdownToEditorHtml(this.markdownContent()), false);
+    this.clearUndo();
+    session.doc.getMap<string>('meta').set('title', this.cleanTitle());
+    this.editSessionOriginal = this.markdownContent();
+    this.editSessionBaseline = this.editorMarkdown();
+    this.roomSaved = { raw: this.editSessionBaseline, title: this.cleanTitle() };
+    session.seeded();
+  }
+
+  /** What the file holds, as handed to the room by the tab that seeds it. */
+  private seedBase(): CollabBase {
+    const doc = this.document();
+    return {
+      body: this.editSessionOriginal ?? this.markdownContent(),
+      raw: this.editSessionBaseline ?? undefined,
+      content: doc?.content,
+      hash: doc?.contentHash ?? undefined,
+      title: this.cleanTitle()
+    };
+  }
+
+  /**
+   * Saving together: only the leader autosaves, for everyone, whenever the
+   * shared copy differs from what the room last wrote; anyone can Save/Done.
+   */
+  private saveToRoom(returnToRead: boolean, autosave: boolean): void {
+    const session = this.collab;
+    if (!session || !this.editor || this.collabJoining()) return;
+    if (autosave && !session.leader()) return;
+    if (this.saving()) {
+      if (autosave) this.autoSave$.next();
+      return;
+    }
+
+    const { body, content, raw } = this.serializeForSave();
+    const title = this.cleanTitle();
+    const commit = this.isGitSpace() && !autosave;
+    const unchanged = !!this.roomSaved && raw === this.roomSaved.raw && title === this.roomSaved.title;
+    if (unchanged && !(commit && this.pendingCommit())) {
+      this.hasChanges.set(false);
+      this.lastSaved.set(true);
+      if (returnToRead) this.finishCollabEditing(this.markdownContent());
+      return;
+    }
+    if (!content.trim()) {
+      if (!autosave) this.toastService.error(NOTHING_TO_SAVE.title, NOTHING_TO_SAVE.message);
+      return;
+    }
+
+    this.saving.set(true);
+    session.save({ title, content, body, raw, commit })
+      .then(() => {
+        this.saving.set(false);
+        this.saveErrorNotified = false;
+        if (returnToRead) this.finishCollabEditing(body);
+      })
+      .catch((error: LiveSaveError) => this.handleSaveError(
+        new HttpErrorResponse({ status: error.status ?? 0, error: { message: error.message } })
+      ));
+  }
+
+  /** Any save of the room, this tab's own included: it is what the file holds now. */
+  private onRoomSaved(message: { [field: string]: any }): void {
+    if (message['base']) this.applyRoomBase(message['base']);
+    this.pendingCommit.set(!!message['pendingCommit']);
+    if (message['commit']) {
+      this.loadHistoryMeta();
+      if (this.showHistoryPanel()) this.loadHistory();
+    }
+  }
+
+  /** Make [base] the file this tab's next save is a minimal diff against. */
+  private applyRoomBase(base: CollabBase): void {
+    if (base.body == null || base.raw == null) return;
+    this.roomSaved = { raw: base.raw, title: base.title ?? this.cleanTitle() };
+    this.rebaseEditSession(base.body, base.raw);
+    this.markdownContent.set(base.body);
+    if (base.content != null) {
+      this.lastPersistedContent = base.content;
+      this.strippedH1 = base.content.endsWith(base.body)
+        ? base.content.substring(0, base.content.length - base.body.length) || null
+        : this.strippedH1;
+      const doc = this.document();
+      if (doc) this.document.set({ ...doc, content: base.content, contentHash: base.hash ?? doc.contentHash, title: base.title ?? doc.title });
+    }
+    this.refreshRoomDirty();
+  }
+
+  /** Unsaved changes = the shared copy is ahead of what the room last wrote. */
+  private refreshRoomDirty(): void {
+    if (!this.editor || !this.roomSaved || this.collabJoining()) return;
+    const dirty = this.editorMarkdown() !== this.roomSaved.raw || this.cleanTitle() !== this.roomSaved.title;
+    this.hasChanges.set(dirty);
+    this.lastSaved.set(!dirty);
+    if (dirty && this.collab?.leader()) this.autoSave$.next();
+  }
+
+  /**
+   * The file was written outside the room — an AI agent, an AI edit, a restore.
+   * The leader merges it into the shared copy block by block (live edits win
+   * where both sides changed the same paragraph) and tells the room the new base.
+   */
+  private onRoomExternal(content: string, hash: string): void {
+    const session = this.collab;
+    if (!session || !this.editor || this.collabJoining()) return;
+    if (!session.leader()) {
+      this.toastService.info('Document updated', 'A change made outside the editor was merged in.');
+      return;
+    }
+    const { body, heading, title: theirTitle } = this.splitTitle(content);
+    const theirs = this.serializeDetached(body);
+    const ours = this.editorMarkdown();
+    const merged = mergeMarkdownBlocks(this.roomSaved?.raw ?? this.editSessionBaseline ?? ours, ours, theirs);
+    if (merged !== ours) {
+      this.editor.commands.setContent(this.markdownToEditorHtml(merged), false);
+      this.clearUndo();
+    }
+    // The title merges the same way: whichever side changed it wins, the live one
+    // when both did. A writer that only carried the old title along changes nothing.
+    const baseTitle = this.roomSaved?.title ?? this.cleanTitle();
+    const ourTitle = this.cleanTitle();
+    if (theirTitle !== null && theirTitle !== baseTitle && ourTitle === baseTitle) {
+      session.doc.getMap<string>('meta').set('title', theirTitle);
+      this.setTitleFromRoom(theirTitle);
+    }
+    this.strippedH1 = heading;
+    this.rebaseEditSession(body, theirs);
+    this.roomSaved = { raw: theirs, title: theirTitle ?? ourTitle };
+    const doc = this.document();
+    if (doc) this.document.set({ ...doc, content, contentHash: hash });
+    session.publishBase({ body, raw: theirs, content, hash, title: this.roomSaved.title });
+    this.toastService.info('Document updated', 'A change made outside the editor was merged in.');
+    this.refreshRoomDirty();
+  }
+
+  /** Done: back to reading, out of the room's editors. */
+  private finishCollabEditing(body: string): void {
+    this.endCollab(false);
+    this.exitToReadView(body);
+  }
+
+  /**
+   * Stop editing together. With [flush], a leader with unsaved changes hands them
+   * to the room first (it writes them even after this tab is gone).
+   */
+  private endCollab(flush: boolean): void {
+    const session = this.collab;
+    if (!session) return;
+    if (flush) this.flushRoomSave();
+    this.collabSubscriptions.unsubscribe();
+    session.destroy();
+    this.collab = null;
+    this.roomSaved = null;
+    this.collabActive.set(false);
+    this.collabJoining.set(false);
+    this.liveDoc()?.setMode('view');
+  }
+
+  /** The leader's unsaved changes, sent without waiting for the answer. */
+  private flushRoomSave(): void {
+    const session = this.collab;
+    if (!session?.leader() || !this.hasChanges() || !this.editor || this.collabJoining()) return;
+    const { body, content, raw } = this.serializeForSave();
+    if (!content.trim()) return;
+    session.save({ title: this.cleanTitle(), content, body, raw, commit: false }).catch(() => {});
+  }
+
+  private clearUndo(): void {
+    if (this.editor) yUndoPluginKey.getState(this.editor.state)?.undoManager?.clear();
+  }
+
+  /** The heading the cursor is under, for the others' avatars and the outline. */
+  private reportEditingSection(): void {
+    const editor = this.editor;
+    const live = this.liveDoc();
+    if (!editor || !live || !this.collab) return;
+    const position = editor.state.selection.from;
+    let section: string | null = null;
+    editor.state.doc.forEach((node, offset) => {
+      if (offset < position && node.type.name === 'heading' && node.attrs['level'] <= 2) section = node.textContent;
+    });
+    live.setSection(section);
+  }
+
+  /** Take the reader to where that person is: their cursor, else their heading. */
+  jumpToPerson(person: PresenceGroup): void {
+    const clientId = person.lead.clientId;
+    if (this.showEditor() && clientId !== null) {
+      const caret = this.editorElement?.nativeElement.querySelector<HTMLElement>(`[data-live-client="${clientId}"]`);
+      if (caret) {
+        this.scrollIntoPane(caret);
+        return;
+      }
+    }
+    if (person.section) this.scrollToSection(person.section);
+  }
+
+  private scrollToSection(text: string): void {
+    const host = this.showEditor() ? this.editorElement?.nativeElement : this.readonlyElement?.nativeElement;
+    const heading = Array.from(host?.querySelectorAll<HTMLElement>('h1, h2') ?? [])
+      .find(h => (h.textContent ?? '').trim() === text.trim());
+    if (heading) this.scrollIntoPane(heading);
+  }
+
+  private scrollIntoPane(el: HTMLElement): void {
+    const pane = this.scrollContainer?.nativeElement;
+    if (!pane) return;
+    const top = el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 96;
+    pane.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+
+  /**
+   * The page is going away (a reload, closing the tab): remember the passage on
+   * screen for the reload, and let a leader hand over what is not saved yet.
+   */
+  @HostListener('window:pagehide')
+  onPageHide(): void {
+    const key = this.readingKey();
+    if (key) rememberReadingPosition(key, this.captureReadingPosition());
+    this.flushRoomSave();
+  }
+
+  /** Back on the passage the reader saw before a reload. */
+  private restoreRememberedPosition(): void {
+    const key = this.readingKey();
+    const place = key ? takeReadingPosition(key) : null;
+    if (!place) return;
+    this.restoreReadingPosition(place, () => this.readingContent());
+    // Diagrams render late and push the text down; settle once more.
+    setTimeout(() => {
+      const container = this.scrollContainer?.nativeElement;
+      const content = this.readingContent();
+      if (container && content) restoreScrollAnchor(container, content, place);
+    }, 1000);
+  }
+
+  private readingKey(): string | null {
+    const space = this.space();
+    return space && this.documentPath ? `${space.id}:${this.documentPath}` : null;
   }
 
   // Toolbar actions

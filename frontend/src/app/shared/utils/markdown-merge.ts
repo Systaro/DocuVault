@@ -181,3 +181,51 @@ export function mergeMarkdownEdits(original: string, baseline: string, edited: s
   merged = merged.replace(/\n*$/, '') + trailing;
   return merged;
 }
+
+/**
+ * Three-way merge at block level, for an outside change (an AI agent, a restore)
+ * that lands while people are editing: [base] is what both sides started from,
+ * [ours] the live document, [theirs] the new file. All three are serializer
+ * output, so equal blocks are byte-identical.
+ *
+ * A stretch changed on one side only takes that side. Where both changed the
+ * same stretch, the live edit wins and the other side's new blocks follow it, so
+ * neither change disappears silently.
+ */
+export function mergeMarkdownBlocks(base: string, ours: string, theirs: string): string {
+  if (ours === base) return theirs;
+  if (theirs === base || theirs === ours) return ours;
+
+  const b = splitBlocks(base);
+  const o = splitBlocks(ours);
+  const t = splitBlocks(theirs);
+  const same = (x: string, y: string) => x === y;
+  const inOurs = lcsPairs(b, o, same);
+  const inTheirs = lcsPairs(b, t, same);
+
+  const merged: string[] = [];
+  let bi = 0, oi = 0, ti = 0;
+  const flush = (bEnd: number, oEnd: number, tEnd: number) => {
+    const baseChunk = b.slice(bi, bEnd);
+    const ourChunk = o.slice(oi, oEnd);
+    const theirChunk = t.slice(ti, tEnd);
+    const equal = (x: string[], y: string[]) => x.length === y.length && x.every((v, i) => v === y[i]);
+    if (equal(ourChunk, baseChunk)) merged.push(...theirChunk);
+    else if (equal(theirChunk, baseChunk) || equal(theirChunk, ourChunk)) merged.push(...ourChunk);
+    else merged.push(...ourChunk, ...theirChunk.filter(block => !baseChunk.includes(block) && !ourChunk.includes(block)));
+  };
+
+  // Blocks kept unchanged on both sides are the fixed points between the stretches.
+  for (let i = 0; i < b.length; i++) {
+    const oj = inOurs.get(i);
+    const tj = inTheirs.get(i);
+    if (oj === undefined || tj === undefined || oj < oi || tj < ti) continue;
+    flush(i, oj, tj);
+    merged.push(b[i]);
+    bi = i + 1;
+    oi = oj + 1;
+    ti = tj + 1;
+  }
+  flush(b.length, o.length, t.length);
+  return merged.join('\n\n');
+}

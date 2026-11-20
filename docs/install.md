@@ -207,6 +207,14 @@ A JSON document with `authorization_endpoint`, `token_endpoint` and
 `registration_endpoint` means discovery works; an HTML page means the request
 never reached the backend.
 
+**Editors do not see each other / "Offline · reconnecting" never clears.**
+Live collaboration runs over a WebSocket at `/api/live`. The bundled
+nginx-proxy and frontend container pass it through. With your own reverse
+proxy, allow the upgrade on `/api/` (nginx: `proxy_http_version 1.1`,
+`proxy_set_header Upgrade $http_upgrade`, `proxy_set_header Connection "upgrade"`)
+and keep its idle timeout above 30 seconds. Without the socket the editor still
+works, one person at a time. See [live-collaboration.md](live-collaboration.md).
+
 **Where do logs live.**
 All container logs go through Docker:
 

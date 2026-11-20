@@ -2,7 +2,8 @@
   "/api": {
     "target": "http://127.0.0.1:7030",
     "secure": false,
-    "changeOrigin": true
+    "changeOrigin": true,
+    "ws": true
   },
   "/.well-known/oauth-": {
     "target": "http://127.0.0.1:7030",

@@ -20,7 +20,9 @@ import { ExportStateDialogComponent } from '../../shared/components/export-state
 import { SpaceRoutePipe } from '../../shared/pipes/space-route.pipe';
 import { spaceRoute } from '../../shared/utils/route-utils';
 import { getFileIcon, withoutHiddenNodes } from '../../shared/utils/file-utils';
-import { getInitials, avatarHue } from '../../shared/utils/user-utils';
+import { getInitials, avatarGradient } from '../../shared/utils/user-utils';
+import { LiveSocketService } from '../../core/live/live-socket.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { FileTreeSyncService } from '../../shared/services/file-tree-sync.service';
 import { BulkUploadService, BulkUploadProgress, UploadSelection } from '../../shared/services/bulk-upload.service';
 import { FileActionsService } from '../../shared/services/file-actions.service';
@@ -176,10 +178,16 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
                     (click)="membersExpanded.set(!membersExpanded())"
                   >
                     <span class="members-label">Members</span>
+                    @if (onlineCount() > 0) {
+                      <span class="members-online" [title]="onlineTooltip()">
+                        <span class="online-dot" aria-hidden="true"></span>{{ onlineCount() }} online
+                      </span>
+                    }
                     <span class="members-avatars">
                       @for (m of previewMembers(); track m.userId) {
                         <span
                           class="member-avatar"
+                          [class.is-online]="isOnline(m.userId)"
                           [style.background]="avatarBackground(m.userId)"
                           [title]="memberTooltip(m)"
                         >{{ initials(m.userName) }}</span>
@@ -191,15 +199,30 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
                   </button>
                   @if (membersExpanded()) {
                     <ul class="members-list">
-                      @for (m of members(); track m.userId) {
+                      @for (m of sortedMembers(); track m.userId) {
                         <li class="members-list-item" [title]="m.userEmail">
                           <span
                             class="member-avatar"
+                            [class.is-online]="isOnline(m.userId)"
                             [style.background]="avatarBackground(m.userId)"
                           >{{ initials(m.userName) }}</span>
                           <span class="member-text">
                             <span class="member-name">{{ m.userName }}</span>
-                            <span class="member-meta">{{ memberMeta(m) }}</span>
+                            @if (whereIs(m.userId); as where) {
+                              <span class="member-meta member-meta--online">{{ where }}</span>
+                            } @else {
+                              <span class="member-meta">{{ memberMeta(m) }}</span>
+                            }
+                          </span>
+                        </li>
+                      }
+                      <!-- Online with access from outside the member list (an instance admin, say). -->
+                      @for (u of onlineOutsiders(); track u.userId) {
+                        <li class="members-list-item">
+                          <span class="member-avatar is-online" [style.background]="avatarBackground(u.userId)">{{ initials(u.name) }}</span>
+                          <span class="member-text">
+                            <span class="member-name">{{ u.name }}</span>
+                            <span class="member-meta member-meta--online">{{ whereIs(u.userId) }}</span>
                           </span>
                         </li>
                       }
@@ -407,6 +430,9 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
                     />
                   } @else {
                     <span class="tree-name">{{ prefs.prettify(node.name, true) }}</span>
+                    @if (!isTreeExpanded(node.path) && folderHasPeople(node.path)) {
+                      <span class="tree-presence-dot" title="Someone is in a document in this folder"></span>
+                    }
                     @if (sharedFilePaths().has(node.path)) {
                       <span translate="no" class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
@@ -510,6 +536,20 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
                     </button>
                   } @else {
                     <span class="tree-name">{{ displayName(node) }}</span>
+                    @if (docPeople().get(node.path); as people) {
+                      <span class="tree-presence" [title]="peopleTooltip(people)">
+                        @for (p of people.slice(0, 3); track p.userId) {
+                          <span
+                            class="tree-person"
+                            [class.editing]="p.mode === 'edit'"
+                            [style.background]="avatarBackground(p.userId)"
+                          >{{ initials(p.name) }}</span>
+                        }
+                        @if (people.length > 3) {
+                          <span class="tree-person tree-person-more">+{{ people.length - 3 }}</span>
+                        }
+                      </span>
+                    }
                     @if (sharedFilePaths().has(node.path)) {
                       <span translate="no" class="material-icons shared-indicator" title="Publicly shared">lock_open</span>
                     }
@@ -963,6 +1003,26 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
       color: var(--text-muted);
     }
 
+    .members-online {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .online-dot,
+    .tree-presence-dot {
+      flex-shrink: 0;
+      width: 7px;
+      height: 7px;
+      border-radius: 9999px;
+      background: var(--success);
+    }
+
     .members-avatars {
       display: flex;
       align-items: center;
@@ -986,6 +1046,54 @@ import { MoveProgressDialogComponent } from '../../shared/components/move-progre
       font-weight: 700;
       border: 2px solid var(--surface);
       box-sizing: border-box;
+    }
+
+    // Online: a small green dot on the chip's lower right.
+    .member-avatar.is-online {
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        right: -2px;
+        bottom: -2px;
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: var(--success);
+        border: 1.5px solid var(--surface);
+      }
+    }
+
+    .member-meta--online {
+      color: var(--success);
+    }
+
+    // Who is in a document, right in the file tree.
+    .tree-presence {
+      display: inline-flex;
+      flex-shrink: 0;
+      padding-left: 4px;
+    }
+
+    .tree-person {
+      width: 16px;
+      height: 16px;
+      margin-left: -4px;
+      border-radius: 9999px;
+      border: 1.5px solid var(--surface);
+      color: #fff;
+      font-size: 7px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      &.editing { border-color: var(--primary); }
+    }
+
+    .tree-person-more {
+      background: var(--text-muted);
     }
 
     .member-avatar-more {
@@ -1776,7 +1884,34 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   members = signal<SpaceMember[]>([]);
   membersExpanded = signal(false);
   /** Chips shown in the collapsed strip; the rest collapse into a "+N" chip. */
-  previewMembers = computed(() => this.members().slice(0, SpaceComponent.MEMBER_CHIP_LIMIT));
+  private readonly liveSocket = inject(LiveSocketService);
+  private readonly auth = inject(AuthService);
+  private releaseLive: (() => void) | null = null;
+  /** Who is online in this space, from the live hub. */
+  private readonly presence = computed(() => this.liveSocket.watchedPresence());
+  private readonly onlineIds = computed(() => new Set((this.presence()?.online ?? []).map(u => u.userId)));
+  onlineCount = computed(() => this.onlineIds().size);
+  /** Members online first, so the collapsed strip shows who is around. */
+  sortedMembers = computed(() => {
+    const online = this.onlineIds();
+    return [...this.members()].sort((a, b) => Number(online.has(b.userId)) - Number(online.has(a.userId)));
+  });
+  /** Online with access to the space without being on its member list. */
+  onlineOutsiders = computed(() => {
+    const members = new Set(this.members().map(m => m.userId));
+    return (this.presence()?.online ?? []).filter(u => !members.has(u.userId));
+  });
+  /** The other people in each document, by path. */
+  docPeople = computed(() => {
+    const me = this.auth.user()?.id;
+    const byPath = new Map<string, { userId: string; name: string; mode: 'view' | 'edit' }[]>();
+    for (const doc of this.presence()?.docs ?? []) {
+      const others = doc.users.filter(u => u.userId !== me);
+      if (others.length) byPath.set(doc.path, others);
+    }
+    return byPath;
+  });
+  previewMembers = computed(() => this.sortedMembers().slice(0, SpaceComponent.MEMBER_CHIP_LIMIT));
   hiddenMemberCount = computed(() =>
     Math.max(0, this.members().length - SpaceComponent.MEMBER_CHIP_LIMIT)
   );
@@ -1848,9 +1983,43 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
       this.loadInboxCount(this.space.id);
       this.loadMyPermission(this.space.id);
       this.loadMembers(this.space.id);
+      this.releaseLive ??= this.liveSocket.acquire();
+      this.liveSocket.watchSpace(this.space.id);
       this.loadContextLogo(this.space);
       this.updateTitle();
     }
+  }
+
+  isOnline(userId: string): boolean {
+    return this.onlineIds().has(userId);
+  }
+
+  onlineTooltip(): string {
+    return (this.presence()?.online ?? []).map(u => u.name).join(', ');
+  }
+
+  /** "Editing Setup" / "Reading Setup" / "Online" for someone online, null otherwise. */
+  whereIs(userId: string): string | null {
+    if (!this.isOnline(userId)) return null;
+    const docs = (this.presence()?.docs ?? [])
+      .map(doc => ({ doc, user: doc.users.find(u => u.userId === userId) }))
+      .filter(entry => !!entry.user);
+    const entry = docs.find(e => e.user!.mode === 'edit') ?? docs[0];
+    if (!entry) return 'Online';
+    // Named as the file tree names it, so the two read alike.
+    const fileName = entry.doc.path.split('/').pop() ?? '';
+    const name = this.displayName({ name: fileName, path: entry.doc.path, isDirectory: false } as FileNode);
+    return `${entry.user!.mode === 'edit' ? 'Editing' : 'Reading'} ${name}`;
+  }
+
+  folderHasPeople(folder: string): boolean {
+    const prefix = folder + '/';
+    for (const path of this.docPeople().keys()) if (path.startsWith(prefix)) return true;
+    return false;
+  }
+
+  peopleTooltip(people: { name: string; mode: 'view' | 'edit' }[]): string {
+    return people.map(p => `${p.name} (${p.mode === 'edit' ? 'editing' : 'reading'})`).join(', ');
   }
 
   private loadMembers(spaceId: string): void {
@@ -1881,8 +2050,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   avatarBackground(userId: string): string {
-    const hue = avatarHue(userId);
-    return `linear-gradient(135deg, hsl(${hue} 52% 52%), hsl(${(hue + 28) % 360} 52% 42%))`;
+    return avatarGradient(userId);
   }
 
   private loadMyPermission(spaceId: string): void {
@@ -2720,5 +2888,7 @@ export class SpaceComponent implements OnInit, OnChanges, OnDestroy {
     document.removeEventListener('mouseup', this.boundOnMouseUp);
     document.removeEventListener('dragover', this.trackDragIntent, true);
     this.pageTitle.set();
+    this.liveSocket.watchSpace(null);
+    this.releaseLive?.();
   }
 }

@@ -3,6 +3,9 @@ import { Injectable, effect, signal } from '@angular/core';
 /** How the folder listing renders its entries. */
 export type FolderViewMode = 'list' | 'tiles';
 
+/** Reading zoom levels, the steps a browser offers too. */
+export const READING_ZOOM_STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+
 /**
  * Per-user display preferences for the space browser: the "pretty names" toggle
  * that strips file extensions and replaces _/- with spaces for display only
@@ -15,6 +18,7 @@ export type FolderViewMode = 'list' | 'tiles';
 export class DisplayPrefsService {
   private readonly storageKey = 'docuvault.prettyNames';
   private readonly viewModeKey = 'docuvault.folderViewMode';
+  private readonly readingZoomKey = 'docuvault.readingZoom';
 
   /** True = show prettified display names. False = show raw filenames. */
   prettyNames = signal<boolean>(true);
@@ -22,17 +26,45 @@ export class DisplayPrefsService {
   /** Folder listing layout — a dense table, or thumbnail tiles. */
   viewMode = signal<FolderViewMode>('list');
 
+  /** Text size of documents in read mode, 1 = as designed. */
+  readingZoom = signal<number>(1);
+
   constructor() {
     this.prettyNames.set(this.load());
     this.viewMode.set(this.loadViewMode());
+    this.readingZoom.set(this.loadReadingZoom());
     effect(() => {
       try {
         localStorage.setItem(this.storageKey, String(this.prettyNames()));
         localStorage.setItem(this.viewModeKey, this.viewMode());
+        localStorage.setItem(this.readingZoomKey, String(this.readingZoom()));
       } catch {
         // Storage may be disabled (private mode) — non-fatal.
       }
     });
+  }
+
+  zoomReadingIn(): void {
+    const z = this.readingZoom();
+    this.readingZoom.set(READING_ZOOM_STEPS.find(step => step > z + 0.001) ?? z);
+  }
+
+  zoomReadingOut(): void {
+    const z = this.readingZoom();
+    this.readingZoom.set([...READING_ZOOM_STEPS].reverse().find(step => step < z - 0.001) ?? z);
+  }
+
+  resetReadingZoom(): void {
+    this.readingZoom.set(1);
+  }
+
+  private loadReadingZoom(): number {
+    try {
+      const z = Number(localStorage.getItem(this.readingZoomKey));
+      return READING_ZOOM_STEPS.includes(z) ? z : 1;
+    } catch {
+      return 1;
+    }
   }
 
   toggle(): void {

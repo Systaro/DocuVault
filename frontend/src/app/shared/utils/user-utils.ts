@@ -16,3 +16,18 @@ export function avatarHue(userId: string): number {
   }
   return Math.abs(hash) % 360;
 }
+
+/** The avatar chip's background: the user's tint as a soft diagonal gradient. */
+export function avatarGradient(userId: string): string {
+  const hue = avatarHue(userId);
+  return `linear-gradient(135deg, hsl(${hue} 52% 52%), hsl(${(hue + 28) % 360} 52% 42%))`;
+}
+
+/**
+ * A person's colour in live editing — their cursor, selection and avatar ring —
+ * from the same hue as their avatar, so the cursor and the chip match.
+ */
+export function presenceColor(userId: string, alpha = 1): string {
+  const hue = avatarHue(userId);
+  return alpha >= 1 ? `hsl(${hue} 55% 42%)` : `hsl(${hue} 55% 42% / ${alpha})`;
+}

@@ -13,11 +13,26 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
+/**
+ * The user a bearer token stands for: a personal API token (`dv_…`) or an access
+ * token issued to an MCP client. Space tokens carry no user and are not resolved here.
+ */
+@Component
+class BearerUserResolver(
+    private val apiTokenService: ApiTokenService,
+    private val oauthService: OauthService
+) {
+    fun userFor(token: String): User? = when {
+        token.startsWith("dv_") -> apiTokenService.authenticateToken(token)
+        token.startsWith(OauthService.ACCESS_TOKEN_PREFIX) -> oauthService.userForAccessToken(token)
+        else -> null
+    }
+}
+
 @Component
 class ApiTokenAuthFilter(
-    private val apiTokenService: ApiTokenService,
     private val spaceTokenService: SpaceTokenService,
-    private val oauthService: OauthService
+    private val bearerUserResolver: BearerUserResolver
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -52,13 +67,9 @@ class ApiTokenAuthFilter(
                         SecurityContextHolder.getContext().authentication = authentication
                     }
                 }
-                token.startsWith("dv_") -> {
-                    apiTokenService.authenticateToken(token)?.let { authenticateAs(it) }
-                }
-                // OAuth access token issued to an MCP client: same rights as the user.
-                token.startsWith(OauthService.ACCESS_TOKEN_PREFIX) -> {
-                    oauthService.userForAccessToken(token)?.let { authenticateAs(it) }
-                }
+                // A personal API token, or an OAuth access token issued to an MCP
+                // client: same rights as the user.
+                else -> bearerUserResolver.userFor(token)?.let { authenticateAs(it) }
             }
         }
 

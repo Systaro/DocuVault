@@ -10,6 +10,7 @@ import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.io.File
 import java.net.UnknownHostException
@@ -23,7 +24,9 @@ import java.util.concurrent.ConcurrentHashMap
 class GitService(
     @Value("\${git.repos-path}") private val reposPath: String,
     private val settingsService: SettingsService,
-    @Value("\${app.git.author-email}") private val botEmail: String
+    @Value("\${app.git.author-email}") private val botEmail: String,
+    /** Announces text writes, so a document open for live editing learns of changes made elsewhere. */
+    private val events: ApplicationEventPublisher? = null
 ) {
     private val logger = LoggerFactory.getLogger(GitService::class.java)
 
@@ -348,7 +351,7 @@ class GitService(
         val repoDir = getContentRoot(space)
         val filePath = validatePath(repoDir, path)
 
-        return try {
+        val written = try {
             Files.createDirectories(filePath.parent)
             Files.writeString(filePath, content)
             true
@@ -356,6 +359,8 @@ class GitService(
             logger.error("Failed to write file for space '${space.name}': ${e.message}", e)
             false
         }
+        if (written) events?.publishEvent(TextFileWritten(space.id!!, path, content))
+        return written
     }
 
     fun writeBinaryFile(space: Space, path: String, bytes: ByteArray): Boolean {

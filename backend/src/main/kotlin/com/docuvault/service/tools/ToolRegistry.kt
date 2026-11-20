@@ -184,6 +184,27 @@ class ToolRegistry(
         },
 
         sharedTool(
+            "list_active_users",
+            "Who is online in a space right now, and who is reading or editing which document in the web app. Check it before changing a document: your edit still merges into an open editor, but the people editing it should know.",
+            schema("spaceId" to str("The space (ID, full path or name)"), required = listOf("spaceId"))
+        ) { s, a ->
+            val presence = s.api.presence(s.resolveSpaceId(a.optionalString("spaceId")))
+            val online = presence.path("online").map { it.path("name").asText() }
+            if (online.isEmpty()) "Nobody is online in this space right now."
+            else buildString {
+                append("Online now: ${online.joinToString(", ")}")
+                val docs = presence.path("docs")
+                if (docs.isEmpty) append("\nNobody has a document open.")
+                docs.forEach { doc ->
+                    val people = doc.path("users").joinToString(", ") { u ->
+                        "${u.path("name").asText()} (${if (u.path("mode").asText() == "edit") "editing" else "reading"})"
+                    }
+                    append("\n- ${doc.path("path").asText()}: $people")
+                }
+            }
+        },
+
+        sharedTool(
             "list_documents",
             "List all documents in a documentation space as a full recursive file tree.",
             schema("spaceId" to str("The space (ID, full path or name)"), required = listOf("spaceId"))

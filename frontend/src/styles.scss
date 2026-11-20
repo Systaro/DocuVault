@@ -1895,6 +1895,37 @@ body {
 }
 
 // ============================================
+// LIVE EDITING: OTHER PEOPLE'S CURSORS
+// ============================================
+// y-prosemirror draws these into the editor's own DOM, outside any component's
+// style scope. --presence is the person's colour, set on each caret.
+.collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 2px solid var(--presence);
+  word-break: normal;
+  pointer-events: none;
+}
+
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.5em;
+  left: -2px;
+  padding: 1px 6px;
+  border-radius: 4px 4px 4px 0;
+  background: var(--presence);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: normal;
+  white-space: nowrap;
+  user-select: none;
+}
+
+// ============================================
 // SHARED IMAGE ZOOM TOOLBAR
 // ============================================
 .zoom-toolbar {

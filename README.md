@@ -23,6 +23,7 @@ For developers and AI tools, the same files are available locally — clone the 
 - **Local-first AI editing.** Clone the repo and edit with any LLM tool that works on files. No vendor lock-in.
 - **Built-in MCP server.** Point Claude Code, Claude Desktop or Cursor at `/api/mcp`, sign in once in the browser, and your agent can search, read, create, edit and share documents with your permissions.
 - **WYSIWYG editor.** TipTap-based rich editor that emits clean Markdown.
+- **Live collaboration.** Edit a document together with live cursors, see who is reading or editing which document and who is online in a space, and get changes made by AI agents merged into the open editor. Read mode has its own text zoom and keeps your place across a reload. See [docs/live-collaboration.md](docs/live-collaboration.md).
 - **Role-based permissions.** Super Admin, Org Admin, Editor, Viewer, plus fine-grained per-space permissions.
 - **Teams.** Group users into teams (a user can be in several) and grant space access once per team instead of once per person. Members inherit every grant of every team they're in; the strongest grant — personal or inherited — wins.
 - **Public share links.** Optional password protection, view-only or comment access. Renders rich markdown including embedded HTML and JavaScript (deliberate — see [SECURITY.md](SECURITY.md)).
@@ -125,10 +126,11 @@ take the same URL:
 }
 ```
 
-The server exposes 21 tools covering search/list/read/create/edit/rename/share
+The server exposes 22 tools covering search/list/read/create/edit/rename/share
 for documents, spaces and space state, tasks (`list_tasks`, `create_task`,
 `update_task`), `sync_space` to pull a space's Git repository in right away
-after pushing from outside, plus `upload_file` / `download_file` for
+after pushing from outside, `list_active_users` to see who is reading or
+editing what before changing it, plus `upload_file` / `download_file` for
 binaries and large files: they hand out a one-time URL and the agent moves the
 bytes with `curl` (or `Invoke-WebRequest` on Windows), so nothing binary
 passes through the model. Every call runs as the signed-in user with that

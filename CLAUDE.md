@@ -122,6 +122,26 @@ translator. Two rules keep that from breaking the app:
 
 Header labels are `white-space: nowrap` for the same reason.
 
+## Live collaboration
+
+Presence and editing together run over one WebSocket per tab, `/api/live`
+(`backend/…/live/LiveHub.kt`, frontend `core/live/`). User docs:
+`docs/live-collaboration.md`. Things that are easy to break:
+
+- **Rooms live in memory.** One backend instance per install. A restart drops
+  them; tabs reconnect and rebuild (the `lineage` protocol in
+  `collab-session.ts` decides whether a held copy may be merged).
+- **While editing together, saves go through the socket**, not the REST PUT,
+  and only the leader autosaves. That is how the room tells its own writes from
+  outside ones: every text write ends in `GitService.writeFile`, which publishes
+  `TextFileWritten`; the hub forwards writes it did not make itself as
+  `external`, and the leader merges them (`mergeMarkdownBlocks`). A new write
+  path that bypasses `GitService.writeFile` is invisible to open editors.
+- **The server rewrites cursor identities** (`AwarenessCodec`): names in cursors
+  are the server's, never the client's.
+- New editor extensions go into `features/editor/editor-extensions.ts`, used by
+  both the solo and the collaborative editor.
+
 ## Repo layout
 
 - `backend/` — Spring Boot service; `frontend/` — Angular app (markdown viewer
