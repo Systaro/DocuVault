@@ -398,8 +398,6 @@ interface NavItem {
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-lg);
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
     }
 
     .mobile-menu-user {

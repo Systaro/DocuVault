@@ -37,6 +37,10 @@
   --text-secondary: #4a6366;
   --text-muted: #7a9a9d;
 
+  --scrollbar-track: var(--background-darker);
+  --scrollbar-thumb: #8eacaf;
+  --scrollbar-thumb-hover: var(--primary-dark);
+
   --success: #4caf50;
   --warning: #ff9800;
   --error: #f44336;
@@ -95,6 +99,10 @@
   --text-primary: #e8eaed;
   --text-secondary: #9aa0a8;
   --text-muted: #6b7280;
+
+  --scrollbar-track: var(--background-darker);
+  --scrollbar-thumb: #58606b;
+  --scrollbar-thumb-hover: var(--primary);
 
   --code-bg: #161b22;
   --code-text: #c9d1d9;
@@ -1521,21 +1529,36 @@ body {
 // ============================================
 // SCROLLBAR STYLES
 // ============================================
+// Chrome and Safari draw these. Chrome ignores them on any element that sets
+// scrollbar-color or scrollbar-width, so those two are left to Firefox below;
+// a component that sets them gets a thin, unstyled bar in Chrome.
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--background);
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  min-height: 48px;
+  min-width: 48px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
 
-  &:hover {
-    background: var(--primary-light);
+  &:hover,
+  &:active {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  html {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 }
 
