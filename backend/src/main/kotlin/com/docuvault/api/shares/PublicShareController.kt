@@ -27,6 +27,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.net.URLDecoder
+import java.nio.charset.CharacterCodingException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.Base64
@@ -85,8 +86,23 @@ class PublicShareController(
 
     private data class OgMetadata(val title: String?, val description: String?, val imageUrl: String?)
 
+    /**
+     * The text of a shared Markdown or HTML file, the only kinds the link preview reads.
+     * Any other file is left unread: decoding an image or a Word document as UTF-8
+     * throws, and that turned every such share into an error page.
+     */
+    private fun previewText(link: SharedLink): String? {
+        if (link.shareType != ShareType.FILE) return null
+        if (link.filePath.substringAfterLast('.', "").lowercase() !in PREVIEW_TEXT_EXTENSIONS) return null
+        return try {
+            gitService.readFile(link.space, link.filePath)
+        } catch (_: CharacterCodingException) {
+            null
+        }
+    }
+
     private fun extractOgMetadata(link: SharedLink, request: HttpServletRequest): OgMetadata {
-        val content = gitService.readFile(link.space, link.filePath) ?: return OgMetadata(null, null, null)
+        val content = previewText(link) ?: return OgMetadata(null, null, null)
         val ext = link.filePath.substringAfterLast('.', "").lowercase()
         val isMarkdown = ext in listOf("md", "markdown")
         val isHtml = ext in listOf("html", "htm")
@@ -161,7 +177,8 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val content = Files.readString(resolved)
+        val content = readTextOrNull(resolved)
+            ?: return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).build()
         return ResponseEntity.ok()
             .contentType(MediaType.TEXT_PLAIN)
             .body(content)
@@ -319,7 +336,8 @@ class PublicShareController(
             return ResponseEntity.notFound().build()
         }
 
-        val content = Files.readString(resolved)
+        val content = readTextOrNull(resolved)
+            ?: return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).build()
         return ResponseEntity.ok()
             .contentType(MediaType.TEXT_PLAIN)
             .body(content)
@@ -433,9 +451,7 @@ class PublicShareController(
         val description = ogMeta.description ?: "$title - shared from $spaceName on $appName"
 
         // Render content as HTML for SSR
-        val content = if (link.shareType == ShareType.FILE && !link.isPasswordProtected()) {
-            gitService.readFile(link.space, link.filePath)
-        } else null
+        val content = if (!link.isPasswordProtected()) previewText(link) else null
 
         val ext = link.filePath.substringAfterLast('.', "").lowercase()
         val fileDir = link.filePath.substringBeforeLast('/', "")
@@ -502,7 +518,7 @@ class PublicShareController(
 
         if (link.isPasswordProtected()) return ResponseEntity.notFound().build()
 
-        val content = gitService.readFile(link.space, link.filePath)
+        val content = previewText(link)
             ?: return ResponseEntity.notFound().build()
 
         val ext = link.filePath.substringAfterLast('.', "").lowercase()
@@ -623,6 +639,13 @@ class PublicShareController(
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
 
+    /** The file as UTF-8 text, or null when it is not text (a binary, or another encoding). */
+    private fun readTextOrNull(file: Path): String? = try {
+        Files.readString(file)
+    } catch (_: CharacterCodingException) {
+        null
+    }
+
     private fun checkAccess(link: SharedLink, request: HttpServletRequest): Boolean {
         if (!link.isPasswordProtected()) return true
 
@@ -684,8 +707,9 @@ class PublicShareController(
             CacheControl.noCache()
         }
 
-        if (isHtml) {
-            val html = Files.readString(resolved)
+        // An HTML file in another encoding is served as it is, without the base tag.
+        val html = if (isHtml) readTextOrNull(resolved) else null
+        if (html != null) {
             val injected = injectBaseTag(html, assetBaseHref(token, repoRelativePath))
             return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
@@ -890,5 +914,10 @@ class PublicShareController(
         val byExtension = getContentType(extension)
         if (byExtension != "application/octet-stream") return byExtension
         return Files.probeContentType(path) ?: "application/octet-stream"
+    }
+
+    private companion object {
+        /** File types whose text feeds the link preview (title, description, first image). */
+        val PREVIEW_TEXT_EXTENSIONS = setOf("md", "markdown", "html", "htm")
     }
 }
